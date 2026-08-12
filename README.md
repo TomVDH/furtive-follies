@@ -4,7 +4,8 @@ A small **ZenaSoft** kit that gives your projects a memory: **adjudant** — a C
 Code plugin that keeps a vault of notes (sessions, decisions, a handoff, a board)
 for each project — plus an optional terminal **suitcase** of quality-of-life tools.
 
-You don't need to be a terminal person, and you don't need to install Obsidian.
+You don't need to be a terminal person — but you do need two free apps: **Claude Code**
+and **[Obsidian](https://obsidian.md)**, which is where you read and navigate the vault.
 
 ## 📖 Read the field guide
 

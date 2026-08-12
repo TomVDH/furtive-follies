@@ -129,9 +129,10 @@
 
   /* print / PDF */
   @media print{
-    @page{size:A4; margin:14mm}
-    body{background:var(--zt-bg); -webkit-print-color-adjust:exact; print-color-adjust:exact; font-size:10.5pt; line-height:1.5}
-    .wrap{max-width:none; padding:0}
+    @page{size:A4; margin:0}
+    html,body{background:var(--zt-bg); -webkit-print-color-adjust:exact; print-color-adjust:exact}
+    body{font-size:10.5pt; line-height:1.5}
+    .wrap{max-width:none; padding:15mm 15mm 18mm}
     .wipe,.rise{animation:none!important; clip-path:none!important; opacity:1!important; transform:none!important}
     .copy{display:none}
     .logo{width:210px}
@@ -150,13 +151,14 @@
     <div class="chips rise d3">
       <span class="chip"><b>5&nbsp;min</b> read</span>
       <span class="chip">needs <b>Claude&nbsp;Code</b></span>
+      <span class="chip">and <b>Obsidian</b></span>
       <span class="chip"><b>macOS</b></span>
     </div>
   </header>
 
   <section class="blk">
     <h2>A vault is your project's memory.</h2>
-    <p class="body">Work spans days. The <i>why</i> behind a decision, what you tried last week, where you left off — it lives in your head or scrolls out of a chat, then it's gone. A <b>vault</b> holds it instead: a plain folder of markdown files, in a consistent shape. It's an Obsidian vault, but you never open Obsidian — the files are just text.</p>
+    <p class="body">Work spans days. The <i>why</i> behind a decision, what you tried last week, where you left off — it lives in your head or scrolls out of a chat, then it's gone. A <b>vault</b> holds it instead: an <b>Obsidian vault</b> — a folder of markdown files, in a consistent shape, that you read and navigate in <a href="https://obsidian.md" target="_blank" rel="noopener">Obsidian</a> (free), where the notes, the links between them, and the board come to life.</p>
     <h4>What lives in it</h4>
     <div class="grid auto">
       <div><div class="t">Sessions</div><div class="d">What happened each day you worked</div></div>
@@ -208,6 +210,7 @@
 
   <section class="blk">
     <h2>Set it up.</h2>
+    <p class="body">First, install the two free apps this needs: <b>Claude Code</b> and <b><a href="https://obsidian.md" target="_blank" rel="noopener">Obsidian</a></b> — on a Mac, <code>brew install --cask obsidian</code>, or download from obsidian.md.</p>
     <p class="hint">Each box below has a <b>Copy</b> button. Copy it, then paste it where the label says — your Terminal app, or the Claude Code chat. You don't type the box itself.</p>
     <div class="rail">
       <div class="step"><div class="idx">1</div><h3>Get access</h3>
@@ -224,6 +227,8 @@
         <p class="note">Do this once inside each project. It shows where a vault can live, recommends a spot, and makes it for you.</p>
         <div class="cmd"><div class="cmd-top"><span class="cmd-where">In Claude Code</span><span class="cmd-does">sets up the vault</span></div>
           <div class="cmd-line"><code>/adjudant connect</code><button class="copy" data-copy="/adjudant connect">Copy</button></div></div></div>
+      <div class="step"><div class="idx">4</div><h3>Open it in Obsidian</h3>
+        <p class="note">connect makes the vault folder for you. In Obsidian, choose <b>Open folder as vault</b> and pick that folder — now you can read your notes, follow the links between them, and see the board.</p></div>
     </div>
     <h4>Where your vault should live</h4>
     <div class="grid c2">

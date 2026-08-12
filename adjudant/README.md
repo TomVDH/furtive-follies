@@ -6,6 +6,8 @@ Run an Obsidian vault from inside your code project. Adjudant keeps a vault as y
 
 **New here? Read the [walkthrough](GUIDE.md).** This page is the reference.
 
+Requires the free [Obsidian](https://obsidian.md) app — that's how you browse the vault.
+
 ## Install
 
 ```

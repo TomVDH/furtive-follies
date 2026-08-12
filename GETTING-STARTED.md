@@ -22,20 +22,20 @@ adjudant fixes that by keeping a running memory of your project:
   future-you).
 - **A kanban board** — your tasks, laid out on a board you can drag around.
 
-Here's the reassuring part: this "memory" is just a **folder of plain markdown
-files** — the kind of text files you can open in any editor. That folder is called
-a **vault**. You do **not** need to install or open Obsidian to use it. Obsidian is
-just one nice app for browsing these files if you ever feel like it; adjudant works
-completely without it.
+Here's the shape of it: this "memory" is a **folder of markdown files** — plain text,
+in a consistent structure. That folder is called a **vault**, and you read and
+navigate it in **[Obsidian](https://obsidian.md)** (free), where the notes, the links
+between them, and the board come to life. You'll install Obsidian as part of setup.
 
 ---
 
 ## 2. Before you start
 
-You'll need two things:
+You'll need three things:
 
 1. **Claude Code installed** and working. If you can type `/plugin` inside it, you're set.
-2. **GitHub access to the private repo** (`TomVDH/furtive-follies`). Because the
+2. **Obsidian installed** — it's where you read the vault. It's free: [obsidian.md](https://obsidian.md), or `brew install --cask obsidian` on a Mac.
+3. **GitHub access to the private repo** (`TomVDH/furtive-follies`). Because the
    repo is private, Claude Code needs permission to read it. If it can't, the fix
    is usually one command in your terminal:
 

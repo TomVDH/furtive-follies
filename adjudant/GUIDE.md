@@ -8,7 +8,7 @@ You work in a code project. The thinking around that project — why you made a 
 
 The mental model: **your code project is the work, the vault is its memory.** You keep coding; adjudant keeps the record.
 
-You don't have to open Obsidian for any of this. The vault is plain markdown files. Obsidian just makes them nice to browse if you want it.
+Obsidian is where you read the vault — the notes, the links between them, and the board. Install it (it's free: obsidian.md) and open your vault folder in it. The files are plain markdown underneath, but Obsidian is how you browse them.
 
 ## 1. Install and link
 
