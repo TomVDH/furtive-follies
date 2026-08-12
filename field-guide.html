@@ -126,6 +126,19 @@
   .d1{animation-delay:.46s}.d2{animation-delay:.56s}.d3{animation-delay:.66s}
   @media (prefers-reduced-motion:reduce){.wipe,.rise{animation:none!important;clip-path:none!important;opacity:1!important;transform:none!important}}
   @media (max-width:440px){.step{grid-template-columns:1fr}.idx{margin-bottom:11px}.step h3,.step .note,.step .cmd{grid-column:1}.grid.c2{grid-template-columns:1fr}}
+
+  /* print / PDF */
+  @media print{
+    @page{size:A4; margin:14mm}
+    body{background:var(--zt-bg); -webkit-print-color-adjust:exact; print-color-adjust:exact; font-size:10.5pt; line-height:1.5}
+    .wrap{max-width:none; padding:0}
+    .wipe,.rise{animation:none!important; clip-path:none!important; opacity:1!important; transform:none!important}
+    .copy{display:none}
+    .logo{width:210px}
+    section.blk{margin-top:24px; padding-top:20px}
+    h2,h3,h4{break-after:avoid}
+    .step,.cmd,.grid>div,.flow,.tree,.call,.done,.node,.pq,.chips{break-inside:avoid}
+  }
 </style>
 
 <div class="wrap">

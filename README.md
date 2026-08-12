@@ -12,7 +12,8 @@ You don't need to be a terminal person, and you don't need to install Obsidian.
 self-contained, offline visual guide (nothing to install to read it).
 
 - **Download it and double-click** to open in your browser, or
-- clone the repo and open the file locally.
+- clone the repo and open the file locally, or
+- **prefer a PDF?** Grab **[`field-guide.pdf`](field-guide.pdf)** — same guide, opens anywhere, nothing to install.
 
 It's the same guide as this README, just nicer to read — share it with anyone.
 
