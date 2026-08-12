@@ -61,3 +61,6 @@ everything else is optional.
 New here? Read **[GETTING-STARTED.md](GETTING-STARTED.md)** — a friendly, step-by-step
 guide to installing, choosing where your vault lives, and the handful of verbs
 you'll actually use day to day.
+
+Prefer to skim? Open **[field-guide.html](field-guide.html)** in a browser — the same
+thing as a one-page ZenaSoft field guide: context management, the verbs, setup, and the suitcase.

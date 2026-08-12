@@ -201,6 +201,13 @@ Here's what it can set up for you:
 - **sl**, **gum**, and **cbonsai** — a little fun: a steam train, pretty prompts,
   and a tiny ASCII bonsai.
 
+**Recommended terminal setup.** The shortcuts assume **Zsh** — required; it's the macOS
+default since Catalina, so make it your shell with `chsh -s /bin/zsh` if it isn't already.
+We also recommend [**iTerm2**](https://iterm2.com) as your terminal (`brew install --cask iterm2`),
+and the [**Powerlevel10k**](https://github.com/romkatv/powerlevel10k) zsh prompt
+(`brew install powerlevel10k`, then add it to `~/.zshrc` and run `p10k configure` — see its
+[install guide](https://github.com/romkatv/powerlevel10k#installation)).
+
 **Not on a Mac?** Install those tools with your own package manager (apt, dnf,
 pacman, and so on), then source the shortcuts file from your shell config:
 
