@@ -1,0 +1,87 @@
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "Write",
+      "hooks": [{
+        "type": "command",
+        "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pretooluse-schema-gate.py\"",
+        "timeout": 5
+      }]
+    }],
+    "SessionStart": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-start.sh\"",
+        "timeout": 10
+      }]
+    }],
+    "UserPromptSubmit": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/user-prompt-reminder.sh\"",
+        "timeout": 3
+      }]
+    }],
+    "PostToolUse": [{
+      "matcher": "Write|Edit",
+      "hooks": [{
+        "type": "command",
+        "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/posttooluse-vault-log.py\"",
+        "timeout": 10,
+        "async": true
+      }]
+    }, {
+      "matcher": "Bash",
+      "hooks": [{
+        "type": "command",
+        "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/posttooluse-commit-log.py\"",
+        "if": "Bash(git commit *)",
+        "async": true,
+        "timeout": 5
+      }]
+    }],
+    "PreCompact": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/precompact.py\"",
+        "timeout": 5
+      }]
+    }],
+    "PostCompact": [{
+      "hooks": [{
+        "type": "command",
+        "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/postcompact.py\"",
+        "timeout": 5
+      }]
+    }],
+    "TaskCreated": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/task-ledger.py\"",
+        "async": true,
+        "timeout": 5
+      }]
+    }],
+    "TaskCompleted": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/task-ledger.py\"",
+        "async": true,
+        "timeout": 5
+      }]
+    }],
+    "SessionEnd": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/sessionend.sh\"",
+        "timeout": 10
+      }]
+    }]
+  }
+}

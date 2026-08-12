@@ -1,0 +1,14 @@
+filters:
+  and:
+    - file.inFolder("projects/{slug}/sessions")
+    - 'type == "session"'
+views:
+  - type: table
+    name: Sessions, newest first
+    sort:
+      - property: file.name
+        direction: DESC
+    order:
+      - file.name
+      - date
+      - started

@@ -1,0 +1,55 @@
+{
+  "name": "adjudant",
+  "version": "1.0.0",
+  "verbs": [
+    {
+      "name": "connect",
+      "description": "Link a project to its vault. Infers slug, type, and status, confirms one card of required fields, applies with a receipt. Idempotent.",
+      "argumentHint": "(no args)",
+      "reference": "reference/connect.md",
+      "weight": "light"
+    },
+    {
+      "name": "sync",
+      "description": "Push project state to the vault: refresh the brief, mirror the handoff, update the project index row.",
+      "argumentHint": "(no args)",
+      "reference": "reference/sync.md",
+      "weight": "light"
+    },
+    {
+      "name": "check",
+      "description": "Read-only health report for the project and vault, including schema drift. [vault|repo|all] also audits repo structure. Never writes.",
+      "argumentHint": "[vault|repo|all]",
+      "reference": "reference/check.md",
+      "weight": "medium"
+    },
+    {
+      "name": "sitrep",
+      "description": "Plain-language orientation after a break: where you left off, what is done, where the vault is, and what to do next. Read-only.",
+      "argumentHint": "(no args)",
+      "reference": "reference/sitrep.md",
+      "weight": "medium"
+    },
+    {
+      "name": "tidy",
+      "description": "Routine surface sweep: indexes, tags, wikilink form, updated dates, off-schema frontmatter. Previews then applies. [vault|repo|all] adds repo symlinks.",
+      "argumentHint": "[vault|repo|all]",
+      "reference": "reference/tidy.md",
+      "weight": "medium"
+    },
+    {
+      "name": "dream",
+      "description": "Advisory content review: surfaces stale, contradictory, redundant, or orphaned notes as an ephemeral findings report you respond to. Read-only; enacts nothing on its own.",
+      "argumentHint": "(no args)",
+      "reference": "reference/dream.md",
+      "weight": "heavy"
+    },
+    {
+      "name": "board",
+      "description": "Scaffold a self-hosted kanban seeded from tasks/: drag to move, saved to disk. Re-seeding keeps your dragged cards. Use --project SLUG or --all.",
+      "argumentHint": "[scaffold|serve|status] [--project SLUG|--all] [--from-tasks] [--force]",
+      "reference": "reference/board.md",
+      "weight": "light"
+    }
+  ]
+}

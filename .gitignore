@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# macOS
+.DS_Store
+
+# Adjudant session-local state (created at runtime in a linked project)
+.claude/adjudant
+.adjudant-tidy-preview/
+.adjudant-tidy-backup/
+.adjudant-dream-backup/

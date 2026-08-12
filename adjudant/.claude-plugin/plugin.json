@@ -1,0 +1,20 @@
+{
+  "name": "adjudant",
+  "version": "1.0.0",
+  "description": "Operate an Obsidian vault from your code project. One command, /adjudant, with seven verbs: connect onboards a project; sync, check, and sitrep report on it; tidy keeps it neat and dream gives an advisory content review; board runs a self-hosted kanban. Schema-locked vault writes, cost-gated heavy verbs, and ambient hooks that keep session notes, handoffs, and the board current. Stdlib-only Python helpers, no build step.",
+  "author": {
+    "name": "Tom Vanderheyden"
+  },
+  "homepage": "https://github.com/TomVDH/furtive-follies/tree/onboarding/adjudant",
+  "repository": "https://github.com/TomVDH/furtive-follies",
+  "license": "MIT",
+  "keywords": [
+    "obsidian",
+    "vault",
+    "knowledge-management",
+    "markdown",
+    "frontmatter",
+    "wikilinks",
+    "adjudant"
+  ]
+}

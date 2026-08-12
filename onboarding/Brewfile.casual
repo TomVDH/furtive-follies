@@ -1,0 +1,29 @@
+# Brewfile.casual — the friendly "CLI on-ramp" bundle
+# ----------------------------------------------------
+# A small, gentle set of terminal tools for people who mostly DON'T live in a
+# terminal. Nothing here is a power-user weapon — these are passive wins and
+# safety nets that make the occasional command-line moment nicer and less scary.
+#
+# HOW TO INSTALL (macOS + Homebrew):
+#   brew bundle --file=onboarding/Brewfile.casual
+#
+# It's safe to run again anytime — Homebrew just skips whatever you already have.
+#
+# WANT TO ADD A TOOL? It's one line below, then re-run the command above. Done.
+#
+# Not on macOS? No Homebrew? No problem — install the same tools with your own
+# package manager (apt, dnf, pacman, etc.). The names may differ slightly, but
+# the ideas are identical.
+
+brew "zoxide"    # Smart cd: type `z partial-name` to jump to folders you've been to before.
+brew "eza"       # A prettier `ls` with colors and icons (you'll use it via the l / ll / lt aliases).
+brew "bat"       # Like `cat`, but with syntax highlighting so files are actually readable.
+brew "ripgrep"   # Super-fast search from the terminal (`rg`); also quietly speeds up Claude Code's own searches.
+brew "fd"        # A fast, friendly replacement for `find` — easier to remember, nicer output.
+brew "git-delta" # Turns git's diffs into beautiful, easy-to-read side-by-side changes.
+brew "tealdeer"  # Gives you `tldr`: short, example-first, plain-English help for almost any command.
+brew "trash"     # `trash <file>` sends things to the macOS Trash instead of deleting forever — a safety net.
+brew "glow"      # Renders Markdown beautifully in the terminal — read your vault notes without opening Obsidian.
+brew "sl"        # A little steam locomotive chugs across the screen when you fat-finger `ls`. Gentle and fun.
+brew "gum"       # Makes shell scripts show pretty prompts and menus (this bundle's own installer uses it).
+brew "cbonsai"   # Grows a tiny ASCII bonsai tree in your terminal — a calm little easter-egg.

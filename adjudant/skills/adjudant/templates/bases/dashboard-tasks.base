@@ -1,0 +1,28 @@
+filters:
+  and:
+    - file.inFolder("projects/{slug}/tasks")
+    - 'type == "task"'
+views:
+  - type: table
+    name: Open work
+    filters:
+      and:
+        - 'status != "done"'
+        - 'status != "icebox"'
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - file.name
+      - status
+      - category
+      - related
+  - type: table
+    name: Everything
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - file.name
+      - status
+      - category

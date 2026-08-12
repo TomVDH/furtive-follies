@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Work-Order Board</title>
+<style>
+  /* ── Neutral tokens (OKLCH; mirrors the adjudant / campaign-request scale) ── */
+  :root{
+    color-scheme: light dark;
+    --bg:           oklch(98% 0.003 280);
+    --surface:      oklch(100% 0 0);
+    --surface-2:    oklch(96% 0.003 280);
+    --border:       oklch(91% 0.003 280);
+    --border-strong:oklch(82% 0.005 280);
+    --text:         oklch(22% 0.01 280);
+    --text-dim:     oklch(45% 0.008 280);
+    /* faint carries the lane counts, the empty-lane markers, the save status
+       and the whole footer, all at 11px. 62% measured 3.43:1 on --bg, under
+       the 4.5:1 normal-text floor; 53% clears it (4.70:1 at worst, on
+       --surface-2) and still reads a step below --text-dim. */
+    --text-faint:   oklch(53% 0.005 280);
+    --ok:   oklch(55% 0.14 155);
+    --bad:  oklch(48% 0.18 25);
+    --park: oklch(62% 0.005 280);
+
+    /* spacing — deliberately uneven: tight inside a docket, generous between stages */
+    --sp-1:4px; --sp-2:6px; --sp-3:10px; --sp-4:14px; --sp-5:20px; --sp-6:32px;
+    --rad:8px; --rad-sm:6px; --rad-xs:4px;
+    /* type — three steps, ≥1.27 ratio; hierarchy also carried by weight + mono/sans */
+    --fs-micro:11px; --fs-body:14px; --fs-lead:21px;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --mono: ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans: -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:oklch(10% 0.005 280); --surface:oklch(13% 0.005 280); --surface-2:oklch(16% 0.005 280);
+      --border:oklch(22% 0.005 280); --border-strong:oklch(34% 0.005 280);
+      --text:oklch(94% 0.002 280); --text-dim:oklch(70% 0.003 280); --text-faint:oklch(59% 0.005 280);
+      --ok:oklch(80% 0.14 155); --bad:oklch(72% 0.18 25); --park:oklch(52% 0.005 280);
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg);color:var(--text);font-family:var(--sans);font-size:var(--fs-body);line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+    background-image:repeating-linear-gradient(transparent 0 31px, color-mix(in oklch,var(--text) 4%,transparent) 31px 32px);
+  }
+
+  /* ── Masthead: a printed work-order document header ── */
+  header.masthead{
+    background:var(--bg);position:sticky;top:0;z-index:20;
+    border-bottom:2px solid var(--text);
+    padding:var(--sp-5) var(--sp-6) 0;
+  }
+  .masthead-row{display:flex;align-items:flex-end;gap:var(--sp-5);flex-wrap:wrap;padding-bottom:var(--sp-3)}
+  .brandblock{display:flex;flex-direction:column;gap:3px}
+  .brandblock .t{font-family:var(--mono);font-weight:700;font-size:var(--fs-lead);letter-spacing:.14em;text-transform:uppercase;line-height:1}
+  .brandblock .s{font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.3em;text-transform:uppercase;color:var(--text-dim)}
+  .spacer{flex:1}
+  .controls{display:flex;align-items:center;gap:var(--sp-4);font-family:var(--mono);font-size:var(--fs-micro)}
+  .controls button{
+    font:inherit;background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0;
+    letter-spacing:.04em;text-transform:uppercase;border-bottom:1px dashed var(--border-strong)
+  }
+  .controls button:hover{color:var(--text);border-bottom-color:var(--text)}
+  .controls input#q{
+    font:inherit;background:none;border:none;border-bottom:1px dashed var(--border-strong);
+    color:var(--text);padding:0 0 1px;width:110px;letter-spacing:.04em;outline:none
+  }
+  .controls input#q::placeholder{color:var(--text-faint);text-transform:uppercase}
+  .controls input#q:focus{border-bottom-color:var(--text)}
+  .conn{display:inline-flex;align-items:center;gap:6px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.1em}
+  .conn::before{content:"";width:7px;height:7px;border:1.5px solid currentColor;border-radius:50%}
+  .conn.on{color:var(--ok)} .conn.on::before{background:currentColor;border-color:currentColor}
+  .conn.bad{color:var(--bad);font-weight:700} .conn.bad::before{background:currentColor;border-color:currentColor}
+
+  /* a save that did not happen, said out loud (see persist / applyMove) */
+  .notice{display:flex;align-items:flex-start;gap:var(--sp-4);
+    margin:var(--sp-4) var(--sp-6) 0;padding:var(--sp-3) var(--sp-4);
+    border:1px solid var(--border-strong);border-left:3px solid var(--text-dim);border-radius:var(--rad-xs);
+    background:var(--surface);font-family:var(--mono);font-size:var(--fs-micro);line-height:1.6;color:var(--text)}
+  .notice.bad{border-left-color:var(--bad)}
+  .notice[hidden]{display:none}
+  .notice button{font:inherit;background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0;
+    text-transform:uppercase;letter-spacing:.08em;border-bottom:1px dashed var(--border-strong);margin-left:auto}
+  .notice button:hover{color:var(--text);border-bottom-color:var(--text)}
+  .fatal{font-family:var(--mono);font-size:var(--fs-micro);line-height:1.7;color:var(--text);
+    border:1px solid var(--bad);border-radius:var(--rad-xs);padding:var(--sp-4);max-width:640px}
+  .fatal p{margin:var(--sp-2) 0 0}
+  /* in the accessibility tree, out of the layout */
+  .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+    clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+
+  /* ledger field strip: stats (left) + category key (right), inner rule of the double-rule */
+  .fields{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-5);flex-wrap:wrap;
+    border-top:1px solid var(--text);padding:7px 0;
+    font-family:var(--mono);font-size:var(--fs-micro);letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim)}
+  .stats{display:flex;align-items:center;gap:var(--sp-3)}
+  .stats b{color:var(--text);font-weight:700}
+  .stats .sep{color:var(--border-strong)}
+  .legend{display:flex;gap:var(--sp-4);flex-wrap:wrap}
+  /* a real <button>: keyboard-reachable, with aria-pressed carrying the toggle */
+  .legend .k{display:inline-flex;align-items:center;gap:7px;cursor:pointer;
+    font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;background:none;border:none;padding:0}
+  .legend .k i{width:9px;height:9px;background:var(--c);outline:1px solid color-mix(in oklch,var(--text) 28%,transparent);outline-offset:-1px}
+  .legend .k.off{opacity:.35}
+  .legend .k.on{text-decoration:underline;text-underline-offset:3px}
+  .legend .k:focus-visible{outline:2px solid var(--text);outline-offset:3px}
+  .controls button:focus-visible,.controls input#q:focus-visible,.notice button:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+
+  /* ── Board: ruled manifest columns ── */
+  .board{display:flex;gap:0;padding:0 var(--sp-6) var(--sp-6);overflow-x:auto;align-items:flex-start}
+  .lane{flex:0 0 256px;width:256px;border-right:1px solid var(--border);padding:var(--sp-5) var(--sp-5) var(--sp-6)}
+  .lane:first-child{padding-left:0}
+  .lane:last-child{border-right:none}
+  .lane.muted{opacity:.86}
+  .lane-head{display:flex;align-items:baseline;gap:9px;padding-bottom:var(--sp-2);margin-bottom:var(--sp-4);
+    border-bottom:1.5px solid var(--text)}
+  .lane.muted .lane-head{border-bottom-color:var(--border-strong)}
+  .lane-head .nm{font-family:var(--mono);font-weight:700;font-size:var(--fs-micro);letter-spacing:.18em;text-transform:uppercase}
+  .lane-head .ct{font-family:var(--mono);font-size:var(--fs-micro);color:var(--text-faint)}
+  .lane-head .ct.over{color:oklch(58% 0.19 25);font-weight:700}
+  .lane.unfiled .lane-head{border-bottom-style:dashed}
+  .lane-body{display:flex;flex-direction:column;gap:var(--sp-3);min-height:48px}
+  .lane.drop .lane-body{outline:1.5px dashed var(--border-strong);outline-offset:6px}
+  .lane-empty{font-family:var(--mono);font-size:var(--fs-micro);color:var(--text-faint);letter-spacing:.08em;padding:5px 0}
+
+  /* ── Ticket: a flat work-order docket (full border, no shadow, no side-stripe) ── */
+  .ticket{
+    position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--rad-xs);
+    padding:var(--sp-3) var(--sp-3) var(--sp-4);cursor:grab;
+    transition:border-color .15s var(--ease),background .15s var(--ease),transform .15s var(--ease);
+  }
+  .ticket:hover{border-color:var(--border-strong);background:color-mix(in oklch,var(--surface) 92%,var(--surface-2))}
+  .ticket:active{cursor:grabbing}
+  .ticket.dragging{transform:rotate(-1.4deg) scale(1.02);border-color:var(--text-dim);
+    box-shadow:0 8px 22px -10px color-mix(in oklch,var(--text) 45%,transparent);z-index:5}
+  /* focus ring uses --text, never the category hue: the eight palette hues
+     measure 1.65:1 to 2.28:1 on --surface, under the 3:1 SC 1.4.11 floor, so
+     the documented keyboard alternative to dragging had no visible focus. */
+  .ticket:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+  /* touch: picked up, waiting for a stage */
+  .ticket.sel{outline:2px dashed var(--text);outline-offset:2px;background:var(--surface-2)}
+
+  .t-top{display:flex;align-items:center;justify-content:space-between;gap:9px;margin-bottom:var(--sp-2)}
+  .t-id{font-family:var(--mono);font-weight:700;font-size:var(--fs-body);letter-spacing:.02em;color:var(--text)}
+  /* category = squared stamp tag (hue darkened to pass contrast; never a dot) */
+  .t-cat{font-family:var(--mono);font-size:var(--fs-micro);font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+    padding:2px 6px;border-radius:var(--rad-xs);
+    color:color-mix(in oklch,var(--c) 52%,var(--text));
+    background:color-mix(in oklch,var(--c) 13%,var(--surface));
+    border:1px solid color-mix(in oklch,var(--c) 38%,var(--border))}
+  .t-title{font-size:var(--fs-body);line-height:1.36;color:var(--text);text-wrap:pretty}
+  .t-refs{margin-top:var(--sp-3);font-family:var(--mono);font-size:var(--fs-micro);color:var(--text-dim);letter-spacing:.02em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .t-refs .lead{color:var(--text-faint)}
+  .t-note{margin-top:var(--sp-2);font-size:var(--fs-micro);font-style:italic;color:var(--text-dim);line-height:1.35}
+
+  /* rubber-stamp overprint for terminal lanes (receipt motif) */
+  .stamp{position:absolute;right:9px;bottom:9px;font-family:var(--mono);font-weight:700;font-size:var(--fs-micro);
+    letter-spacing:.14em;padding:2px 7px;border:1.5px solid currentColor;border-radius:var(--rad-xs);
+    transform:rotate(-7deg);opacity:.5;pointer-events:none}
+  .stamp.built{color:var(--ok)} .stamp.parked{color:var(--park)}
+
+  .foot{font-family:var(--mono);font-size:var(--fs-micro);color:var(--text-faint);letter-spacing:.04em;
+    padding:var(--sp-5) var(--sp-6) var(--sp-6);max-width:760px;line-height:1.8}
+  .foot kbd{font-family:var(--mono);background:var(--surface-2);border:1px solid var(--border);border-radius:var(--rad-xs);padding:0 5px}
+
+  @media (prefers-reduced-motion: reduce){
+    .ticket{transition:none}
+    .ticket.dragging{transform:none}
+  }
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-row">
+    <div class="brandblock">
+      <span class="t" id="boardTitle">Work-order board</span>
+      <span class="s" id="boardSub">Work-order board</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="controls">
+      <input id="q" type="search" placeholder="filter" spellcheck="false" autocomplete="off" aria-label="Filter orders">
+      <span class="conn" id="conn" aria-label="save target: local">local</span>
+      <button id="connectBtn" type="button">connect file</button>
+      <button id="downloadBtn" type="button">download</button>
+    </div>
+  </div>
+  <div class="fields">
+    <div class="stats">
+      <span><b id="orderCount">—</b>&nbsp;orders</span>
+      <span class="sep">/</span>
+      <span>rev&nbsp;<b id="rev">—</b></span>
+      <span class="sep">/</span>
+      <span><b id="stageCount">—</b>&nbsp;stages</span>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+</header>
+<div class="notice" id="notice" role="alert" hidden>
+  <span id="noticeText"></span>
+  <button id="noticeClose" type="button" aria-label="Dismiss this message">dismiss</button>
+</div>
+<div id="live" class="sr-only" role="status" aria-live="polite"></div>
+<noscript>
+  <p class="notice bad">This board is a JavaScript page. With scripting off it shows no orders and no
+  stages, which is not the same as an empty board. Read <code>board-data.json</code> next to this file
+  for the deck itself.</p>
+</noscript>
+<main class="board" id="board" aria-label="Work-order stages"></main>
+<p class="foot">
+  Drag an order between stages, saved to this browser instantly. On a touch screen, tap an order
+  to pick it up and tap a stage to put it down. Hit
+  <kbd>connect file</kbd> and pick <code>board-data.json</code> to auto-save to disk (Chromium).
+  Card ids and mono <code>ref ·</code> tags cross-link your codes (specs, handoffs, commits).
+  Type in <kbd>filter</kbd> (or press a legend key) to narrow; <kbd>Esc</kbd> clears.
+  Focus a ticket (<kbd>Tab</kbd>) and press <kbd>[</kbd> / <kbd>]</kbd> to move it a stage left / right.
+  A column with <code>"wip": N</code> in <code>board-data.json</code> shows an over-limit count in red;
+  <code>"stamp"</code>, <code>"stampTone"</code> and <code>"muted"</code> set its terminal-lane treatment.
+</p>
+
+<script>
+"use strict";
+
+/* ── Board data. The scaffolder replaces this block with the project deck. ── */
+const SEED = /*BOARD_DATA_START*/{
+  "version":1,"boardId":"example","title":"Work-Order Board","subtitle":"Work-order board","updated":"",
+  "columns":[{"id":"backlog","name":"Backlog"},{"id":"next","name":"Next"},{"id":"doing","name":"Doing"},{"id":"review","name":"Review"},{"id":"done","name":"Done"},{"id":"icebox","name":"Icebox"}],
+  "categories":["build","docs","infra","chore"],
+  "cards":[
+    {"id":"EX-01","title":"Example order — drag me to another stage","column":"backlog","category":"build","related":["SPEC-000"],"notes":"Replace this deck via /adjudant board, or edit board-data.json."},
+    {"id":"EX-02","title":"Done orders get a BUILT stamp; icebox gets PARKED","column":"done","category":"docs","related":[],"notes":""}
+  ]
+}/*BOARD_DATA_END*/;
+
+/* category hue palette (OKLCH; assigned by index unless categories carries explicit colors) */
+const PALETTE=["oklch(78% 0.16 295)","oklch(82% 0.17 142)","oklch(82% 0.15 50)","oklch(78% 0.16 215)","oklch(80% 0.16 340)","oklch(80% 0.15 200)","oklch(80% 0.14 110)","oklch(78% 0.16 25)"];
+/* per-board identity: each project's board namespaces its own browser + disk-handle
+   state, so multiple boards served from the same localhost origin never clobber
+   each other. Falls back to the title for pre-0.9 decks without a boardId. */
+function boardKey(){ return String(SEED.boardId||SEED.title||"default"); }
+const LS_KEY="adjudant-board:"+boardKey();
+const LS_REV=LS_KEY+":rev";   /* pre-0.25 whole-deck mirror; retired on first save */
+const IDB_KEY=boardKey();
+const STAMP={done:["built","BUILT"],icebox:["parked","PARKED"]};
+const MOVES_VERSION=2;
+let state=null, fileHandle=null, catColors={};
+/* baseDeck = the deck exactly as loaded (disk or SEED), before any override.
+   moves    = the ONLY thing this page persists (see readMoves). */
+let baseJson=null, baseCols=[], moves={}, selectedKey=null;
+/* view-state only (never persisted): text filter + toggled legend category */
+let filterText="", filterCat=null;
+function errText(e){ return String((e&&e.message)||e||"unknown error"); }
+function cardMatches(c){
+  if(filterCat && c.category!==filterCat) return false;
+  if(!filterText) return true;
+  // default every field: undefined must not leak "undefined" into the haystack
+  return [c.id,c.title,c.category,(c.related||[]).join(" "),c.notes]
+    .map(v=>v==null?"":String(v)).join(" ").toLowerCase().includes(filterText);
+}
+
+/* IndexedDB: persist the file handle across reloads (keyed per board) */
+function idb(){return new Promise((res,rej)=>{const r=indexedDB.open("cf-board",1);r.onupgradeneeded=()=>r.result.createObjectStore("h");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+async function saveHandle(h){const db=await idb();return new Promise((res,rej)=>{const t=db.transaction("h","readwrite");t.objectStore("h").put(h,IDB_KEY);t.oncomplete=()=>res();t.onerror=()=>rej(t.error);});}
+async function loadHandle(){try{const db=await idb();return await new Promise((res,rej)=>{const t=db.transaction("h","readonly");const rq=t.objectStore("h").get(IDB_KEY);rq.onsuccess=()=>res(rq.result||null);rq.onerror=()=>rej(rq.error);});}catch(e){return null;}}
+async function ensurePerm(h,mode){const o={mode};if((await h.queryPermission(o))==="granted")return true;if((await h.requestPermission(o))==="granted")return true;return false;}
+
+async function connectFile(){
+  if(!window.showOpenFilePicker){alert("This browser has no File System Access API. Use a Chromium browser, or rely on the browser-saved copy + Download.");return;}
+  try{
+    const [h]=await window.showOpenFilePicker({types:[{description:"Board JSON",accept:{"application/json":[".json"]}}],multiple:false});
+    if(!(await ensurePerm(h,"readwrite"))){alert("Write permission denied.");return;}
+    fileHandle=h; await saveHandle(h);
+    const txt=await (await h.getFile()).text();
+    if(txt.trim()){ baseJson=txt; state=deckFrom(txt); }
+    render();
+    const res=await persist();
+    if(!res.ok) notice("Connected, but nothing could be saved: "+res.reason,true); else clearNotice();
+  }catch(e){ if(e&&e.name!=="AbortError") alert("Connect failed: "+errText(e)); }
+}
+/* ── What this page persists ──────────────────────────────────────────────
+   ONLY the moves you made by hand, as {cardId:{from,to}}. Titles, categories,
+   refs and notes always re-render from the deck the scaffolder wrote, so a
+   re-scaffold that renames or re-categorises a card is never masked by a
+   stale browser blob, while the lane you dragged a card into still survives
+   that re-scaffold. `from` is the lane the deck held when you moved the card:
+   when the deck itself later puts that card somewhere else (a reseed, a hand
+   edit, another tab's disk write), the deck wins and the override retires.
+   Storing the whole deck instead is what made a re-seeded title permanently
+   invisible in the browser with no way to recover in the page. */
+/* One-time migration. Boards before this shape stored the whole deck, so the
+   drags are recoverable by diffing that blob against the deck this page ships.
+   The next save replaces it with the moves-only shape. */
+function movesFromLegacyDeck(o){
+  const seed={};
+  (SEED.cards||[]).forEach(c=>{ const id=String(c.id); if(seed[id]===undefined) seed[id]=String(c.column==null?"":c.column); });
+  const out={};
+  (o.cards||[]).forEach(c=>{
+    const id=String(c.id), col=String(c.column==null?"":c.column);
+    if(seed[id]!==undefined&&seed[id]!==col) out[id]={from:seed[id],to:col};
+  });
+  return out;
+}
+function readMoves(){
+  try{
+    const raw=localStorage.getItem(LS_KEY);
+    if(!raw) return {};
+    const o=JSON.parse(raw);
+    if(o&&typeof o==="object"&&o.v!==MOVES_VERSION&&Array.isArray(o.cards)) return movesFromLegacyDeck(o);
+    if(!o||typeof o!=="object"||o.v!==MOVES_VERSION||!o.moves||typeof o.moves!=="object") return {};
+    const out={};
+    Object.keys(o.moves).forEach(k=>{
+      const m=o.moves[k];
+      if(m&&typeof m==="object"&&typeof m.to==="string") out[k]={from:typeof m.from==="string"?m.from:"",to:m.to};
+    });
+    return out;
+  }catch(e){ console.warn("board: saved moves unreadable, starting from the deck",e); return {}; }
+}
+/* Returns {ok,reason}. A storage failure (private mode, a blocked or full
+   origin, an enterprise policy) must be reported, never swallowed: the footer
+   promises "saved to this browser instantly" and the caller rolls the move
+   back when no store confirmed it. */
+function writeMoves(){
+  try{
+    localStorage.setItem(LS_KEY,JSON.stringify({v:MOVES_VERSION,moves:moves}));
+    localStorage.removeItem(LS_REV);
+    return {ok:true,reason:""};
+  }catch(e){
+    console.warn("board: browser storage write failed",e);
+    const why=(e&&e.name==="QuotaExceededError") ? "this browser's storage is full or blocked" : errText(e);
+    return {ok:false,reason:why};
+  }
+}
+/* Overrides onto a deck, in place. Returns the surviving set: an override whose
+   `from` no longer matches the deck, or whose target lane is gone, has been
+   overtaken by the deck itself and retires. Touches no global, so a caller can
+   compute a merge it may still decide not to commit. */
+function mergeMoves(deck,mv){
+  const known=new Set(deck.columns.map(c=>String(c.id)));
+  const live={};
+  deck.cards.forEach(c=>{
+    const m=mv[c.id];
+    if(!m||m.from!==c.column||!known.has(m.to)) return;
+    c.column=m.to; live[c.id]=m;
+  });
+  return live;
+}
+/* This deck is now the one every override is expressed against. */
+function adopt(deck){
+  baseCols=deck.cards.map(c=>c.column);
+  moves=mergeMoves(deck,moves);
+  return deck;
+}
+/* `from` is always the lane the CURRENT deck holds for that card, never the
+   lane it held the first time it was moved: once the deck absorbs a move (a
+   disk write, a reseed), a frozen base would stop matching and the next move
+   of that same card would be dropped on the floor. */
+function recordMove(key,card,to){
+  const base=(baseCols[key]===undefined)?card.column:baseCols[key];
+  if(to===base) delete moves[card.id]; else moves[card.id]={from:base,to:to};
+}
+function deckFrom(txt){ return adopt(normalize(JSON.parse(txt))); }
+
+/* Re-read before writing. createWritable() truncates, python reseeds this same
+   file, and another tab may own it too: a blind write of this tab's boot-time
+   snapshot silently drops every card and lane that landed since. */
+async function writeDisk(){
+  if(!fileHandle) return {ok:false,reason:"",skipped:true};
+  try{
+    if(!(await ensurePerm(fileHandle,"readwrite"))) return {ok:false,reason:"write permission for board-data.json was denied"};
+    const txt=await (await fileHandle.getFile()).text();
+    let disk=null;
+    if(txt.trim()){
+      try{ disk=normalize(JSON.parse(txt)); }
+      catch(e){ return {ok:false,reason:"board-data.json on disk is not a readable deck ("+errText(e)+"), nothing written"}; }
+    }
+    let out=state, live=null;
+    if(disk){ live=mergeMoves(disk,moves); out=disk; }
+    const written=JSON.stringify(out,null,2);
+    const w=await fileHandle.createWritable();
+    await w.write(written);
+    await w.close();
+    /* Adopt the reconciled deck only once the write actually landed, and adopt
+       what was WRITTEN: the file now holds the merged columns, so those are the
+       lanes the next override has to be expressed against. */
+    if(disk){ baseJson=written; state=out; baseCols=out.cards.map(c=>c.column); moves=live; }
+    return {ok:true,reason:"",refreshed:!!disk};
+  }catch(e){ console.warn("board: disk write failed",e); return {ok:false,reason:errText(e)}; }
+}
+/* Confirmed by at least one backing store, or it did not happen. */
+async function persist(){
+  const local=writeMoves();
+  const disk=await writeDisk();
+  setConn(disk.ok?"disk":(fileHandle?"reconnect":(local.ok?"local":"unsaved")));
+  const reasons=[];
+  if(!local.ok) reasons.push(local.reason);
+  if(!disk.ok&&!disk.skipped) reasons.push(disk.reason);
+  return {ok:local.ok||disk.ok,reason:reasons.join(" · "),refreshed:!!disk.refreshed};
+}
+/* Pull in a deck another writer put on disk while this tab sat idle. */
+async function refreshFromDisk(){
+  if(!fileHandle) return;
+  try{
+    if((await fileHandle.queryPermission({mode:"readwrite"}))!=="granted") return;
+    const txt=await (await fileHandle.getFile()).text();
+    if(!txt.trim()||txt===baseJson) return;
+    baseJson=txt; state=deckFrom(txt); render();
+    announce("Board refreshed from disk.");
+  }catch(e){ console.warn("board: disk refresh failed",e); }
+}
+
+const CONN_TEXT={disk:"disk",reconnect:"reconnect",local:"local",unsaved:"unsaved"};
+function setConn(mode){
+  const el=document.getElementById("conn");
+  el.classList.toggle("on",mode==="disk");
+  el.classList.toggle("bad",mode==="unsaved");
+  el.textContent=CONN_TEXT[mode]||"local";
+  el.setAttribute("aria-label","save target: "+(CONN_TEXT[mode]||"local"));
+}
+function download(){
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="board-data.json"; a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* A deck's category colour is assigned into a CSS custom property that backs
+   `background:var(--c)`, so an unvetted value lets a deck smuggle a `url()`
+   into a board that is supposed to be fully offline and make it fetch. Take
+   only what the engine itself agrees is a colour, never a value that can
+   fetch. Validator 25 enforces the same offline rule over the whole file. */
+const FETCHING_CSS=/url\s*\(|image-set\s*\(|-webkit-image-set\s*\(|image\s*\(|cross-fade\s*\(|element\s*\(|attr\s*\(|var\s*\(/i;
+function safeColor(v,fallback){
+  if(typeof v!=="string") return fallback;
+  const s=v.trim();
+  if(!s||FETCHING_CSS.test(s)) return fallback;
+  if(window.CSS&&CSS.supports&&!CSS.supports("color",s)) return fallback;
+  return s;
+}
+/* categories may be an array of names (palette by index) or an object {name:color}.
+   Shape is validated here rather than trusted: board-data.json is documented as
+   hand-editable, so a deck missing `cards` or `columns` must not render as a
+   confident, fully-styled, empty board. */
+function normalize(d){
+  if(!d||typeof d!=="object"||Array.isArray(d)) throw new Error("deck root is not a JSON object");
+  d.columns=Array.isArray(d.columns)?d.columns.filter(c=>c&&typeof c==="object"&&c.id!=null):[];
+  if(!d.columns.length) throw new Error("deck has no columns");
+  d.cards=Array.isArray(d.cards)?d.cards.filter(c=>c&&typeof c==="object"):[];
+  d.cards.forEach(c=>{ c.id=(c.id==null?"":String(c.id)); c.column=(c.column==null?"":String(c.column)); });
+  let names, colors={};
+  if(Array.isArray(d.categories)){ names=d.categories.map(String); }
+  else if(d.categories && typeof d.categories==="object"){ names=Object.keys(d.categories); colors=d.categories; }
+  else { names=[]; }
+  catColors={};
+  names.forEach((n,i)=>{ catColors[n]=safeColor(colors[n],PALETTE[i%PALETTE.length]); });
+  d.categoryNames=names;
+  const seen=new Set(), dup=new Set();
+  d.cards.forEach(c=>{ if(seen.has(c.id)) dup.add(c.id); seen.add(c.id); });
+  d.duplicateIds=Array.from(dup);
+  return d;
+}
+function catColor(cat){ return catColors[cat] || "var(--border-strong)"; }
+function el(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;}
+function colName(id){ const c=state.columns.find(c=>String(c.id)===String(id)); return c?c.name:String(id); }
+function cardLabel(c){ return (c.id?c.id+", ":"")+(c.title||"untitled order"); }
+
+/* ── Telling the truth about what happened ── */
+function announce(msg){
+  const live=document.getElementById("live");
+  if(live){ live.textContent=""; live.textContent=msg; }
+}
+function notice(msg,bad){
+  const n=document.getElementById("notice");
+  if(!n) return;
+  document.getElementById("noticeText").textContent=msg;
+  n.classList.toggle("bad",!!bad);
+  n.hidden=false;
+}
+function clearNotice(){ const n=document.getElementById("notice"); if(n){ n.hidden=true; } }
+/* A deck this page cannot render must say so on the page. Rendering an empty
+   board for a broken file is the one failure mode a reader cannot detect. */
+function fatal(e){
+  console.error("board: deck could not be rendered",e);
+  const board=document.getElementById("board");
+  board.innerHTML="";
+  const box=el("div","fatal"); box.setAttribute("role","alert");
+  box.appendChild(el("b",null,"This board could not be rendered."));
+  box.appendChild(el("p",null,"board-data.json (or the deck built into this page) is not a usable deck: "+errText(e)));
+  box.appendChild(el("p",null,"Re-run /adjudant board to rebuild it, or fix board-data.json by hand."));
+  board.appendChild(box);
+  document.getElementById("orderCount").textContent="—";
+  document.getElementById("stageCount").textContent="—";
+}
+
+/* Cards are addressed by their position in state.cards, never by id: a deck may
+   legitimately carry two cards with the same id (board.py only de-duplicates
+   the tasks path), and resolving a drag with .find(c=>c.id===id) moves the
+   first match rather than the card the user actually dragged. */
+function focusKey(key){
+  const node=document.querySelector('.ticket[data-key="'+key+'"]');
+  if(node) node.focus();
+}
+/* The single mutation path. A move renders optimistically, then rolls back and
+   says so when no backing store confirmed the write. */
+async function applyMove(key,toCol){
+  const card=state.cards[key];
+  if(!card) return false;
+  const from=card.column;
+  const label=cardLabel(card);
+  if(from===toCol){ announce(label+" is already in "+colName(toCol)+"."); return false; }
+  const undo=JSON.stringify(moves);
+  card.column=toCol; recordMove(key,card,toCol);
+  render();
+  const res=await persist();
+  if(!res.ok){
+    card.column=from; moves=JSON.parse(undo); render();
+    notice("Not saved: "+res.reason+". "+label+" was put back in "+colName(from)+".",true);
+    announce("Save failed. "+label+" was put back in "+colName(from)+".");
+    focusKey(key);
+    return false;
+  }
+  if(res.refreshed) render();
+  if(res.reason) notice("Saved in this browser, but not to disk: "+res.reason,true); else clearNotice();
+  announce(label+" moved to "+colName(toCol)+".");
+  focusKey(key);
+  return true;
+}
+/* keyboard capacity: focused ticket + [ / ] moves it one lane left / right */
+function moveByKey(key,delta){
+  const card=state.cards[key];
+  if(!card) return;
+  const cols=state.columns.map(c=>String(c.id));
+  const i=cols.indexOf(String(card.column));
+  const j=i+delta;
+  if(i<0) return;
+  if(j<0||j>=cols.length){ announce(cardLabel(card)+" is already in the "+(delta<0?"first":"last")+" stage."); return; }
+  applyMove(key,cols[j]);
+}
+/* Touch has no HTML5 drag events at all, so on a touch-primary device the
+   board would be silently read-only. Tap an order to pick it up, tap a stage
+   to put it down. Registered only where dragging cannot work, so pointer and
+   keyboard behaviour on a desktop is unchanged. */
+function tapToMove(){
+  if(!window.matchMedia) return false;
+  return matchMedia("(pointer: coarse)").matches || !matchMedia("(hover: hover)").matches;
+}
+function select(key){
+  selectedKey=key;
+  document.querySelectorAll(".ticket").forEach(n=>{
+    const on=Number(n.dataset.key)===key;
+    n.classList.toggle("sel",on);
+    if(on) n.setAttribute("aria-current","true"); else n.removeAttribute("aria-current");
+  });
+  const card=state.cards[key];
+  if(card) announce(cardLabel(card)+" picked up. Tap a stage to move it there.");
+}
+function deselect(quiet){
+  if(selectedKey===null) return;
+  selectedKey=null;
+  document.querySelectorAll(".ticket.sel").forEach(n=>{ n.classList.remove("sel"); n.removeAttribute("aria-current"); });
+  if(!quiet) announce("Put back down.");
+}
+
+function ticketNode(card,key){
+  const t=el("div","ticket"); t.draggable=true; t.tabIndex=0; t.dataset.id=card.id; t.dataset.key=String(key);
+  t.setAttribute("role","listitem");
+  t.setAttribute("aria-keyshortcuts","[ ]");
+  t.setAttribute("aria-label",cardLabel(card)+(card.category?", "+card.category:"")+", in "+colName(card.column));
+  if(selectedKey===key){ t.classList.add("sel"); t.setAttribute("aria-current","true"); }
+  t.style.setProperty("--c",catColor(card.category));
+  const top=el("div","t-top");
+  top.appendChild(el("span","t-id",card.id));
+  if(card.category) top.appendChild(el("span","t-cat",card.category));
+  t.appendChild(top);
+  t.appendChild(el("div","t-title",card.title));
+  if(card.related&&card.related.length){
+    const r=el("div","t-refs");
+    r.appendChild(el("span","lead","ref · "));
+    r.appendChild(document.createTextNode(card.related.join("  ·  ")));
+    t.appendChild(r);
+  }
+  if(card.notes) t.appendChild(el("div","t-note",card.notes));
+  const stamp=laneStamp(columnById(card.column));
+  /* decorative overprint: the lane it sits in already carries this in text */
+  if(stamp){ const s=el("span","stamp "+stamp[0],stamp[1]); s.setAttribute("aria-hidden","true"); t.appendChild(s); }
+  t.addEventListener("dragstart",ev=>{ev.dataTransfer.setData("text/plain",String(key));ev.dataTransfer.effectAllowed="move";t.classList.add("dragging");});
+  t.addEventListener("dragend",()=>t.classList.remove("dragging"));
+  t.addEventListener("keydown",ev=>{
+    if(ev.key==="[") { ev.preventDefault(); moveByKey(key,-1); }
+    else if(ev.key==="]") { ev.preventDefault(); moveByKey(key,1); }
+  });
+  if(tapToMove()){
+    t.addEventListener("click",ev=>{
+      if(selectedKey===null){ ev.stopPropagation(); select(key); }
+      else if(selectedKey===key){ ev.stopPropagation(); deselect(); }
+      /* otherwise fall through: the lane this card sits in takes the drop */
+    });
+  }
+  return t;
+}
+
+/* Terminal-lane treatment is deck data, not two hardcoded ids: merge_deck goes
+   out of its way to preserve renamed and added lanes across a reseed, and a
+   lane renamed from `done` to `shipped` used to silently lose its stamp and its
+   muted treatment. A column may carry {"stamp":"SHIPPED"} (or false to drop it),
+   {"stampTone":"built"|"parked"} and {"muted":true|false}; the two legacy ids
+   still supply the defaults for decks written before those keys existed. */
+function columnById(id){ return state.columns.find(c=>String(c.id)===String(id))||null; }
+function laneStamp(col){
+  if(!col) return null;
+  if(col.stamp===false||col.stamp==="") return null;
+  if(typeof col.stamp==="string"&&col.stamp) return [col.stampTone==="parked"?"parked":"built",col.stamp];
+  return STAMP[col.id]||null;
+}
+function laneMuted(col){ return typeof col.muted==="boolean" ? col.muted : (col.id==="done"||col.id==="icebox"); }
+
+function render(){
+  document.getElementById("boardTitle").textContent=state.title||"Work-order board";
+  document.getElementById("boardSub").textContent=state.subtitle||"Work-order board";
+  document.getElementById("orderCount").textContent=state.cards.length;
+  document.getElementById("rev").textContent=state.updated||"—";
+  document.getElementById("stageCount").textContent=state.columns.length;
+  const lg=document.getElementById("legend"); lg.innerHTML="";
+  (state.categoryNames||[]).forEach(cat=>{
+    /* a real button: a bare span with a click handler is unreachable by
+       keyboard, and the footer tells people to use it */
+    const k=el("button","k"+(filterCat===cat?" on":(filterCat?" off":"")));
+    k.type="button";
+    k.setAttribute("aria-pressed",filterCat===cat?"true":"false");
+    k.style.setProperty("--c",catColor(cat));
+    k.appendChild(el("i")); k.appendChild(document.createTextNode(cat));
+    k.addEventListener("click",()=>{ filterCat = (filterCat===cat) ? null : cat; render(); });
+    lg.appendChild(k);
+  });
+  const filtering = !!(filterText || filterCat);
+  const board=document.getElementById("board"); board.innerHTML="";
+  let laneSeq=0;
+  const laneNode=(col, entries, opts)=>{
+    const shown=entries.filter(e=>cardMatches(e.card));
+    const droppable=!!(opts&&opts.droppable);
+    const lane=el("div","lane"+(laneMuted(col)?" muted":"")+((opts&&opts.cls)||""));
+    lane.dataset.col=col.id;
+    lane.setAttribute("role","group");
+    const headId="lane-"+(laneSeq++)+"-nm";
+    const head=el("div","lane-head");
+    const nm=el("span","nm",col.name);
+    nm.id=headId; nm.setAttribute("role","heading"); nm.setAttribute("aria-level","2");
+    head.appendChild(nm);
+    lane.setAttribute("aria-labelledby",headId);
+    // count: `shown/total` while filtering; over-limit (col.wip) shown in red
+    const over = Number.isFinite(col.wip) && entries.length>col.wip;
+    const ctTxt = filtering
+      ? String(shown.length).padStart(2,"0")+"/"+String(entries.length).padStart(2,"0")
+      : String(entries.length).padStart(2,"0") + (Number.isFinite(col.wip)?("/"+col.wip+" wip"):"");
+    const ct=el("span","ct"+(over?" over":""),ctTxt);
+    ct.setAttribute("aria-label",(filtering?shown.length+" of "+entries.length+" orders shown":entries.length+" orders")
+      +(Number.isFinite(col.wip)?(over?", over the limit of "+col.wip:", limit "+col.wip):""));
+    head.appendChild(ct);
+    lane.appendChild(head);
+    const body=el("div","lane-body");
+    body.setAttribute("role","list");
+    body.setAttribute("aria-labelledby",headId);
+    if(!shown.length) body.appendChild(el("div","lane-empty", filtering&&entries.length ? "—  filtered" : "—  empty"));
+    shown.forEach(e=>body.appendChild(ticketNode(e.card,e.key)));
+    lane.appendChild(body);
+    if(droppable){
+      lane.addEventListener("dragover",ev=>{ev.preventDefault();ev.dataTransfer.dropEffect="move";lane.classList.add("drop");});
+      lane.addEventListener("dragleave",ev=>{ if(!lane.contains(ev.relatedTarget)) lane.classList.remove("drop"); });
+      lane.addEventListener("drop",ev=>{
+        ev.preventDefault(); lane.classList.remove("drop");
+        const key=Number(ev.dataTransfer.getData("text/plain"));
+        if(Number.isInteger(key)) applyMove(key,col.id);
+      });
+      if(tapToMove()) lane.addEventListener("click",()=>{
+        if(selectedKey===null) return;
+        const key=selectedKey; deselect(true); applyMove(key,col.id);
+      });
+    }
+    board.appendChild(lane);
+  };
+  const buckets=new Map();
+  state.columns.forEach(c=>buckets.set(String(c.id),[]));
+  const orphans=[];
+  state.cards.forEach((card,key)=>{
+    const b=buckets.get(String(card.column));
+    (b||orphans).push({card:card,key:key});
+  });
+  state.columns.forEach(col=>laneNode(col,buckets.get(String(col.id)),{droppable:true}));
+  // Safety lane: cards whose column matches no lane (deck edited by hand,
+  // column removed) must never be invisible. It takes no drops, so it also
+  // registers no dragover: painting an accept outline over a target that then
+  // refuses the drop is a lie about being live.
+  if(orphans.length) laneNode({id:"__unfiled",name:"Unfiled",muted:false,stamp:false},orphans,{droppable:false,cls:" unfiled"});
+}
+
+async function boot(){
+  try{
+    let diskTxt=null;
+    try{
+      const h=await loadHandle();
+      if(h){ fileHandle=h;
+        if((await h.queryPermission({mode:"readwrite"}))==="granted"){
+          const txt=await (await h.getFile()).text();
+          if(txt.trim()) diskTxt=txt;
+        }
+      }
+    }catch(e){ console.warn("board: handle restore failed",e); }
+    moves=readMoves();
+    if(diskTxt){
+      try{ baseJson=diskTxt; state=deckFrom(diskTxt); }
+      catch(e){
+        baseJson=null; state=null;
+        console.warn("board: deck on disk unreadable",e);
+        notice("board-data.json on disk is not a readable deck ("+errText(e)+"). Showing the deck built into this page instead.",true);
+      }
+    }
+    if(!state){ baseJson=JSON.stringify(SEED); state=deckFrom(baseJson); }
+    setConn(fileHandle?"reconnect":"local");
+    render();
+    if(state.duplicateIds.length){
+      notice("This deck has duplicate card ids ("+state.duplicateIds.join(", ")+"). Cards are tracked by position so a drag still moves the card you dragged, but the ids no longer identify one.",false);
+    }
+  }catch(e){ fatal(e); }
+}
+document.getElementById("connectBtn").addEventListener("click",connectFile);
+document.getElementById("downloadBtn").addEventListener("click",download);
+document.getElementById("noticeClose").addEventListener("click",clearNotice);
+const q=document.getElementById("q");
+q.addEventListener("input",()=>{ filterText=q.value.trim().toLowerCase(); render(); });
+q.addEventListener("keydown",ev=>{
+  if(ev.key==="Escape"){ q.value=""; filterText=""; filterCat=null; render(); q.blur(); }
+});
+document.addEventListener("keydown",ev=>{ if(ev.key==="Escape") deselect(true); });
+/* Another tab on the same board is another writer. Adopt its moves instead of
+   letting whichever tab saves last silently win. */
+window.addEventListener("storage",ev=>{
+  if(ev.key&&ev.key!==LS_KEY) return;
+  const before=JSON.stringify(moves);
+  moves=readMoves();
+  if(JSON.stringify(moves)===before) return;
+  try{ state=deckFrom(baseJson); render(); announce("Board updated in another tab."); }
+  catch(e){ console.warn("board: could not adopt another tab's state",e); }
+});
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden) refreshFromDisk(); });
+boot();
+</script>
+</body>
+</html>

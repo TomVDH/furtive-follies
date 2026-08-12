@@ -1,0 +1,18 @@
+filters:
+  and:
+    - file.inFolder("projects/{slug}/decisions")
+    - 'type == "decision"'
+views:
+  - type: table
+    name: Decisions by status
+    groupBy:
+      property: status
+      direction: ASC
+    sort:
+      - property: file.name
+        direction: DESC
+    order:
+      - file.name
+      - status
+      - date
+      - superseded_by

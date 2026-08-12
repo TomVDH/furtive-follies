@@ -1,0 +1,19 @@
+filters:
+  or:
+    - file.inFolder("projects/{slug}/notes")
+    - file.inFolder("projects/{slug}/decisions")
+    - file.inFolder("projects/{slug}/references")
+views:
+  - type: table
+    name: Truth lifetime
+    sort:
+      - property: valid_until
+        direction: ASC
+    order:
+      - file.name
+      - freshness
+      - certainty
+      - valid_from
+      - valid_until
+      - validity_context
+      - superseded_by
