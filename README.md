@@ -1,35 +1,24 @@
 # furtive-follies
 
-A small kit that gives your projects a memory. It has two parts:
+A small **ZenaSoft** kit that gives your projects a memory: **adjudant** — a Claude
+Code plugin that keeps a vault of notes (sessions, decisions, a handoff, a board)
+for each project — plus an optional terminal **suitcase** of quality-of-life tools.
 
-1. **adjudant** — a Claude Code plugin that keeps a running record of your work
-   (session notes, decisions, a handoff, and a kanban board) in a plain folder of
-   markdown files. You keep working like normal; it keeps the notes tidy and
-   current in the background so future-you can pick up right where you left off.
-2. **onboarding/** — an optional, friendly installer that adds a handful of nice
-   terminal tools if you'd like a smoother command line. Totally optional.
+You don't need to be a terminal person, and you don't need to install Obsidian.
 
-You do **not** need to be a terminal person to use this, and you do **not** need
-to install Obsidian. (A "vault" is just a folder of markdown files. Obsidian only
-makes them prettier to browse if you ever want that.)
+## 📖 Read the field guide
 
-## Two steps to start
+**[`field-guide.html`](field-guide.html)** is the whole thing on one page — a
+self-contained, offline visual guide (nothing to install to read it).
 
-### A. (Optional) Run the onboarding script for the terminal niceties
+- **Download it and double-click** to open in your browser, or
+- clone the repo and open the file locally.
 
-Nice to have, not required. On a Mac with Homebrew:
+It's the same guide as this README, just nicer to read — share it with anyone.
 
-```bash
-bash onboarding/onboard.sh --check   # dry run: shows what it WOULD do, changes nothing
-bash onboarding/onboard.sh           # the real thing (asks before any big change)
-```
+## The short version
 
-It's guarded and safe — anything already installed is skipped, and a missing tool
-just skips quietly.
-
-### B. Install the plugin and connect your project
-
-Inside Claude Code, run these three lines:
+Inside **Claude Code**, run these three, one at a time:
 
 ```
 /plugin marketplace add TomVDH/furtive-follies
@@ -37,30 +26,28 @@ Inside Claude Code, run these three lines:
 /adjudant connect
 ```
 
-`connect` sets up the vault and walks you through where to put it. That's it —
-everything else is optional.
+The repo is private, so if Claude Code can't reach it, sign in once in your
+terminal with `gh auth login`, then try again.
 
-> The repo is **private**, so you need GitHub access to it first. If Claude Code
-> can't read it, run `gh auth login` once in your terminal, then try again.
+`connect` shows where a vault can live (a cloud-sync folder is recommended so your
+notes follow you across computers), makes it for you, and links your project.
+That's it — session notes, the handoff, and the board keep themselves current.
+Come back with `/adjudant sitrep` after a break.
 
-## What you get
+## Optional: the suitcase
 
-- **One command, `/adjudant`, with seven verbs** — `connect`, `sync`, `check`,
-  `sitrep`, `tidy`, `dream`, and `board`.
-- **A project memory that keeps itself current** — notes and a handoff get written
-  as you work, so you never start cold.
-- **A drag-and-drop kanban board** (`/adjudant board`) built automatically from
-  your task notes.
-- **Read-only safety valves** — `check` and `dream` look and report; they don't
-  change anything on their own.
-- **Light on the wallet** — built to be token-frugal, so it's gentle on usage
-  limits.
+A small kit of friendly command-line tools. On a Mac with Homebrew:
 
-## Full walkthrough
+```bash
+bash onboarding/onboard.sh --check   # dry run — changes nothing
+bash onboarding/onboard.sh           # installs the tools
+```
 
-New here? Read **[GETTING-STARTED.md](GETTING-STARTED.md)** — a friendly, step-by-step
-guide to installing, choosing where your vault lives, and the handful of verbs
-you'll actually use day to day.
+We recommend [iTerm2](https://iterm2.com) as your terminal and the
+[Powerlevel10k](https://github.com/romkatv/powerlevel10k) prompt, and the shortcuts
+assume **Zsh** (the macOS default). Details are in the field guide.
 
-Prefer to skim? Open **[field-guide.html](field-guide.html)** in a browser — the same
-thing as a one-page ZenaSoft field guide: context management, the verbs, setup, and the suitcase.
+## More
+
+- Plain-text walkthrough: **[GETTING-STARTED.md](GETTING-STARTED.md)**
+- The plugin itself: **[`adjudant/`](adjudant/)** (seven verbs, its own README + GUIDE)
