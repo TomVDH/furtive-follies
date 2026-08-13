@@ -89,6 +89,7 @@
   @media (max-width:440px){.verb{grid-template-columns:minmax(0,1fr); gap:3px}}
 
   /* callout — 1px border, no colored bar */
+  .call.topnote{margin-top:38px}
   .call{margin-top:30px; background:var(--zt-accent-soft); border:1px solid var(--zt-border-strong); padding:16px 18px}
   .call .t{margin-bottom:8px} .call p{margin:0; font-size:14.5px; color:var(--zt-ink)}
 
@@ -380,6 +381,15 @@
       </nav>
     </div>
   </header>
+
+  <div class="call topnote">
+    <div class="t">You do not have to live in a terminal</div>
+    <p>Claude Code comes in more than one shape: a <b>desktop app</b> for Mac and Windows, a command in
+      a terminal, a tab in your browser, and an extension inside editors like VS&nbsp;Code. <b>adjudant
+      works the same in all of them</b>: identical commands, identical vault. The desktop app is the
+      gentlest place to start, and nothing in this guide needs a terminal until the optional toolkit at
+      the very end.</p>
+  </div>
 
   <section class="blk" id="s1">
     <h2>A vault is your project's memory.</h2>
