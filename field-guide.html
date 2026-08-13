@@ -29,8 +29,7 @@
 
   /* masthead — the one animated moment, the one named kicker */
   .logo{width:min(292px,72vw); height:auto; display:block; image-rendering:pixelated; border:1px solid var(--zt-border-strong)}
-  .kicker{font-family:var(--f-mono); font-size:11px; font-weight:600; letter-spacing:.15em; text-transform:uppercase;
-    color:var(--zt-ink-muted); margin:18px 0 0; display:flex; align-items:center; gap:9px}
+  .kicker{font-size:13px; font-weight:600; color:var(--zt-ink-muted); margin:18px 0 0; display:flex; align-items:center; gap:9px}
   .kicker .sq{width:7px; height:7px; background:var(--zt-accent-1)}
   h1{font-family:var(--f-head); font-weight:600; font-size:clamp(36px,7.6vw,54px); line-height:1.0; letter-spacing:-.01em;
     margin:14px 0 0; max-width:15ch; text-wrap:balance}
@@ -44,7 +43,7 @@
   h2{font-family:var(--f-head); font-weight:600; font-size:clamp(25px,5.4vw,32px); line-height:1.08; letter-spacing:-.01em;
     margin:0 0 2px; max-width:22ch; text-wrap:balance}
   .body{font-size:15.5px; color:var(--zt-ink-muted); margin:16px 0 0; max-width:62ch} .body b{font-weight:600; color:var(--zt-ink)}
-  h4{font-family:var(--f-mono); font-size:11px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--zt-ink-muted); margin:30px 0 12px}
+  h4{font-family:var(--f-head); font-size:16px; font-weight:600; letter-spacing:-.005em; color:var(--zt-ink); margin:30px 0 12px}
 
   .grid{display:grid; border:1px solid var(--zt-border); margin-top:6px}
   .grid.c2{grid-template-columns:1fr 1fr} .grid.auto{grid-template-columns:repeat(auto-fill,minmax(212px,1fr))}
@@ -83,7 +82,7 @@
   .cmd-where{font-weight:600; font-size:14px}
   .cmd-does{font-size:13px; color:var(--zt-ink-muted)}
   .cmd-line{display:flex; align-items:center; gap:12px; margin:10px 14px 13px; background:var(--term-bg); border:1px solid var(--term-border); padding:10px 12px}
-  .cmd-line code{font-size:13.5px; color:var(--term-fg); white-space:pre; overflow-x:auto; flex:1; scrollbar-width:thin}
+  .cmd-line code{font-size:13.5px; color:var(--term-fg); white-space:pre; overflow-x:auto; flex:1 1 0; min-width:0; scrollbar-width:thin}
   .copy{font-family:var(--f-mono); font-size:10.5px; font-weight:500; letter-spacing:.04em; color:var(--zt-ink-muted); background:var(--zt-surface);
     border:1px solid var(--zt-border-strong); padding:6px 12px; cursor:pointer; flex:none; transition:color .12s,border-color .12s,background .12s}
   .copy:hover{color:var(--zt-ink); border-color:var(--zt-ink-muted)}
@@ -93,7 +92,7 @@
 
   /* steps */
   .rail{margin-top:8px}
-  .step{display:grid; grid-template-columns:auto 1fr; gap:0 18px; padding:22px 0; border-top:1px solid var(--zt-border)}
+  .step{display:grid; grid-template-columns:auto minmax(0,1fr); gap:0 18px; padding:22px 0; border-top:1px solid var(--zt-border)}
   .step:first-child{border-top:0}
   .idx{font-family:var(--f-mono); font-weight:500; font-size:15px; color:var(--zt-accent-ink); background:var(--zt-accent-1);
     width:30px; height:30px; display:grid; place-items:center; margin-top:1px}
@@ -125,7 +124,23 @@
   @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
   .d1{animation-delay:.46s}.d2{animation-delay:.56s}.d3{animation-delay:.66s}
   @media (prefers-reduced-motion:reduce){.wipe,.rise{animation:none!important;clip-path:none!important;opacity:1!important;transform:none!important}}
-  @media (max-width:440px){.step{grid-template-columns:1fr}.idx{margin-bottom:11px}.step h3,.step .note,.step .cmd{grid-column:1}.grid.c2{grid-template-columns:1fr}}
+  @media (max-width:440px){.step{grid-template-columns:minmax(0,1fr)}.idx{margin-bottom:11px}.step h3,.step .note,.step .cmd{grid-column:1}.grid.c2{grid-template-columns:1fr}}
+
+  /* cheat table: command · what it does · example. Reused for terminal basics
+     and the suitcase before/after. Scrolls inside its own box on narrow width. */
+  .tblwrap{margin-top:6px; border:1px solid var(--zt-border); overflow-x:auto}
+  .cheat{width:100%; border-collapse:collapse; font-size:13px; background:var(--zt-surface)}
+  .cheat td{border-top:1px solid var(--zt-border); border-right:1px solid var(--zt-border); padding:9px 13px; vertical-align:top}
+  .cheat tr:first-child td{border-top:0} .cheat td:last-child{border-right:0}
+  .cheat td:first-child{white-space:nowrap}
+  .cheat code{font-family:var(--f-mono); font-size:12px; color:var(--zt-ink)}
+  .cheat .cmd-name code{color:var(--zt-accent-1); font-weight:500}
+  .cheat .was{color:var(--zt-ink-muted)} .cheat .arw{color:var(--zt-accent-1); padding:0 7px}
+  .badge{font-family:var(--f-mono); font-size:9px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+    padding:2px 6px; border:1px solid var(--zt-border-strong); color:var(--zt-ink-muted); white-space:nowrap}
+  .badge.alt{color:var(--zt-accent-ink); background:var(--zt-accent-1); border-color:var(--zt-accent-1)}
+  .keeps{margin-top:12px; font-size:13.5px; color:var(--zt-ink-muted)} .keeps code{color:var(--zt-ink)}
+  @media (max-width:480px){.cmd-line{flex-wrap:wrap}.cmd-line .copy{width:100%; margin-top:2px}}
 
   /* print / PDF */
   @media print{
@@ -138,7 +153,7 @@
     .logo{width:210px}
     section.blk{margin-top:24px; padding-top:20px}
     h2,h3,h4{break-after:avoid}
-    .step,.cmd,.grid>div,.flow,.tree,.call,.done,.node,.pq,.chips{break-inside:avoid}
+    .step,.cmd,.grid>div,.flow,.tree,.call,.done,.node,.pq,.chips,.tblwrap,.cheat tr{break-inside:avoid}
   }
 </style>
 
@@ -149,10 +164,10 @@
     <h1 class="rise d2">Give your projects a memory.</h1>
     <p class="lede rise d3">Vault-based context management, what <b>adjudant</b> does with it, and how to set up the CLI — the suitcase included.</p>
     <div class="chips rise d3">
-      <span class="chip"><b>5&nbsp;min</b> read</span>
+      <span class="chip"><b>8&nbsp;min</b> read</span>
       <span class="chip">needs <b>Claude&nbsp;Code</b></span>
       <span class="chip">and <b>Obsidian</b></span>
-      <span class="chip"><b>macOS</b></span>
+      <span class="chip">on <b>macOS</b>, <b>Windows</b> or <b>Linux</b></span>
     </div>
   </header>
 
@@ -211,6 +226,8 @@
   <section class="blk">
     <h2>Set it up.</h2>
     <p class="body">First, install the two free apps this needs: <b>Claude Code</b> and <b><a href="https://obsidian.md" target="_blank" rel="noopener">Obsidian</a></b> — on a Mac, <code>brew install --cask obsidian</code>, or download from obsidian.md.</p>
+    <div class="call"><div class="t">On Windows or Linux</div>
+      <p>The three steps below are the same on every system. On <b>Windows</b>, run Claude Code inside <b>WSL</b> (Windows Subsystem for Linux). WSL gives you the Unix shell the plugin expects; install it once with <code>wsl --install</code> in PowerShell, then open <b>Ubuntu</b> and work there. Your vault can sit in <b>OneDrive</b> — adjudant finds it on its own, from Windows or from WSL. On <b>Linux</b> it all works as-is. For the apps, use your platform's tools: <code>winget install Obsidian.Obsidian</code> on Windows, your package manager on Linux.</p></div>
     <p class="hint">Each box below has a <b>Copy</b> button. Copy it, then paste it where the label says — your Terminal app, or the Claude Code chat. You don't type the box itself.</p>
     <div class="rail">
       <div class="step"><div class="idx">1</div><h3>Get access</h3>
@@ -239,6 +256,24 @@
   </section>
 
   <section class="blk">
+    <h2>The terminal, in ten commands.</h2>
+    <p class="body">The terminal is a text way to tell your computer what to do. You point it at a folder, then run a command. These ten cover almost everything a beginner needs. Type one, press Enter.</p>
+    <div class="tblwrap"><table class="cheat">
+      <tr><td class="cmd-name"><code>pwd</code></td><td>Show the folder you're in right now</td><td><code>pwd</code></td></tr>
+      <tr><td class="cmd-name"><code>ls</code></td><td>List what's in this folder</td><td><code>ls</code></td></tr>
+      <tr><td class="cmd-name"><code>cd</code></td><td>Go into a folder — or <code>cd ..</code> to go up one</td><td><code>cd projects</code></td></tr>
+      <tr><td class="cmd-name"><code>mkdir</code></td><td>Make a new folder</td><td><code>mkdir notes</code></td></tr>
+      <tr><td class="cmd-name"><code>cp</code></td><td>Copy a file</td><td><code>cp a.md b.md</code></td></tr>
+      <tr><td class="cmd-name"><code>mv</code></td><td>Move a file, or rename it</td><td><code>mv old.md new.md</code></td></tr>
+      <tr><td class="cmd-name"><code>rm</code></td><td>Delete a file. No undo — see <code>trash</code> below</td><td><code>rm draft.md</code></td></tr>
+      <tr><td class="cmd-name"><code>cat</code></td><td>Print a file to the screen</td><td><code>cat notes.md</code></td></tr>
+      <tr><td class="cmd-name"><code>less</code></td><td>Read a long file a page at a time — <code>q</code> quits</td><td><code>less big.log</code></td></tr>
+      <tr><td class="cmd-name"><code>clear</code></td><td>Wipe the screen clean</td><td><code>clear</code></td></tr>
+    </table></div>
+    <p class="keeps">Not sure what a command does? Run <code>tldr &lt;command&gt;</code> for a plain, example-first reminder (it comes with the suitcase, below).</p>
+  </section>
+
+  <section class="blk">
     <h2>The suitcase: a friendlier terminal.</h2>
     <p class="body">The bundle ships a small kit of command-line tools — the <b>suitcase</b>. It makes the terminal nicer without changing how anything works, and it's optional. The check run below changes nothing; the second one installs. Anything you already have is skipped.</p>
     <div class="cmd"><div class="cmd-top"><span class="cmd-where">In your Terminal app · inside the downloaded folder</span><span class="cmd-does">a dry run — shows what it would do</span></div>
@@ -246,24 +281,36 @@
     <div class="cmd"><div class="cmd-top"><span class="cmd-where">In your Terminal app</span><span class="cmd-does">installs the tools for real</span></div>
       <div class="cmd-line"><code>bash onboarding/onboard.sh</code><button class="copy" data-copy="bash onboarding/onboard.sh">Copy</button></div></div>
 
-    <h4>What it installs</h4>
-    <div class="grid auto">
-      <div><div class="t">zoxide</div><div class="d">Jump to folders: <code>z name</code></div></div>
-      <div><div class="t">eza · bat</div><div class="d">Prettier listings and file reading</div></div>
-      <div><div class="t">ripgrep · fd</div><div class="d">Fast search and find</div></div>
-      <div><div class="t">git-delta</div><div class="d">Readable git diffs</div></div>
-      <div><div class="t">glow</div><div class="d">Read markdown in the terminal</div></div>
-      <div><div class="t">tldr</div><div class="d">Plain, example-first help</div></div>
-      <div><div class="t">trash</div><div class="d">A safer <code>rm</code></div></div>
-      <div><div class="t">sl · cbonsai</div><div class="d">A little fun</div></div>
-    </div>
+    <h4>What each tool does</h4>
+    <p class="body" style="margin-top:6px"><span class="badge alt">alters</span> means the same command now gives nicer output. <span class="badge">adds</span> means a new command that sits beside your old ones. <b><code>ls</code>, <code>cd</code>, <code>rm</code>, <code>grep</code> and <code>find</code> stay exactly as they were</b> — nothing you already know stops working.</p>
+    <div class="tblwrap"><table class="cheat">
+      <tr><td class="cmd-name"><code>z</code> <span class="badge">adds</span></td><td>Jump to a folder by name, from anywhere</td>
+        <td><span class="was"><code>cd ../../work/app</code></span><span class="arw">→</span><code>z app</code></td></tr>
+      <tr><td class="cmd-name"><code>ll</code> <span class="badge">adds</span></td><td>A rich listing: sizes, dates, git state (<code>l</code> and <code>lt</code> too)</td>
+        <td><span class="was"><code>ls -lah</code></span><span class="arw">→</span><code>ll</code></td></tr>
+      <tr><td class="cmd-name"><code>cat</code> <span class="badge alt">alters</span></td><td>Same command, now with color and line numbers. Stays plain when piped</td>
+        <td><span class="was"><code>cat app.py</code></span><span class="arw">→</span><code>cat app.py</code></td></tr>
+      <tr><td class="cmd-name"><code>rg</code> <span class="badge">adds</span></td><td>Search inside files, fast</td>
+        <td><span class="was"><code>grep -rn TODO .</code></span><span class="arw">→</span><code>rg TODO</code></td></tr>
+      <tr><td class="cmd-name"><code>fd</code> <span class="badge">adds</span></td><td>Find files by name</td>
+        <td><span class="was"><code>find . -name "*.md"</code></span><span class="arw">→</span><code>fd .md</code></td></tr>
+      <tr><td class="cmd-name"><code>git&nbsp;diff</code> <span class="badge alt">alters</span></td><td>Same command, now a clear colored side-by-side</td>
+        <td><span class="was">a wall of +/− lines</span><span class="arw">→</span>a readable diff</td></tr>
+      <tr><td class="cmd-name"><code>trash</code> <span class="badge">adds</span></td><td>Delete to the Trash, not forever. <code>rm</code> is left alone</td>
+        <td><span class="was"><code>rm note.md</code> (gone)</span><span class="arw">→</span><code>trash note.md</code></td></tr>
+      <tr><td class="cmd-name"><code>glow</code> <span class="badge">adds</span></td><td>Read a markdown file, nicely rendered</td>
+        <td><span class="was"><code>cat notes.md</code></span><span class="arw">→</span><code>glow notes.md</code></td></tr>
+      <tr><td class="cmd-name"><code>tldr</code> <span class="badge">adds</span></td><td>Plain, example-first help for any command</td>
+        <td><span class="was"><code>man tar</code></span><span class="arw">→</span><code>tldr tar</code></td></tr>
+    </table></div>
+    <p class="keeps"><code>sl</code> and <code>cbonsai</code> earn their place by adding nothing useful — a steam train and a bonsai tree, for when the terminal needs a smile.</p>
 
     <h4>Recommended terminal setup</h4>
     <div class="prereqs">
       <div class="pq"><span class="tag req">Required</span>
         <div><div class="nm">Zsh · <a href="https://www.zsh.org" target="_blank" rel="noopener">zsh.org</a></div>
-          <div class="wy">The shell the shortcuts assume. It's the macOS default since Catalina — make it active if it isn't.</div></div>
-        <code class="cx">chsh -s /bin/zsh</code></div>
+          <div class="wy">The shell the shortcuts assume. It's the macOS default; on Windows (WSL) or Linux, install it first, then switch with the command shown.</div></div>
+        <code class="cx">chsh -s $(which zsh)</code></div>
       <div class="pq"><span class="tag rec">Recommended</span>
         <div><div class="nm">iTerm2 · <a href="https://iterm2.com" target="_blank" rel="noopener">iterm2.com</a></div>
           <div class="wy">A nicer terminal than the built-in one. Repo: <a href="https://github.com/gnachman/iTerm2" target="_blank" rel="noopener">gnachman/iTerm2</a></div></div>
@@ -273,7 +320,12 @@
           <div class="wy">A fast, informative prompt. Install it, add it to <code>~/.zshrc</code>, then run <code>p10k configure</code>. <a href="https://github.com/romkatv/powerlevel10k#installation" target="_blank" rel="noopener">Install guide →</a></div></div>
         <code class="cx">brew install powerlevel10k</code></div>
     </div>
-    <p class="body" style="margin-top:16px">Not on a Mac? Install the tools with your own package manager, then <code>source onboarding/casual-qol.zsh</code>. The shortcuts are guarded either way.</p>
+    <h4>Optional: a live statusline</h4>
+    <p class="body" style="margin-top:6px">The bundle also ships a small statusline. It shows your git branch, the vault this project is linked to, and how full the context window is — a quiet reminder to keep sessions short. Turn it on with one line in <code>~/.claude/settings.json</code>, using the real path to the script.</p>
+    <div class="cmd"><div class="cmd-top"><span class="cmd-where">In ~/.claude/settings.json</span><span class="cmd-does">turns the statusline on</span></div>
+      <div class="cmd-line"><code>"statusLine": { "type": "command", "command": "bash ~/furtive-follies/onboarding/statusline.sh" }</code><button class="copy" data-copy='"statusLine": { "type": "command", "command": "bash ~/furtive-follies/onboarding/statusline.sh" }'>Copy</button></div></div>
+    <p class="keeps">Point the path at wherever you put the folder. It uses <code>jq</code> or <code>python3</code> to read the status; with neither, it still shows the git part.</p>
+    <p class="body" style="margin-top:16px">Not on a Mac? On <b>Windows</b>, do this inside <b>WSL</b>; on <b>Linux</b>, in your normal shell. Install the tools with your package manager (<code>apt</code>, <code>dnf</code>, <code>pacman</code>), then <code>source onboarding/casual-qol.zsh</code>. Every shortcut is guarded, so anything you're missing just skips.</p>
   </section>
 
   <section class="blk">
