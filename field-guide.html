@@ -24,7 +24,7 @@
   html{-webkit-text-size-adjust:100%}
   body{margin:0; background:var(--zt-bg); color:var(--zt-ink); font-family:var(--f-body); font-size:15.5px;
     line-height:1.6; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility}
-  .wrap{max-width:680px; margin:0 auto; padding:clamp(26px,5vw,60px) clamp(18px,4vw,36px) 84px}
+  .wrap{max-width:900px; margin:0 auto; padding:clamp(26px,5vw,60px) clamp(18px,4vw,40px) 84px}
   code{font-family:var(--f-mono)}
   a{color:var(--zt-accent-1)}
 
@@ -160,16 +160,25 @@
   .mini code{font-size:12.5px; color:var(--zt-accent-1); font-weight:600}
 
   /* the slop banner — deliberately, aggressively ugly. The one joke in the document. */
-  .slop{margin-top:26px; padding:20px 18px; text-align:center; border:4px dashed #ff00cc;
-    background:repeating-linear-gradient(45deg,#fffde7 0 14px,#e0f7ff 14px 28px)}
+  .slop{margin-top:26px; padding:22px 18px; text-align:center; border:4px dashed #ff00cc;
+    background:
+      repeating-linear-gradient(45deg,rgba(255,0,204,.10) 0 12px,rgba(0,176,255,.10) 12px 24px),
+      repeating-linear-gradient(-45deg,rgba(255,212,0,.14) 0 12px,rgba(0,200,83,.12) 12px 24px),
+      radial-gradient(circle at 18% 22%,rgba(124,77,255,.16) 0 9px,transparent 10px),
+      radial-gradient(circle at 82% 78%,rgba(255,138,0,.18) 0 9px,transparent 10px),
+      #fffdf2}
+  /* the gradient-clipped text can't carry emoji (they'd clip to transparent) and
+     must not wrap mid-phrase, so emoji live in their own plain spans */
+  /* stars are text, not emoji, so they take the rainbow gradient clip like the
+     rest of the line (emoji would clip to transparent silhouettes) */
   .slop-txt{font-family:"Comic Sans MS","Comic Sans","Chalkboard SE","Marker Felt",cursive;
-    font-size:clamp(17px,4.4vw,25px); font-weight:700; line-height:1.25;
+    font-size:clamp(14px,3.1vw,19px); font-weight:700; line-height:1.3; text-wrap:balance; display:block;
     background:linear-gradient(90deg,#ff0000,#ff8a00,#ffd400,#00c853,#00b0ff,#7c4dff,#ff00cc);
     -webkit-background-clip:text; background-clip:text; color:transparent;
-    -webkit-text-fill-color:transparent; text-shadow:none; transform:rotate(-2deg); display:block}
+    -webkit-text-fill-color:transparent; transform:rotate(-2deg)}
   .slop-sub{font-family:"Comic Sans MS","Comic Sans","Chalkboard SE","Marker Felt",cursive;
-    font-size:13px; color:#7c4dff; margin-top:12px; transform:rotate(1deg)}
-  .slop-sub s{color:#ff0000}
+    font-size:13.5px; color:#7c4dff; margin-top:14px; transform:rotate(1deg); line-height:1.7}
+  .slop-sub s{color:#ff0000; text-decoration-thickness:2px}
   @media print{.slop-txt{-webkit-text-fill-color:#ff00cc; color:#ff00cc; background:none}}
 
   /* screenshot placeholder — swap the box for a real image later */
@@ -257,8 +266,8 @@
       <li>it is just folders and text files: yours, readable without us, portable anywhere</li>
     </ul>
     <div class="slop">
-      <span class="slop-txt">✨🌈 SLOP PATTERNS: <s>THRIVING</s> EVICTED 🌈✨</span>
-      <div class="slop-sub">no more &ldquo;You're absolutely right!&rdquo; ~ no more confidently invented file names ~ <s>vibes</s> receipts</div>
+      <span class="slop-txt">✦ ★ SLOP PATTERNS: <s>THRIVING</s> EVICTED ★ ✦</span>
+      <div class="slop-sub"><s>&ldquo;Certainly!&rdquo;</s> ~ <s>&ldquo;A load-bearing idea!&rdquo;</s> ~ <s>&ldquo;You're absolutely right!&rdquo;</s></div>
     </div>
     <div class="shot"><span class="ic">▣</span><span class="cap"><b>Screenshot placeholder</b> · your vault, open in Obsidian</span></div>
 
