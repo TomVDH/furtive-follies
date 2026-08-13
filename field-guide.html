@@ -232,9 +232,7 @@
   .cheat code{font-family:var(--f-mono); font-size:12px; color:var(--zt-ink)}
   .cheat .cmd-name code{color:var(--zt-accent-1); font-weight:500}
   .cheat .was{color:var(--zt-ink-muted)} .cheat .arw{color:var(--zt-accent-1); padding:0 7px}
-  .badge{font-family:var(--f-mono); font-size:9px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
-    padding:2px 6px; border:1px solid var(--zt-border-strong); color:var(--zt-ink-muted); white-space:nowrap}
-  .badge.alt{color:var(--zt-accent-ink); background:var(--zt-accent-1); border-color:var(--zt-accent-1)}
+  .tlabel{font-size:14px; font-weight:600; color:var(--zt-ink); margin:30px 0 9px}
   .keeps{margin-top:12px; font-size:13.5px; color:var(--zt-ink-muted)} .keeps code{color:var(--zt-ink)}
   @media (max-width:560px){
     /* on a phone, wrap the command instead of hiding its tail off the edge */
@@ -582,28 +580,35 @@
       <div class="cmd-line"><code>bash onboarding/onboard.sh</code><button class="copy" data-copy="bash onboarding/onboard.sh">Copy</button></div></div>
 
     <h4>What each tool does</h4>
-    <p class="body" style="margin-top:6px"><span class="badge alt">alters</span> means the same command now gives nicer output. <span class="badge">adds</span> means a new command that sits beside your old ones. <b><code>ls</code>, <code>cd</code>, <code>rm</code>, <code>grep</code> and <code>find</code> stay exactly as they were</b> — nothing you already know stops working.</p>
+    <p class="body">Nothing you already know stops working. <code>ls</code>, <code>cd</code>,
+      <code>rm</code>, <code>grep</code> and <code>find</code> stay exactly as they were.</p>
+
+    <p class="tlabel">New commands, sitting beside the old ones</p>
     <div class="tblwrap"><table class="cheat">
-      <tr><td class="cmd-name"><code>z</code> <span class="badge">adds</span></td><td>Jump to a folder by name, from anywhere</td>
-        <td><span class="was"><code>cd ../../work/app</code></span><span class="arw">→</span><code>z app</code></td></tr>
-      <tr><td class="cmd-name"><code>ll</code> <span class="badge">adds</span></td><td>A rich listing: sizes, dates, git state (<code>l</code> and <code>lt</code> too)</td>
-        <td><span class="was"><code>ls -lah</code></span><span class="arw">→</span><code>ll</code></td></tr>
-      <tr><td class="cmd-name"><code>cat</code> <span class="badge alt">alters</span></td><td>Same command, now with color and line numbers. Stays plain when piped</td>
-        <td><span class="was"><code>cat app.py</code></span><span class="arw">→</span><code>cat app.py</code></td></tr>
-      <tr><td class="cmd-name"><code>rg</code> <span class="badge">adds</span></td><td>Search inside files, fast</td>
-        <td><span class="was"><code>grep -rn TODO .</code></span><span class="arw">→</span><code>rg TODO</code></td></tr>
-      <tr><td class="cmd-name"><code>fd</code> <span class="badge">adds</span></td><td>Find files by name</td>
-        <td><span class="was"><code>find . -name "*.md"</code></span><span class="arw">→</span><code>fd .md</code></td></tr>
-      <tr><td class="cmd-name"><code>git&nbsp;diff</code> <span class="badge alt">alters</span></td><td>Same command, now a clear colored side-by-side</td>
-        <td><span class="was">a wall of +/− lines</span><span class="arw">→</span>a readable diff</td></tr>
-      <tr><td class="cmd-name"><code>trash</code> <span class="badge">adds</span></td><td>Delete to the Trash, not forever. <code>rm</code> is left alone</td>
-        <td><span class="was"><code>rm note.md</code> (gone)</span><span class="arw">→</span><code>trash note.md</code></td></tr>
-      <tr><td class="cmd-name"><code>glow</code> <span class="badge">adds</span></td><td>Read a markdown file, nicely rendered</td>
-        <td><span class="was"><code>cat notes.md</code></span><span class="arw">→</span><code>glow notes.md</code></td></tr>
-      <tr><td class="cmd-name"><code>tldr</code> <span class="badge">adds</span></td><td>Plain, example-first help for any command</td>
-        <td><span class="was"><code>man tar</code></span><span class="arw">→</span><code>tldr tar</code></td></tr>
+      <tr><td class="cmd-name"><code>z</code></td><td>Jump to a folder by name, from anywhere</td>
+        <td><span class="was"><code>cd ../../work/app</code></span><span class="arw">&rarr;</span><code>z app</code></td></tr>
+      <tr><td class="cmd-name"><code>ll</code></td><td>A rich listing: sizes, dates, git state (<code>l</code> and <code>lt</code> too)</td>
+        <td><span class="was"><code>ls -lah</code></span><span class="arw">&rarr;</span><code>ll</code></td></tr>
+      <tr><td class="cmd-name"><code>rg</code></td><td>Search inside files, fast</td>
+        <td><span class="was"><code>grep -rn TODO .</code></span><span class="arw">&rarr;</span><code>rg TODO</code></td></tr>
+      <tr><td class="cmd-name"><code>fd</code></td><td>Find files by name</td>
+        <td><span class="was"><code>find . -name "*.md"</code></span><span class="arw">&rarr;</span><code>fd .md</code></td></tr>
+      <tr><td class="cmd-name"><code>trash</code></td><td>Delete to the Trash, not forever. <code>rm</code> is left alone</td>
+        <td><span class="was"><code>rm note.md</code> (gone)</span><span class="arw">&rarr;</span><code>trash note.md</code></td></tr>
+      <tr><td class="cmd-name"><code>glow</code></td><td>Read a markdown file, nicely rendered</td>
+        <td><span class="was"><code>cat notes.md</code></span><span class="arw">&rarr;</span><code>glow notes.md</code></td></tr>
+      <tr><td class="cmd-name"><code>tldr</code></td><td>Plain, example-first help for any command</td>
+        <td><span class="was"><code>man tar</code></span><span class="arw">&rarr;</span><code>tldr tar</code></td></tr>
     </table></div>
-    <div class="shot"><span class="ic">▥</span><span class="cap"><b>Screenshot placeholder</b> · the same folder listed with <b>ls</b>, then with <b>ll</b></span></div>
+
+    <p class="tlabel">Same command you already type, better output</p>
+    <div class="tblwrap"><table class="cheat">
+      <tr><td class="cmd-name"><code>cat</code></td><td>Now with colour and line numbers. Stays plain when piped</td>
+        <td><span class="was"><code>cat app.py</code></span><span class="arw">&rarr;</span><code>cat app.py</code></td></tr>
+      <tr><td class="cmd-name"><code>git&nbsp;diff</code></td><td>Now a clear coloured side-by-side</td>
+        <td><span class="was">a wall of +/&minus; lines</span><span class="arw">&rarr;</span>a readable diff</td></tr>
+    </table></div>
+
     <p class="keeps"><code>sl</code> and <code>cbonsai</code> earn their place by adding nothing useful — a steam train and a bonsai tree, for when the terminal needs a smile.</p>
 
     <h4>Recommended terminal setup</h4>
