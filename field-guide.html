@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>adjudant — ZenaSoft Internal Ops</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
@@ -66,10 +67,15 @@
   .tree pre{margin:0; font-family:var(--f-mono); font-size:12.5px; line-height:1.62; color:var(--zt-ink); white-space:pre}
   .tree .c{color:var(--zt-ink-muted)} .tree .a{color:var(--zt-accent-1)}
 
-  .verb{display:flex; gap:11px; align-items:baseline}
-  .verb code{font-size:13.5px; font-weight:500; color:var(--zt-accent-1); flex:none}
-  .verb span{font-size:13px; color:var(--zt-ink-muted); line-height:1.4}
-  .verb .ro{font-family:var(--f-mono); font-size:9px; letter-spacing:.04em; text-transform:uppercase; color:var(--zt-ink-muted); border:1px solid var(--zt-border-strong); padding:1px 4px; margin-left:3px}
+  /* verbs: one per row, name column aligned so the descriptions line up */
+  .verbs{border:1px solid var(--zt-border); margin-top:6px; background:var(--zt-surface)}
+  .verb{display:grid; grid-template-columns:106px minmax(0,1fr); gap:0 16px; align-items:baseline;
+    padding:11px 16px; border-top:1px solid var(--zt-border)}
+  .verb:first-child{border-top:0}
+  .verb code{font-size:13.5px; font-weight:600; color:var(--zt-accent-1)}
+  .verb span{font-size:13.5px; color:var(--zt-ink-muted); line-height:1.45}
+  .verb .ro{font-family:var(--f-mono); font-size:9px; letter-spacing:.04em; text-transform:uppercase; color:var(--zt-ink-muted); border:1px solid var(--zt-border-strong); padding:1px 4px; margin-left:6px; white-space:nowrap}
+  @media (max-width:440px){.verb{grid-template-columns:minmax(0,1fr); gap:3px}}
 
   /* callout — 1px border, no colored bar */
   .call{margin-top:22px; background:var(--zt-accent-soft); border:1px solid var(--zt-border-strong); padding:16px 18px}
@@ -126,6 +132,53 @@
   @media (prefers-reduced-motion:reduce){.wipe,.rise{animation:none!important;clip-path:none!important;opacity:1!important;transform:none!important}}
   @media (max-width:440px){.step{grid-template-columns:minmax(0,1fr)}.idx{margin-bottom:11px}.step h3,.step .note,.step .cmd{grid-column:1}.grid.c2{grid-template-columns:1fr}}
 
+  /* "you'll need" panel — a quiet, boxed checklist that sits under the lede */
+  .need{margin-top:28px; border:1px solid var(--zt-border); background:var(--zt-surface); padding:15px 18px 17px; max-width:46ch}
+  .need-label{display:block; font-size:12px; font-weight:600; color:var(--zt-ink); margin-bottom:12px}
+  .checklist{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px}
+  /* row = tick | text | trailing link, so the links stack flush right */
+  .checklist li{font-size:14px; color:var(--zt-ink-muted); display:grid;
+    grid-template-columns:22px minmax(0,1fr) auto; align-items:baseline; line-height:1.45}
+  .checklist li::before{content:"\2713"; color:var(--zt-accent-1); font-weight:700; font-size:12px}
+  .checklist b{color:var(--zt-ink); font-weight:600}
+  .checklist .lnk{font-size:12.5px; color:var(--zt-accent-1); text-decoration:none; white-space:nowrap; padding-left:14px}
+  .checklist .lnk:hover{text-decoration:underline}
+  .checklist b{color:var(--zt-ink); font-weight:600}
+
+  /* rich bullet list: section prose that earns bullets, with optional sub-points */
+  .blist{list-style:none; margin:16px 0 0; padding:0; max-width:62ch}
+  .blist>li{position:relative; padding-left:20px; margin-top:11px; font-size:15px; color:var(--zt-ink); line-height:1.5}
+  .blist>li::before{content:""; position:absolute; left:0; top:.52em; width:7px; height:7px; background:var(--zt-accent-1)}
+  .blist .sub{list-style:none; margin:7px 0 0; padding:0}
+  .blist .sub li{position:relative; padding-left:19px; margin-top:5px; font-size:13.5px; color:var(--zt-ink-muted); line-height:1.45}
+  .blist .sub li::before{content:"\2192"; position:absolute; left:0; top:0; color:var(--zt-border-strong)}
+
+  /* mini list inside a grid cell — replaces run-on "·" strings */
+  .mini{list-style:none; margin:9px 0 0; padding:0}
+  .mini li{position:relative; padding-left:14px; margin-top:6px; font-size:13px; color:var(--zt-ink-muted); line-height:1.45}
+  .mini li::before{content:""; position:absolute; left:0; top:.55em; width:5px; height:5px; background:var(--zt-border-strong)}
+  .mini code{font-size:12.5px; color:var(--zt-accent-1); font-weight:600}
+
+  /* the slop banner — deliberately, aggressively ugly. The one joke in the document. */
+  .slop{margin-top:26px; padding:20px 18px; text-align:center; border:4px dashed #ff00cc;
+    background:repeating-linear-gradient(45deg,#fffde7 0 14px,#e0f7ff 14px 28px)}
+  .slop-txt{font-family:"Comic Sans MS","Comic Sans","Chalkboard SE","Marker Felt",cursive;
+    font-size:clamp(17px,4.4vw,25px); font-weight:700; line-height:1.25;
+    background:linear-gradient(90deg,#ff0000,#ff8a00,#ffd400,#00c853,#00b0ff,#7c4dff,#ff00cc);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    -webkit-text-fill-color:transparent; text-shadow:none; transform:rotate(-2deg); display:block}
+  .slop-sub{font-family:"Comic Sans MS","Comic Sans","Chalkboard SE","Marker Felt",cursive;
+    font-size:13px; color:#7c4dff; margin-top:12px; transform:rotate(1deg)}
+  .slop-sub s{color:#ff0000}
+  @media print{.slop-txt{-webkit-text-fill-color:#ff00cc; color:#ff00cc; background:none}}
+
+  /* screenshot placeholder — swap the box for a real image later */
+  .shot{margin-top:20px; border:1.5px dashed var(--zt-border-strong); background:var(--zt-paper);
+    min-height:190px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center; padding:26px}
+  .shot .ic{font-size:26px; line-height:1; color:var(--zt-border-strong)}
+  .shot .cap{font-family:var(--f-mono); font-size:11.5px; letter-spacing:.03em; color:var(--zt-ink-muted)}
+  .shot .cap b{color:var(--zt-ink); font-weight:600}
+
   /* cheat table: command · what it does · example. Reused for terminal basics
      and the suitcase before/after. Scrolls inside its own box on narrow width. */
   .tblwrap{margin-top:6px; border:1px solid var(--zt-border); overflow-x:auto}
@@ -153,7 +206,7 @@
     .logo{width:210px}
     section.blk{margin-top:24px; padding-top:20px}
     h2,h3,h4{break-after:avoid}
-    .step,.cmd,.grid>div,.flow,.tree,.call,.done,.node,.pq,.chips,.tblwrap,.cheat tr{break-inside:avoid}
+    .step,.cmd,.grid>div,.flow,.tree,.call,.done,.node,.pq,.chips,.tblwrap,.cheat tr,.shot,.blist>li{break-inside:avoid}
   }
 </style>
 
@@ -161,29 +214,65 @@
   <header>
     <img class="logo wipe" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABRQAAAEYCAYAAAAta3qAAAAJ/ElEQVR4nO3aMWokRxiA0W4zGBw4VSIFhkWgaxjFupHCvdHGusfAokyb7CXGOF/Yb5m2u6brvbgZeqr+abU+an29v7ssAAAAAADBb+UiAAAAAIB/CYoAAAAAQCYoAgAAAACZoAgAAAAAZIIiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkAmKAAAAAEAmKAIAAAAAmaAIAAAAAGSCIgAAAACQCYoAAAAAQCYoAgAAAACZoAgAAAAAZIIiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkAmKAAAAAEAmKAIAAAAAmaAIAAAAAGSCIgAAAACQCYoAAAAAQCYoAgAAAACZoAgAAAAAZIIiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkAmKAAAAAEAmKAIAAAAAmaAIAAAAAGSCIgAAAACQCYoAAAAAQCYoAgAAAADZaRnc52/f173vgdvxen932fseAICxeJ8ci/c1uF2zPU89r449f/b3Ok4oAgAAAACZoAgAAAAAZIIiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkAmKAAAAAEAmKAIAAAAAmaAIAAAAAGSCIgAAAACQCYoAAAAAQCYoAgAAAACZoAgAAAAAZIIiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkJ36pfzI6/3dZZnI52/f173vAQA4ttHfN7z/jfV5s+0H/IrZnqeeV2MZff64jhOKAAAAAEAmKAIAAAAAmaAIAAAAAGSCIgAAAACQCYoAAAAAQCYoAgAAAACZoAgAAAAAZIIiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkAmKAAAAAEAmKAIAAAAAmaAIAAAAAGSCIgAAAACQCYoAAAAAQCYoAgAAAACZoAgAAAAAZKdlMq/3d5e97wEAAADYlv/34f/jhCIAAAAAkAmKAAAAAEAmKAIAAAAAmaAIAAAAAGSCIgAAAACQCYoAAAAAQCYoAgAAAACZoAgAAAAAZIIiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkp7///H0Z2eeNP2/07zu6rfdja/YXAG6f942x2A+4XX6/7Mn8HZsTigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkAmKAAAAAEAmKAIAAAAA2fr29HDpl3Nrns8f6zKw2eZv9P2YzejzN/q8bL1+o3/f2eZva7Pt79Zmm5fZ5s/+Htvo8zeb0X9v5mUs5oU9vQ0+f04oAgAAAACZoAgAAAAAZIIiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkAmKAAAAAEAmKAIAAAAAmaAIAAAAAGSCIgAAAACQCYoAAAAAQCYoAgAAAACZoAgAAAAAZIIiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkK1vTw+Xfjn/tefzx7oMbLZ5sR9jsR/XsX7XsX78CvNybKPv79Zmm5fR99d+jGX0/bB+7Mn8HZsTigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkAmKAAAAAEAmKAIAAAAAmaAIAAAAAGSCIgAAAACQCYoAAAAAQCYoAgAAAACZoAgAAAAAZIIiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkAmKAAAAAEAmKAIAAAAAmaAIAAAAAGSnfik/8nz+WJeBvT09XPa+BwAY/e8lHOn9auvf29afN/r6AQA/54QiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkAmKAAAAAEAmKAIAAAAAmaAIAAAAAGSCIgAAAACQCYoAAAAAQCYoAgAAAACZoAgAAAAAZIIiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkAmKAAAAAEAmKAIAAAAA2WmZzPP5Y10G9vb0cNn7Hrgdo88zcLtGf76M/vdy9PXj2Lb+fWw9z1t/3ujPAwA4IicUAQAAAIBMUAQAAAAAMkERAAAAAMgERQAAAAAgExQBAAAAgExQBAAAAAAyQREAAAAAyARFAAAAACATFAEAAACATFAEAAAAADJBEQAAAADIBEUAAAAAIBMUAQAAAIBMUAQAAAAAMkERAAAAAMgERQAAAAAgExQBAAAAgExQBAAAAAAyQREAAAAAyE7L4J7PH+sysLenh8ve93DLtt7f2fZjtu8LwBy8/wEAjM0JRQAAAAAgExQBAAAAgExQBAAAAAAyQREAAAAAyARFAAAAACA7/fX4xzK08zK04ddvdOfB98P8cSTm+Tqzrd9s33dr1u861m8ss+3HbN93dPbjOtaPPZm/Q3NCEQAAAADIBEUAAAAAIBMUAQAAAIBMUAQAAAAAMkERAAAAAMgERQAAAAAgExQBAAAAgExQBAAAAAAyQREAAAAAyARFAAAAACATFAEAAACATFAEAAAAADJBEQAAAADITv1SWJZPX76ue98D8xp9/t5fHi973wMAAAC3///q++D/XzqhCAAAAABkgiIAAAAAkAmKAAAAAEAmKAIAAAAAmaAIAAAAAGSCIgAAAACQCYoAAAAAQCYoAgAAAACZoAgAAAAAZIIiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkAmKAAAAAEAmKAIAAAAAmaAIAAAAAGSCIgAAAACQCYoAAAAAQLa+vzxeloF9+vJ13fseuB3mmSPNy2zzN/p+WL9jr9/Wtt6P0dfP/HGkedma+RvL6PNnXo69vxz79/E+2fw5oQgAAAAAZIIiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkAmKAAAAAEAmKAIAAAAAmaAIAAAAAGSCIgAAAACQCYoAAAAAQCYoAgAAAACZoAgAAAAAZIIiAAAAAJAJigAAAABAJigCAAAAAJmgCAAAAABkgiIAAAAAkAmKAAAAAEC2vr88XvrlAAAAAMDMnFAEAAAAADJBEQAAAADIBEUAAAAAIBMUAQAAAIBMUAQAAAAAMkERAAAAAMgERQAAAAAgExQBAAAAgExQBAAAAAAyQREAAAAAyARFAAAAACATFAEAAACATFAEAAAAADJBEQAAAADIBEUAAAAAIBMUAQAAAIBMUAQAAAAAMkERAAAAAMgERQAAAAAgExQBAAAAgExQBAAAAAAyQREAAAAAyARFAAAAACATFAEAAACATFAEAAAAADJBEQAAAADIBEUAAAAAIBMUAQAAAIBMUAQAAAAAMkERAAAAAMgERQAAAAAgExQBAAAAgExQBAAAAAAyQREAAAAAyARFAAAAACATFAEAAACATFAEAAAAADJBEQAAAADIBEUAAAAAYKn+AcTlATsUSRGuAAAAAElFTkSuQmCC" alt="ZenaSoft" width="1300" height="280">
     <div class="kicker rise d1"><span class="sq"></span>Internal Ops · Field guide</div>
-    <h1 class="rise d2">Give your projects a memory.</h1>
-    <p class="lede rise d3">Vault-based context management, what <b>adjudant</b> does with it, and how to set up the CLI — the suitcase included.</p>
-    <div class="chips rise d3">
-      <span class="chip"><b>8&nbsp;min</b> read</span>
-      <span class="chip">needs <b>Claude&nbsp;Code</b></span>
-      <span class="chip">and <b>Obsidian</b></span>
-      <span class="chip">on <b>macOS</b>, <b>Windows</b> or <b>Linux</b></span>
+    <h1 class="rise d2">Giving your projects a memory.</h1>
+    <p class="lede rise d3">With busy days for each of us, you may find that parts of your AI-involved work start to drift, or produce gaffes, as chats, iterations and your ideas move along. The bots hallucinate: 'tis how it is. Follow this guide to learn how to manage your projects, and give them a bit of a memory.</p>
+    <div class="need rise d3">
+      <span class="need-label">You'll need</span>
+      <ul class="checklist">
+        <li><span><b>Claude&nbsp;Code</b>, signed in</span><a class="lnk" href="https://claude.com/claude-code" target="_blank" rel="noopener">claude.com&nbsp;↗</a></li>
+        <li><span><b>Obsidian</b>, free, to read your vault</span><a class="lnk" href="https://obsidian.md" target="_blank" rel="noopener">obsidian.md&nbsp;↗</a></li>
+        <li><span>a <b>Mac</b> or a <b>Windows</b> PC</span></li>
+        <li><span>about <b>10&nbsp;minutes</b>, once</span></li>
+      </ul>
     </div>
   </header>
 
   <section class="blk">
     <h2>A vault is your project's memory.</h2>
-    <p class="body">Work spans days. The <i>why</i> behind a decision, what you tried last week, where you left off — it lives in your head or scrolls out of a chat, then it's gone. A <b>vault</b> holds it instead: an <b>Obsidian vault</b> — a folder of markdown files, in a consistent shape, that you read and navigate in <a href="https://obsidian.md" target="_blank" rel="noopener">Obsidian</a> (free), where the notes, the links between them, and the board come to life.</p>
-    <h4>What lives in it</h4>
-    <div class="grid auto">
-      <div><div class="t">Sessions</div><div class="d">What happened each day you worked</div></div>
-      <div><div class="t">Decisions</div><div class="d">The choices you made, and why</div></div>
+    <p class="body">When a project spans days, your decisions, your thinking, your whole sense of what you're even doing can erode, drift off, or cease to exist altogether. If that weren't bad enough, imagine being a sycophantic robot going through the same thing. <i>L'horreur.</i></p>
+    <p class="body">To keep things from dissipating out of memory, or scrolling out of view forever, the <b>vault</b> offers some relief: it keeps an AI workspace organised.</p>
+    <p class="body">A vault, read in <b>Obsidian</b> (though any tidy folder of text files works), does a few things for the AI you work with:</p>
+    <ul class="blist">
+      <li>gives the AI a dedicated place to keep memories, notes, and iterations</li>
+      <li>holds it to a bit of digital hygiene
+        <ul class="sub">
+          <li>fewer hallucinations, more accurate statements and assertions</li>
+          <li>far easier to read when you review it by hand</li>
+        </ul>
+      </li>
+      <li>interlinks data, notes, and information (à la wikilinks)</li>
+      <li>keeps a persistent memory of how the project grew</li>
+      <li>lets you pick up cold: a new chat can be caught up in one message
+        <ul class="sub">
+          <li>no re-explaining the project from scratch every Monday</li>
+        </ul>
+      </li>
+      <li>settles arguments with your past self: the decision and its reasoning sit in writing</li>
+      <li>keeps the receipts when someone asks why a thing was built that way</li>
+      <li>costs you less: a short, pointed catch-up beats re-pasting half a project
+        <ul class="sub">
+          <li>fewer tokens burned re-establishing what the AI should already know</li>
+        </ul>
+      </li>
+      <li>it is just folders and text files: yours, readable without us, portable anywhere</li>
+    </ul>
+    <div class="slop">
+      <span class="slop-txt">✨🌈 SLOP PATTERNS: <s>THRIVING</s> EVICTED 🌈✨</span>
+      <div class="slop-sub">no more &ldquo;You're absolutely right!&rdquo; ~ no more confidently invented file names ~ <s>vibes</s> receipts</div>
+    </div>
+    <div class="shot"><span class="ic">▣</span><span class="cap"><b>Screenshot placeholder</b> · your vault, open in Obsidian</span></div>
+
+    <h4>What lives in a vault?</h4>
+    <p class="body">Files and folders. Folders and files. That's it. In terms of what they're <i>for</i>:</p>
+    <div class="grid c2">
+      <div><div class="t">Sessions</div><div class="d">Automatic notes of what you did, per day</div></div>
+      <div><div class="t">Decisions</div><div class="d">The choices made, and why</div></div>
       <div><div class="t">Handoff</div><div class="d">Where things stand, for next time</div></div>
-      <div><div class="t">Board</div><div class="d">Your tasks, on a kanban</div></div>
+      <div><div class="t">Board</div><div class="d">A JIRA-like board, but less annoying. Kanban-style</div></div>
     </div>
     <h4>How it fits together</h4>
     <div class="flow">
-      <div class="node"><div class="nl">Your project</div><div class="ns">the code you write</div></div>
+      <div class="node"><div class="nl">Your project</div><div class="ns">your code, info, work</div></div>
       <div class="arrow"><span class="lab">writes</span><span class="ln">→</span></div>
       <div class="node mid"><div class="nl">adjudant</div><div class="ns">the plugin</div></div>
       <div class="arrow"><span class="lab">keeps</span><span class="ln">→</span></div>
@@ -203,14 +292,28 @@
   </section>
 
   <section class="blk">
-    <h2>adjudant keeps it current. You just work.</h2>
-    <p class="body">It's a Claude Code plugin that writes to the vault for you. Most of it is invisible — some things happen on their own, and a handful of commands are there when you want them.</p>
+    <h2>Adjudant keeps it fresh. You just work. Mainly.</h2>
+    <p class="body">The adjudant is a spin-off from a personal framework I've built up working with the bane of my existence: AI. So far I've found it mostly reliable. As with any AI plug-in, how well it serves you tracks your own willingness to catch it misbehaving as you go.</p>
+    <p class="body">That said, it makes two things easier: directing what the AI does, and bringing a touch of systems thinking to how you work.</p>
     <div class="grid c2">
-      <div><div class="t">Happens on its own</div><div class="d" style="margin-top:8px">A session note each day · the handoff kept current · the board reseeded from tasks · every write checked against a shape</div></div>
-      <div><div class="t">You run it</div><div class="d" style="margin-top:8px"><code style="color:var(--zt-accent-1)">connect</code> once per project · <code style="color:var(--zt-accent-1)">sitrep</code> when you're back · <code style="color:var(--zt-accent-1)">check</code> for a look · <code style="color:var(--zt-accent-1)">tidy</code> to clean up</div></div>
+      <div><div class="t">Happens on its own</div>
+        <ul class="mini">
+          <li>Session notes</li>
+          <li>The handoff, kept current</li>
+          <li>The board, built from your in-chat task lists</li>
+          <li>Every write checked against a standard shape</li>
+        </ul></div>
+      <div><div class="t">What you must do</div>
+        <ul class="mini">
+          <li>Connect it once per project</li>
+          <li>Run <code>sitrep</code> when you're back, or starting a new chat</li>
+          <li>Remind the chat to use the adjudant to capture insight and progress</li>
+          <li>Run <code>tidy</code> to clear the machine dust</li>
+        </ul></div>
     </div>
-    <h4>The seven verbs</h4>
-    <div class="grid auto">
+    <h4>The adjudant has seven <span style="color:var(--zt-accent-1)">verbs</span></h4>
+    <p class="body" style="margin-top:-4px">Verbs are commands you drop into a chat message. Type one and it triggers that adjudant feature.</p>
+    <div class="verbs">
       <div class="verb"><code>connect</code><span>Link a project to its vault</span></div>
       <div class="verb"><code>sync</code><span>Push current state to the vault</span></div>
       <div class="verb"><code>check</code><span>Health report<span class="ro">read only</span></span></div>
@@ -221,13 +324,14 @@
     </div>
     <div class="call"><div class="t">On dream, and on cost</div>
       <p><code>dream</code> reads your notes and hands you a report — what's stale, what contradicts, what's orphaned — then <b>stops</b>. It changes nothing on its own; you decide. And the whole plugin is built to be light: heavy reads estimate their cost and ask first.</p></div>
+    <div class="shot"><span class="ic">▤</span><span class="cap"><b>Screenshot placeholder</b> · the adjudant at work in the Claude Code CLI</span></div>
   </section>
 
   <section class="blk">
     <h2>Set it up.</h2>
-    <p class="body">First, install the two free apps this needs: <b>Claude Code</b> and <b><a href="https://obsidian.md" target="_blank" rel="noopener">Obsidian</a></b> — on a Mac, <code>brew install --cask obsidian</code>, or download from obsidian.md.</p>
-    <div class="call"><div class="t">On Windows or Linux</div>
-      <p>The three steps below are the same on every system. On <b>Windows</b>, run Claude Code inside <b>WSL</b> (Windows Subsystem for Linux). WSL gives you the Unix shell the plugin expects; install it once with <code>wsl --install</code> in PowerShell, then open <b>Ubuntu</b> and work there. Your vault can sit in <b>OneDrive</b> — adjudant finds it on its own, from Windows or from WSL. On <b>Linux</b> it all works as-is. For the apps, use your platform's tools: <code>winget install Obsidian.Obsidian</code> on Windows, your package manager on Linux.</p></div>
+    <p class="body">First, install the two free apps this needs: <b>Claude Code</b> and <b><a href="https://obsidian.md" target="_blank" rel="noopener">Obsidian</a></b>. Downloading Obsidian from <a href="https://obsidian.md" target="_blank" rel="noopener">obsidian.md</a> works on both a Mac and a PC.</p>
+    <div class="call"><div class="t">On a Windows PC</div>
+      <p>The steps below are the same on both systems, with one extra setup on Windows: Claude Code runs inside <b>WSL</b>, a Linux-flavoured terminal that ships with Windows. Open <b>PowerShell</b>, run <code>wsl --install</code> once, restart, then open <b>Ubuntu</b> from the Start menu and do everything there. Your vault can live in <b>OneDrive</b> as usual: it gets found either way.</p></div>
     <p class="hint">Each box below has a <b>Copy</b> button. Copy it, then paste it where the label says — your Terminal app, or the Claude Code chat. You don't type the box itself.</p>
     <div class="rail">
       <div class="step"><div class="idx">1</div><h3>Get access</h3>
@@ -309,8 +413,8 @@
     <div class="prereqs">
       <div class="pq"><span class="tag req">Required</span>
         <div><div class="nm">Zsh · <a href="https://www.zsh.org" target="_blank" rel="noopener">zsh.org</a></div>
-          <div class="wy">The shell the shortcuts assume. It's the macOS default; on Windows (WSL) or Linux, install it first, then switch with the command shown.</div></div>
-        <code class="cx">chsh -s $(which zsh)</code></div>
+          <div class="wy">The shell these shortcuts assume. Already the default on a Mac, and on Windows inside Ubuntu. Nothing to do unless you changed it yourself.</div></div>
+        <code class="cx">already set up</code></div>
       <div class="pq"><span class="tag rec">Recommended</span>
         <div><div class="nm">iTerm2 · <a href="https://iterm2.com" target="_blank" rel="noopener">iterm2.com</a></div>
           <div class="wy">A nicer terminal than the built-in one. Repo: <a href="https://github.com/gnachman/iTerm2" target="_blank" rel="noopener">gnachman/iTerm2</a></div></div>
@@ -325,7 +429,7 @@
     <div class="cmd"><div class="cmd-top"><span class="cmd-where">In ~/.claude/settings.json</span><span class="cmd-does">turns the statusline on</span></div>
       <div class="cmd-line"><code>"statusLine": { "type": "command", "command": "bash ~/furtive-follies/onboarding/statusline.sh" }</code><button class="copy" data-copy='"statusLine": { "type": "command", "command": "bash ~/furtive-follies/onboarding/statusline.sh" }'>Copy</button></div></div>
     <p class="keeps">Point the path at wherever you put the folder. It uses <code>jq</code> or <code>python3</code> to read the status; with neither, it still shows the git part.</p>
-    <p class="body" style="margin-top:16px">Not on a Mac? On <b>Windows</b>, do this inside <b>WSL</b>; on <b>Linux</b>, in your normal shell. Install the tools with your package manager (<code>apt</code>, <code>dnf</code>, <code>pacman</code>), then <code>source onboarding/casual-qol.zsh</code>. Every shortcut is guarded, so anything you're missing just skips.</p>
+    <p class="body" style="margin-top:16px">On a <b>Windows</b> PC, run that same installer inside <b>Ubuntu</b> (the WSL terminal from the setup section). It sorts out the rest itself, and skips anything you already have.</p>
   </section>
 
   <section class="blk">
