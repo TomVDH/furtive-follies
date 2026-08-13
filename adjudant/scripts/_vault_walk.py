@@ -495,71 +495,124 @@ def _looks_like_vault(path: Path) -> bool:
     return False
 
 
+def _safe_subdirs(parent: Path) -> list[Path]:
+    """Immediate subdirectories of `parent`, sorted; `[]` if it does not exist
+    or cannot be read. Never raises: a probe into a cloud or network root must
+    not crash the walk, and on Windows an unmounted drive letter simply reads
+    as absent."""
+    try:
+        if parent.is_dir():
+            return [p for p in sorted(parent.iterdir()) if p.is_dir()]
+    except OSError:
+        pass
+    return []
+
+
+def _os_kind() -> str:
+    """Coarse OS family for path selection: `macos`, `windows`, or `linux`
+    (WSL is reported as `linux`). Isolated in one function so the vault-root
+    taxonomy can be tested per-OS without mutating global platform state."""
+    if sys.platform == "darwin":
+        return "macos"
+    if os.name == "nt":
+        return "windows"
+    return "linux"
+
+
+def _vault_search_roots(home: Optional[Path] = None) -> list[Path]:
+    """Directories that commonly hold an Obsidian vault on this machine, ordered
+    by preference: cloud-sync roots first (they follow the user across
+    machines), then local. Existence is not filtered here; callers do that.
+
+    Cross-platform by design:
+    - macOS: the iCloud containers and every `~/Library/CloudStorage/<provider>`.
+    - Windows: `~/OneDrive` (including per-org `OneDrive - <Org>`), iCloudDrive,
+      Dropbox, Google Drive.
+    - Linux and WSL: `~/Dropbox` and `~/OneDrive`, plus Windows-side folders
+      mounted at `/mnt/<letter>/Users/<user>/` when running inside WSL.
+    """
+    home = home or Path.home()
+    kind = _os_kind()
+    roots: list[Path] = []
+    if kind == "macos":
+        mobile = home / "Library" / "Mobile Documents"
+        roots += [mobile / "iCloud~md~obsidian" / "Documents",
+                  mobile / "com~apple~CloudDocs"]
+        roots += _safe_subdirs(home / "Library" / "CloudStorage")   # OneDrive, GoogleDrive, ...
+        roots.append(home / "Dropbox")
+    elif kind == "windows":
+        roots.append(home / "OneDrive")
+        roots += [p for p in _safe_subdirs(home) if p.name.startswith("OneDrive - ")]
+        roots += [home / "iCloudDrive", home / "Dropbox", home / "Google Drive"]
+    else:                                              # linux, including WSL
+        roots += [home / "Dropbox", home / "OneDrive"]
+        for drive in ("/mnt/c", "/mnt/d", "/mnt/e"):
+            for udir in _safe_subdirs(Path(drive) / "Users"):
+                roots.append(udir / "OneDrive")
+                roots += [p for p in _safe_subdirs(udir) if p.name.startswith("OneDrive - ")]
+                roots += [udir / "iCloudDrive", udir / "Dropbox"]
+    roots += [home / "Documents", home]                # local fallbacks, every OS
+    return roots
+
+
 def _candidate_vault_paths(vault_name: str) -> list[Path]:
-    """Standard macOS locations where an Obsidian vault named `vault_name`
-    might live. Used as a cross-machine portability fallback when an
-    absolute `vault_path` in the breadcrumb doesn't resolve on this user."""
-    home = Path.home()
-    candidates = [
-        home / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents" / vault_name,
-        # Generic iCloud Drive (vault stored outside the Obsidian app container)
-        home / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / vault_name,
-        home / "Library" / "Mobile Documents" / "com~apple~CloudDocs" / "Obsidian" / vault_name,
-        home / "Documents" / vault_name,
-        home / "Documents" / "Obsidian" / vault_name,
-        home / "Obsidian" / vault_name,
-        home / "Dropbox" / "Obsidian" / vault_name,  # legacy pre-CloudStorage mount
-    ]
-    # Modern provider mounts: ~/Library/CloudStorage/<Provider>/[Obsidian/]<name>
-    cloud_storage = home / "Library" / "CloudStorage"
-    if cloud_storage.is_dir():
-        try:
-            for provider in sorted(cloud_storage.iterdir()):
-                if provider.is_dir():
-                    candidates.append(provider / vault_name)
-                    candidates.append(provider / "Obsidian" / vault_name)
-        except OSError:
-            pass
-    return candidates
+    """Locations where an Obsidian vault named `vault_name` might live, across
+    macOS, Windows, and Linux/WSL. Cross-machine portability fallback used when
+    an absolute `vault_path` in the breadcrumb does not resolve on this machine.
+    For each search root the vault may sit directly under it or under an
+    `Obsidian/` subfolder."""
+    out: list[Path] = []
+    for root in _vault_search_roots():
+        out.append(root / vault_name)
+        out.append(root / "Obsidian" / vault_name)
+    return out
+
+
+def _describe_vault_root(root: Path, home: Path, is_local: bool) -> str:
+    """Human label for a vault-root option in the guided 'no vault yet' setup."""
+    if root == home:
+        return "~ home folder (this machine only)"
+    if root == home / "Documents":
+        return "~/Documents (this machine only)"
+    name = root.name
+    if "iCloud~md~obsidian" in root.parts:
+        label = "iCloud Drive (Obsidian folder)"
+    elif name in ("com~apple~CloudDocs", "iCloudDrive"):
+        label = "iCloud Drive"
+    else:
+        label = f"{name} (cloud sync)"   # OneDrive, OneDrive - <Org>, Dropbox, Google Drive, ...
+    if str(root).startswith("/mnt/"):    # WSL: a Windows-owned folder seen from Linux
+        label += " [Windows drive]"
+    return label
 
 
 def suggest_vault_roots() -> list[dict]:
-    """Existing parent directories where a NEW vault could live, for the guided
+    """Existing directories where a NEW vault could live, for the guided
     'no vault yet' setup. Cloud-sync roots (recommended for cross-machine
     continuity) come first, then local-only folders. Only roots that exist on
-    THIS machine are returned, so the guidance never offers a dead path. Same
-    location taxonomy as `_candidate_vault_paths`."""
+    THIS machine are returned, across macOS, Windows, and Linux/WSL, so the
+    guidance never offers a dead path. Same taxonomy as `_vault_search_roots`."""
     home = Path.home()
+    local_roots = {home, home / "Documents"}
     out: list[dict] = []
     seen: set[str] = set()
-
-    def add(path: Path, label: str, kind: str, recommended: bool) -> None:
+    for root in _vault_search_roots(home):
         try:
-            if path.is_dir():
-                key = str(path)
-                if key not in seen:
-                    seen.add(key)
-                    out.append({"path": key, "label": label,
-                                "kind": kind, "recommended": recommended})
+            if not root.is_dir():
+                continue
         except OSError:
-            pass
-
-    add(home / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
-        "iCloud Drive (Obsidian folder)", "cloud", True)
-    add(home / "Library" / "Mobile Documents" / "com~apple~CloudDocs",
-        "iCloud Drive", "cloud", True)
-    cloud_storage = home / "Library" / "CloudStorage"
-    if cloud_storage.is_dir():
-        try:
-            for provider in sorted(cloud_storage.iterdir()):
-                if provider.is_dir():
-                    out_label = f"{provider.name} (cloud sync)"
-                    add(provider, out_label, "cloud", True)
-        except OSError:
-            pass
-    add(home / "Dropbox", "Dropbox (cloud sync)", "cloud", True)
-    add(home / "Documents", "~/Documents (this machine only)", "local", False)
-    add(home, "~ home folder (this machine only)", "local", False)
+            continue
+        key = str(root)
+        if key in seen:
+            continue
+        seen.add(key)
+        is_local = root in local_roots
+        out.append({
+            "path": key,
+            "label": _describe_vault_root(root, home, is_local),
+            "kind": "local" if is_local else "cloud",
+            "recommended": not is_local,
+        })
     return out
 
 

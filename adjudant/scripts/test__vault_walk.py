@@ -1919,5 +1919,78 @@ class TestSuggestVaultRoots(unittest.TestCase):
             self.assertLess(kinds.index("cloud"), kinds.index("local"))
 
 
+class TestVaultSearchRoots(unittest.TestCase):
+    """OS-aware vault-root taxonomy: the same breadcrumb must find a vault on
+    macOS, native Windows, and Linux/WSL. Each OS branch is exercised with a
+    mocked OS-kind and filesystem probe, so the test is deterministic on any
+    host."""
+
+    def _roots(self, kind, home, subdirs=None):
+        # Mock _os_kind (not sys.platform/os.name): patching os.name globally
+        # would flip pathlib's flavour and make it try to build WindowsPath on
+        # this host. A Windows home is passed as a plain string, so its path
+        # ops and str() stay POSIX-shaped and comparable on any test host.
+        import _vault_walk
+        table = {str(k): [Path(p) for p in v] for k, v in (subdirs or {}).items()}
+
+        def fake_safe_subdirs(parent):
+            return table.get(str(parent), [])
+
+        with unittest.mock.patch.object(_vault_walk, "_os_kind", lambda: kind), \
+             unittest.mock.patch.object(_vault_walk, "_safe_subdirs", fake_safe_subdirs):
+            return [str(p) for p in _vault_walk._vault_search_roots(home=Path(home))]
+
+    def test_macos_offers_icloud_and_cloudstorage(self):
+        roots = self._roots(
+            "macos", "/Users/x",
+            {"/Users/x/Library/CloudStorage": ["/Users/x/Library/CloudStorage/OneDrive-Acme"]})
+        self.assertIn("/Users/x/Library/Mobile Documents/iCloud~md~obsidian/Documents", roots)
+        self.assertIn("/Users/x/Library/Mobile Documents/com~apple~CloudDocs", roots)
+        self.assertIn("/Users/x/Library/CloudStorage/OneDrive-Acme", roots)
+        self.assertIn("/Users/x/Dropbox", roots)
+        self.assertIn("/Users/x/Documents", roots)
+        self.assertEqual(roots[-1], "/Users/x")
+
+    def test_windows_offers_onedrive_variants(self):
+        home = "C:/Users/x"
+        roots = self._roots(
+            "windows", home,
+            {home: [f"{home}/OneDrive - Acme Corp", f"{home}/Desktop"]})
+        self.assertIn(f"{home}/OneDrive", roots)
+        self.assertIn(f"{home}/OneDrive - Acme Corp", roots)   # per-org business OneDrive
+        self.assertNotIn(f"{home}/Desktop", roots)             # only OneDrive - * is lifted
+        self.assertIn(f"{home}/iCloudDrive", roots)
+        self.assertIn(f"{home}/Dropbox", roots)
+        self.assertEqual(roots[-1], home)
+
+    def test_wsl_sees_windows_side_mounts(self):
+        roots = self._roots(
+            "linux", "/home/x",
+            {"/mnt/c/Users": ["/mnt/c/Users/tom"],
+             "/mnt/c/Users/tom": ["/mnt/c/Users/tom/OneDrive - Acme"]})
+        self.assertIn("/home/x/Dropbox", roots)                # native Linux root
+        self.assertIn("/mnt/c/Users/tom/OneDrive", roots)      # Windows drive under WSL
+        self.assertIn("/mnt/c/Users/tom/OneDrive - Acme", roots)
+        self.assertIn("/mnt/c/Users/tom/Dropbox", roots)
+        self.assertEqual(roots[-1], "/home/x")
+
+    def test_candidate_paths_pair_root_and_obsidian_subfolder(self):
+        import _vault_walk
+        with unittest.mock.patch.object(
+                _vault_walk, "_vault_search_roots", lambda: [Path("/root")]):
+            cands = [str(p) for p in _vault_walk._candidate_vault_paths("MyVault")]
+        self.assertEqual(cands, ["/root/MyVault", "/root/Obsidian/MyVault"])
+
+    def test_safe_subdirs_never_raises_on_missing(self):
+        import _vault_walk
+        self.assertEqual(_vault_walk._safe_subdirs(Path("/no/such/path/ever")), [])
+
+    def test_wsl_root_label_marks_windows_drive(self):
+        import _vault_walk
+        label = _vault_walk._describe_vault_root(
+            Path("/mnt/c/Users/tom/OneDrive"), Path("/home/x"), is_local=False)
+        self.assertIn("[Windows drive]", label)
+
+
 if __name__ == "__main__":
     unittest.main()
