@@ -49,6 +49,24 @@ We recommend [iTerm2](https://iterm2.com) as your terminal and the
 [Powerlevel10k](https://github.com/romkatv/powerlevel10k) prompt, and the shortcuts
 assume **Zsh** (the macOS default). Details are in the field guide.
 
+## Hosting the field guide on GitHub Pages
+
+The guide is a single self-contained file: fonts and images are embedded, and it
+loads nothing from the network. It works from disk, from a shared folder, or from
+Pages, with no build step. This repo is already prepared for it:
+
+- `index.html` sends the site root to `field-guide.html` (relative, so a project
+  site at `/furtive-follies/` works the same as a user site)
+- `.nojekyll` stops Jekyll from processing the files
+
+To turn it on: **Settings → Pages → Source: Deploy from a branch**, pick the
+`onboarding` branch and the `/ (root)` folder.
+
+> **Before you do:** a Pages site is reachable by anyone with the link, even when
+> the repository is private (per-visitor access control is GitHub Enterprise
+> only). The guide contains a screenshot of a real vault. Check what is legible
+> in it before publishing, or keep sharing the file directly instead.
+
 ## More
 
 - Plain-text walkthrough: **[GETTING-STARTED.md](GETTING-STARTED.md)**

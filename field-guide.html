@@ -1,3 +1,5 @@
+<!DOCTYPE html>
+<html lang="en">
 <meta charset="utf-8">
 <title>adjudant — ZenaSoft Internal Ops</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -22,8 +24,8 @@
   }
   *{box-sizing:border-box}
   html{-webkit-text-size-adjust:100%}
-  body{margin:0; background:var(--zt-bg); color:var(--zt-ink); font-family:var(--f-body); font-size:15.5px;
-    line-height:1.6; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility}
+  body{margin:0; background:var(--zt-bg); color:var(--zt-ink); font-family:var(--f-body); font-size:16.5px;
+    line-height:1.68; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility}
   .wrap{max-width:900px; margin:0 auto; padding:clamp(26px,5vw,60px) clamp(18px,4vw,40px) 84px}
   code{font-family:var(--f-mono)}
   a{color:var(--zt-accent-1)}
@@ -39,23 +41,23 @@
   .kicker .sq{width:7px; height:7px; background:var(--zt-accent-1)}
   h1{font-family:var(--f-head); font-weight:600; font-size:clamp(36px,7.6vw,54px); line-height:1.0; letter-spacing:-.01em;
     margin:14px 0 0; max-width:19ch; text-wrap:balance}
-  .lede{font-size:clamp(16px,3.5vw,18px); color:var(--zt-ink-muted); max-width:72ch; margin:18px 0 0}
+  .lede{font-size:clamp(17px,3.6vw,19.5px); color:var(--zt-ink-muted); max-width:72ch; margin:18px 0 0}
   .chips{display:flex; flex-wrap:wrap; margin-top:24px; border:1px solid var(--zt-border)}
   .chip{font-family:var(--f-mono); font-size:11.5px; color:var(--zt-ink-muted); padding:8px 13px; border-right:1px solid var(--zt-border); background:var(--zt-surface)}
   .chip:last-child{border-right:0}.chip b{color:var(--zt-ink); font-weight:600}
 
   /* sections: editorial hairline + serif heading, no eyebrow, no numbers */
-  section.blk{margin-top:52px; padding-top:34px; border-top:1px solid var(--zt-border)}
+  section.blk{margin-top:66px; padding-top:42px; border-top:1px solid var(--zt-border)}
   h2{font-family:var(--f-head); font-weight:600; font-size:clamp(25px,5.4vw,32px); line-height:1.08; letter-spacing:-.01em;
     margin:0 0 2px; max-width:30ch; text-wrap:balance}
-  .body{font-size:15.5px; color:var(--zt-ink-muted); margin:16px 0 0; max-width:82ch} .body b{font-weight:600; color:var(--zt-ink)}
-  h4{font-family:var(--f-head); font-size:16px; font-weight:600; letter-spacing:-.005em; color:var(--zt-ink); margin:30px 0 12px}
+  .body{font-size:16.5px; color:var(--zt-ink-muted); margin:19px 0 0; max-width:82ch} .body b{font-weight:600; color:var(--zt-ink)}
+  h4{font-family:var(--f-head); font-size:17px; font-weight:600; letter-spacing:-.005em; color:var(--zt-ink); margin:38px 0 14px}
 
   .grid{display:grid; border:1px solid var(--zt-border); margin-top:6px}
   .grid.c2{grid-template-columns:1fr 1fr} .grid.auto{grid-template-columns:repeat(auto-fill,minmax(212px,1fr))}
-  .grid>div{padding:14px 16px; border-right:1px solid var(--zt-border); border-bottom:1px solid var(--zt-border); background:var(--zt-surface)}
+  .grid>div{padding:17px 18px; border-right:1px solid var(--zt-border); border-bottom:1px solid var(--zt-border); background:var(--zt-surface)}
   .t{font-family:var(--f-mono); font-size:11.5px; font-weight:600; letter-spacing:.04em; color:var(--zt-ink)}
-  .d{font-size:13px; color:var(--zt-ink-muted); margin-top:5px; line-height:1.45}
+  .d{font-size:13.8px; color:var(--zt-ink-muted); margin-top:5px; line-height:1.45}
 
   /* flow */
   .flow{display:grid; grid-template-columns:1fr auto 1fr auto 1fr; align-items:stretch; margin-top:6px}
@@ -74,21 +76,21 @@
 
   /* verbs: one per row, name column aligned so the descriptions line up */
   .verbs{border:1px solid var(--zt-border); margin-top:6px; background:var(--zt-surface)}
-  .verb{display:grid; grid-template-columns:106px minmax(0,1fr); gap:0 16px; align-items:baseline;
-    padding:11px 16px; border-top:1px solid var(--zt-border)}
+  .verb{display:grid; grid-template-columns:112px minmax(0,1fr); gap:0 16px; align-items:baseline;
+    padding:13px 18px; border-top:1px solid var(--zt-border)}
   .verb:first-child{border-top:0}
   .verb code{font-size:13.5px; font-weight:600; color:var(--zt-accent-1)}
-  .verb span{font-size:13.5px; color:var(--zt-ink-muted); line-height:1.45}
+  .verb span{font-size:14.5px; color:var(--zt-ink-muted); line-height:1.45}
   .verb .ro{font-family:var(--f-mono); font-size:9px; letter-spacing:.04em; text-transform:uppercase; color:var(--zt-ink-muted); border:1px solid var(--zt-border-strong); padding:1px 4px; margin-left:6px; white-space:nowrap}
   @media (max-width:440px){.verb{grid-template-columns:minmax(0,1fr); gap:3px}}
 
   /* callout — 1px border, no colored bar */
-  .call{margin-top:22px; background:var(--zt-accent-soft); border:1px solid var(--zt-border-strong); padding:16px 18px}
+  .call{margin-top:26px; background:var(--zt-accent-soft); border:1px solid var(--zt-border-strong); padding:16px 18px}
   .call .t{margin-bottom:6px} .call p{margin:0; font-size:14.5px; color:var(--zt-ink)}
 
   /* command card: plain where + what, then the command, no $ prompt */
-  .cmd{margin-top:14px; border:1px solid var(--zt-border); background:var(--zt-surface)}
-  .cmd + .cmd{margin-top:10px}
+  .cmd{margin-top:17px; border:1px solid var(--zt-border); background:var(--zt-surface)}
+  .cmd + .cmd{margin-top:12px}
   .cmd-top{display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; padding:12px 14px 0}
   .cmd-where{font-weight:600; font-size:14px}
   .cmd-does{font-size:13px; color:var(--zt-ink-muted)}
@@ -103,12 +105,12 @@
 
   /* steps */
   .rail{margin-top:8px}
-  .step{display:grid; grid-template-columns:auto minmax(0,1fr); gap:0 18px; padding:22px 0; border-top:1px solid var(--zt-border)}
+  .step{display:grid; grid-template-columns:auto minmax(0,1fr); gap:0 20px; padding:27px 0; border-top:1px solid var(--zt-border)}
   .step:first-child{border-top:0}
   .idx{font-family:var(--f-mono); font-weight:500; font-size:15px; color:var(--zt-accent-ink); background:var(--zt-accent-1);
     width:30px; height:30px; display:grid; place-items:center; margin-top:1px}
   .step h3{grid-column:2; font-family:var(--f-head); font-weight:600; font-size:20px; margin:0}
-  .step .note{grid-column:2; font-size:14px; color:var(--zt-ink-muted); margin:7px 0 0; max-width:76ch; line-height:1.5}
+  .step .note{grid-column:2; font-size:15px; color:var(--zt-ink-muted); margin:7px 0 0; max-width:76ch; line-height:1.5}
   .step .cmd{grid-column:2}
 
   .done{margin-top:24px; background:var(--zt-accent-soft); border:1px solid var(--zt-border-strong); padding:16px 20px; display:flex; gap:12px; align-items:baseline}
@@ -116,7 +118,7 @@
 
   /* recommended terminal setup */
   .prereqs{display:flex; flex-direction:column; border:1px solid var(--zt-border); margin-top:6px}
-  .pq{display:grid; grid-template-columns:auto 1fr auto; gap:0 14px; align-items:center; padding:14px 16px; border-top:1px solid var(--zt-border); background:var(--zt-surface)}
+  .pq{display:grid; grid-template-columns:auto 1fr auto; gap:0 14px; align-items:center; padding:17px 18px; border-top:1px solid var(--zt-border); background:var(--zt-surface)}
   .pq:first-child{border-top:0}
   .pq .tag{font-family:var(--f-mono); font-size:9.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; padding:2px 6px; align-self:start; margin-top:2px; white-space:nowrap}
   .pq .tag.req{color:var(--zt-accent-ink); background:var(--zt-accent-1)} .pq .tag.rec{color:var(--zt-ink-muted); border:1px solid var(--zt-border-strong)}
@@ -125,7 +127,7 @@
   .pq .cx{font-family:var(--f-mono); font-size:11.5px; color:var(--zt-ink); background:var(--zt-paper); border:1px solid var(--zt-border); padding:5px 8px; white-space:nowrap}
   @media (max-width:560px){.pq{grid-template-columns:auto 1fr}.pq .cx{grid-column:2; margin-top:8px; white-space:normal}}
 
-  footer{margin-top:56px; padding-top:20px; border-top:1px solid var(--zt-border); font-family:var(--f-mono); font-size:11px; letter-spacing:.03em;
+  footer{margin-top:70px; padding-top:24px; border-top:1px solid var(--zt-border); font-family:var(--f-mono); font-size:11px; letter-spacing:.03em;
     color:var(--zt-ink-muted); display:flex; flex-wrap:wrap; gap:8px 18px; justify-content:space-between}
   footer a{text-decoration:none} footer a:hover{text-decoration:underline}
 
@@ -138,11 +140,27 @@
   @media (max-width:440px){.step{grid-template-columns:minmax(0,1fr)}.idx{margin-bottom:11px}.step h3,.step .note,.step .cmd{grid-column:1}.grid.c2{grid-template-columns:1fr}}
 
   /* "you'll need" panel — a quiet, boxed checklist that sits under the lede */
+  /* header two-up: what you need, and where you're going */
+  .headcols{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:22px; align-items:start; margin-top:30px}
+  @media (max-width:640px){.headcols{grid-template-columns:minmax(0,1fr); gap:18px}}
+  .headcols .need{margin-top:0; max-width:none}
+
+  /* inline table of contents */
+  .toc-box{border:1px solid var(--zt-border); background:var(--zt-surface); padding:15px 18px 17px}
+  .toc-box .need-label{margin-bottom:12px}
+  .toc-list{list-style:none; margin:0; padding:0; counter-reset:toc}
+  .toc-list li{counter-increment:toc; margin-top:8px; display:flex; gap:10px; align-items:baseline}
+  .toc-list li:first-child{margin-top:0}
+  .toc-list li::before{content:counter(toc,decimal-leading-zero); font-family:var(--f-mono); font-size:11px;
+    color:var(--zt-accent-1); flex:none}
+  .toc-list a{font-size:14px; color:var(--zt-ink-muted); text-decoration:none; line-height:1.4}
+  .toc-list a:hover{color:var(--zt-accent-1); text-decoration:underline}
+
   .need{margin-top:28px; border:1px solid var(--zt-border); background:var(--zt-surface); padding:15px 18px 17px; max-width:46ch}
   .need-label{display:block; font-size:12px; font-weight:600; color:var(--zt-ink); margin-bottom:12px}
   .checklist{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px}
   /* row = tick | text | trailing link, so the links stack flush right */
-  .checklist li{font-size:14px; color:var(--zt-ink-muted); display:grid;
+  .checklist li{font-size:14.5px; color:var(--zt-ink-muted); display:grid;
     grid-template-columns:22px minmax(0,1fr) auto; align-items:baseline; line-height:1.45}
   .checklist li::before{content:"\2713"; color:var(--zt-accent-1); font-weight:700; font-size:12px}
   .checklist b{color:var(--zt-ink); font-weight:600}
@@ -152,15 +170,15 @@
 
   /* rich bullet list: section prose that earns bullets, with optional sub-points */
   .blist{list-style:none; margin:16px 0 0; padding:0; max-width:82ch}
-  .blist>li{position:relative; padding-left:20px; margin-top:11px; font-size:15px; color:var(--zt-ink); line-height:1.5}
+  .blist>li{position:relative; padding-left:20px; margin-top:14px; font-size:16px; color:var(--zt-ink); line-height:1.5}
   .blist>li::before{content:""; position:absolute; left:0; top:.52em; width:7px; height:7px; background:var(--zt-accent-1)}
   .blist .sub{list-style:none; margin:7px 0 0; padding:0}
-  .blist .sub li{position:relative; padding-left:19px; margin-top:5px; font-size:13.5px; color:var(--zt-ink-muted); line-height:1.45}
+  .blist .sub li{position:relative; padding-left:19px; margin-top:7px; font-size:14.5px; color:var(--zt-ink-muted); line-height:1.45}
   .blist .sub li::before{content:"\2192"; position:absolute; left:0; top:0; color:var(--zt-border-strong)}
 
   /* mini list inside a grid cell — replaces run-on "·" strings */
   .mini{list-style:none; margin:9px 0 0; padding:0}
-  .mini li{position:relative; padding-left:14px; margin-top:6px; font-size:13px; color:var(--zt-ink-muted); line-height:1.45}
+  .mini li{position:relative; padding-left:14px; margin-top:8px; font-size:14px; color:var(--zt-ink-muted); line-height:1.45}
   .mini li::before{content:""; position:absolute; left:0; top:.55em; width:5px; height:5px; background:var(--zt-border-strong)}
   .mini code{font-size:12.5px; color:var(--zt-accent-1); font-weight:600}
 
@@ -201,8 +219,8 @@
   /* cheat table: command · what it does · example. Reused for terminal basics
      and the suitcase before/after. Scrolls inside its own box on narrow width. */
   .tblwrap{margin-top:6px; border:1px solid var(--zt-border); overflow-x:auto}
-  .cheat{width:100%; border-collapse:collapse; font-size:13px; background:var(--zt-surface)}
-  .cheat td{border-top:1px solid var(--zt-border); border-right:1px solid var(--zt-border); padding:9px 13px; vertical-align:top}
+  .cheat{width:100%; border-collapse:collapse; font-size:13.8px; background:var(--zt-surface)}
+  .cheat td{border-top:1px solid var(--zt-border); border-right:1px solid var(--zt-border); padding:11px 14px; vertical-align:top}
   .cheat tr:first-child td{border-top:0} .cheat td:last-child{border-right:0}
   .cheat td:first-child{white-space:nowrap}
   .cheat code{font-family:var(--f-mono); font-size:12px; color:var(--zt-ink)}
@@ -234,9 +252,46 @@
   @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
   section.blk{scroll-margin-top:24px}
 
+  /* back to top — one of six looks, drawn at random on each load */
+  .totop{position:fixed; right:24px; bottom:24px; z-index:30; border:0; cursor:pointer;
+    font-family:var(--f-body); font-size:13px; font-weight:600; line-height:1;
+    display:flex; align-items:center; justify-content:center; gap:7px;
+    opacity:0; visibility:hidden; transform:translateY(10px);
+    transition:opacity .2s, transform .2s, visibility .2s}
+  .totop.on{opacity:1; visibility:visible; transform:none}
+  .totop:focus-visible{outline:2px solid var(--zt-focus-ring); outline-offset:3px}
+
+  /* v1 — plain accent circle */
+  .totop.v1{width:46px; height:46px; border-radius:50%; background:var(--zt-accent-1); color:var(--zt-accent-ink); font-size:17px}
+  .totop.v1:hover{transform:translateY(-3px)}
+  /* v2 — hard-shadow square, no radius */
+  .totop.v2{padding:12px 15px; background:var(--zt-surface); color:var(--zt-ink);
+    border:2px solid var(--zt-ink); box-shadow:4px 4px 0 var(--zt-accent-1)}
+  .totop.v2:hover{box-shadow:2px 2px 0 var(--zt-accent-1); transform:translate(2px,2px)}
+  /* v3 — terminal prompt */
+  .totop.v3{padding:11px 14px; background:var(--term-bg); color:var(--term-fg);
+    font-family:var(--f-mono); font-size:12px; border:1px solid var(--term-border)}
+  .totop.v3:hover{color:var(--zt-accent-1)}
+  /* v4 — the joke, back for an encore */
+  .totop.v4{padding:12px 16px; border:3px dashed #ff00cc; background:#fffde7;
+    font-family:"Comic Sans MS","Comic Sans","Chalkboard SE","Marker Felt",cursive; font-size:13px;
+    color:#7c4dff; transform:rotate(-3deg)}
+  .totop.v4.on{transform:rotate(-3deg)}
+  .totop.v4:hover{transform:rotate(3deg) scale(1.06)}
+  /* v5 — quiet outline pill */
+  .totop.v5{padding:11px 18px; border-radius:999px; background:var(--zt-surface);
+    color:var(--zt-ink-muted); border:1px solid var(--zt-border-strong)}
+  .totop.v5:hover{color:var(--zt-ink); border-color:var(--zt-ink-muted)}
+  /* v6 — tall ink slab */
+  .totop.v6{flex-direction:column; gap:3px; padding:13px 12px; background:var(--zt-ink);
+    color:var(--zt-bg); font-size:10px; letter-spacing:.1em; text-transform:uppercase}
+  .totop.v6 .ar{font-size:15px}
+  .totop.v6:hover{background:var(--zt-accent-1)}
+  @media (prefers-reduced-motion:reduce){.totop{transition:none}.totop:hover{transform:none}}
+
   /* print / PDF */
   @media print{
-    .toc{display:none}
+    .toc, .totop{display:none}
     @page{size:A4; margin:0}
     html,body{background:var(--zt-bg); -webkit-print-color-adjust:exact; print-color-adjust:exact}
     body{font-size:10.5pt; line-height:1.5}
@@ -262,7 +317,8 @@
     </div>
     <h1 class="rise d2">Giving your projects a memory.</h1>
     <p class="lede rise d3">With busy days for each of us, you may find that parts of your AI-involved work start to drift, or produce gaffes, as chats, iterations and your ideas move along. The bots hallucinate: 'tis how it is. Follow this guide to learn how to manage your projects, and give them a bit of a memory.</p>
-    <div class="need rise d3">
+    <div class="headcols rise d3">
+    <div class="need">
       <span class="need-label">You'll need</span>
       <ul class="checklist">
         <li><span><b>Claude&nbsp;Code</b>, signed in</span><a class="lnk" href="https://claude.com/claude-code" target="_blank" rel="noopener">claude.com&nbsp;↗</a></li>
@@ -270,6 +326,11 @@
         <li><span>a <b>Mac</b> or a <b>Windows</b> PC</span></li>
         <li><span>about <b>10&nbsp;minutes</b>, once</span></li>
       </ul>
+    </div>
+      <nav class="toc-box" aria-label="On this page">
+        <span class="need-label">On this page</span>
+        <ol class="toc-list"></ol>
+      </nav>
     </div>
   </header>
 
@@ -496,6 +557,8 @@
   </footer>
 </div>
 
+<button class="totop" type="button" aria-label="Back to top" hidden></button>
+
 <script>
   // ToC scrubber: build one tick per section from its own <h2>, so the nav can
   // never drift from the content. Marks the section in view via IntersectionObserver
@@ -504,6 +567,7 @@
     var nav = document.querySelector(".toc");
     var secs = [].slice.call(document.querySelectorAll("section.blk"));
     if (!nav || !secs.length) return;
+    var list = document.querySelector(".toc-list");   // the header ToC, always visible
     var links = secs.map(function(sec, i){
       var h = sec.querySelector("h2");
       if (!h) return null;
@@ -517,6 +581,14 @@
       tip.textContent = label;
       a.appendChild(tip);
       nav.appendChild(a);
+      if (list) {                                     // same sections, spelled out
+        var li = document.createElement("li");
+        var la = document.createElement("a");
+        la.href = "#" + sec.id;
+        la.textContent = label;
+        li.appendChild(la);
+        list.appendChild(li);
+      }
       return { a: a, sec: sec };
     }).filter(Boolean);
 
@@ -535,6 +607,41 @@
     }, { threshold: [0, 0.15, 0.4, 0.75, 1] });
     function a2(el, on){ if (on) el.setAttribute("aria-current", "true"); else el.removeAttribute("aria-current"); }
     links.forEach(function(l){ io.observe(l.sec); });
+  })();
+
+  // Back to top: six looks, one drawn at random per load, so the page keeps a
+  // little unpredictability. Appears once you are a screen and a half down.
+  (function(){
+    var btn = document.querySelector(".totop");
+    if (!btn) return;
+    var looks = [
+      { v:"v1", html:'<span class="ar">↑</span>' },
+      { v:"v2", html:'↑ Top' },
+      { v:"v3", html:'^ back to top' },
+      { v:"v4", html:'↑ wheee ↑' },
+      { v:"v5", html:'↑ Back to top' },
+      { v:"v6", html:'<span class="ar">⇧</span><span>top</span>' }
+    ];
+    var pick = looks[Math.floor(Math.random() * looks.length)];
+    btn.classList.add(pick.v);
+    btn.innerHTML = pick.html;
+    btn.hidden = false;
+
+    var shown = false, ticking = false;
+    function check(){
+      var want = window.scrollY > window.innerHeight * 1.5;
+      if (want !== shown) { shown = want; btn.classList.toggle("on", want); }
+      ticking = false;
+    }
+    window.addEventListener("scroll", function(){
+      if (!ticking) { ticking = true; window.requestAnimationFrame(check); }
+    }, { passive:true });
+    check();
+
+    btn.addEventListener("click", function(){
+      var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({ top:0, behavior: reduce ? "auto" : "smooth" });
+    });
   })();
 
   document.querySelectorAll(".copy").forEach(function(b){b.addEventListener("click",function(){
