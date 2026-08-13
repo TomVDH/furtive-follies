@@ -56,6 +56,7 @@
   h4{font-family:var(--f-head); font-size:17.5px; font-weight:600; letter-spacing:-.005em; color:var(--zt-ink); margin:46px 0 16px}
 
   .grid{display:grid; border:1px solid var(--zt-border); margin-top:6px}
+  h2 + .grid, h2 + .tblwrap, h2 + .rail, h2 + .prereqs{margin-top:22px}
   .grid.c2{grid-template-columns:1fr 1fr} .grid.auto{grid-template-columns:repeat(auto-fill,minmax(212px,1fr))}
   .grid>div{padding:19px 21px; border-right:1px solid var(--zt-border); border-bottom:1px solid var(--zt-border); background:var(--zt-surface)}
   .t{font-family:var(--f-mono); font-size:11.5px; font-weight:600; letter-spacing:.04em; color:var(--zt-ink)}
@@ -122,14 +123,12 @@
 
   /* recommended terminal setup */
   .prereqs{display:flex; flex-direction:column; border:1px solid var(--zt-border); margin-top:6px}
-  .pq{display:grid; grid-template-columns:auto 1fr auto; gap:0 16px; align-items:center; padding:19px 21px; border-top:1px solid var(--zt-border); background:var(--zt-surface)}
+  .pq{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:0 16px; align-items:center; padding:19px 21px; border-top:1px solid var(--zt-border); background:var(--zt-surface)}
   .pq:first-child{border-top:0}
-  .pq .tag{font-family:var(--f-mono); font-size:9.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; padding:2px 6px; align-self:start; margin-top:2px; white-space:nowrap}
-  .pq .tag.req{color:var(--zt-accent-ink); background:var(--zt-accent-1)} .pq .tag.rec{color:var(--zt-ink-muted); border:1px solid var(--zt-border-strong)}
   .pq .nm{font-weight:600; font-size:14px} .pq .nm a{text-decoration:none} .pq .nm a:hover{text-decoration:underline}
   .pq .wy{font-size:12.5px; color:var(--zt-ink-muted); margin-top:3px; line-height:1.45}
   .pq .cx{font-family:var(--f-mono); font-size:11.5px; color:var(--zt-ink); background:var(--zt-paper); border:1px solid var(--zt-border); padding:5px 8px; white-space:nowrap}
-  @media (max-width:560px){.pq{grid-template-columns:auto 1fr}.pq .cx{grid-column:2; margin-top:8px; white-space:normal}}
+  @media (max-width:560px){.pq{grid-template-columns:minmax(0,1fr)}.pq .cx{grid-column:2; margin-top:8px; white-space:normal}}
 
   footer{margin-top:70px; padding-top:24px; border-top:1px solid var(--zt-border); font-family:var(--f-mono); font-size:11px; letter-spacing:.03em;
     color:var(--zt-ink-muted); display:flex; flex-wrap:wrap; gap:8px 18px; justify-content:space-between}
@@ -311,7 +310,6 @@
   details.tech[open] > summary::before{content:"\2212"}
   details.tech > summary:hover{color:var(--zt-accent-1)}
   details.tech > summary:focus-visible{outline:2px solid var(--zt-focus-ring); outline-offset:-2px}
-  details.tech .why{font-family:var(--f-body); font-size:13px; font-weight:400; color:var(--zt-ink-muted); margin-left:auto; text-align:right}
   details.tech .tbody{padding:2px 18px 22px; border-top:1px solid var(--zt-border)}
   details.tech .tbody > :first-child{margin-top:16px}
   details.tech h4{margin-top:30px}
@@ -331,8 +329,7 @@
     .toc, .totop{display:none}
     details.tech{border-color:var(--zt-border)}
     details.tech > summary::before{display:none}
-    details.tech .why{display:none}
-    .cmd-line code{white-space:pre-wrap; overflow-wrap:anywhere; overflow-x:visible}
+      .cmd-line code{white-space:pre-wrap; overflow-wrap:anywhere; overflow-x:visible}
     @page{size:A4; margin:0}
     html,body{background:var(--zt-bg); -webkit-print-color-adjust:exact; print-color-adjust:exact}
     body{font-size:10.5pt; line-height:1.5}
@@ -564,7 +561,7 @@
     <p class="keeps">Not sure what a command does? Run <code>tldr &lt;command&gt;</code> for a plain, example-first reminder (it comes with the suitcase, below).</p>
 
     <details class="tech">
-      <summary>Shortcuts, also called symlinks<span class="why">a little more technical &middot; safe to skip</span></summary>
+      <summary>Shortcuts, also called symlinks</summary>
       <div class="tbody">
     <p class="body">A symlink is a signpost: a name in one folder that points at the real file or folder somewhere else. It is not a copy. Open the signpost and you are in the real thing. You do not need to make any of these to use adjudant, but you will meet them, and one is genuinely useful: a shortcut to your vault, sitting inside your project.</p>
     <div class="tblwrap"><table class="cheat basics">
@@ -635,22 +632,24 @@
     <p class="keeps"><code>sl</code> and <code>cbonsai</code> earn their place by adding nothing useful — a steam train and a bonsai tree, for when the terminal needs a smile.</p>
 
     <h4>Recommended terminal setup</h4>
+    <p class="body">Only <b>Zsh</b> is needed, and on a Mac you already have it. The other two are
+      preference: a nicer terminal, and a prompt that tells you more.</p>
     <div class="prereqs">
-      <div class="pq"><span class="tag req">Required</span>
-        <div><div class="nm">Zsh · <a href="https://www.zsh.org" target="_blank" rel="noopener">zsh.org</a></div>
+      <div class="pq">
+        <div><div class="nm">Zsh &middot; <a href="https://www.zsh.org" target="_blank" rel="noopener">zsh.org</a></div>
           <div class="wy">The shell these shortcuts assume. Already the default on a Mac, and on Windows inside Ubuntu. Nothing to do unless you changed it yourself.</div></div>
         <code class="cx">already set up</code></div>
-      <div class="pq"><span class="tag rec">Recommended</span>
-        <div><div class="nm">iTerm2 · <a href="https://iterm2.com" target="_blank" rel="noopener">iterm2.com</a></div>
-          <div class="wy">A nicer terminal than the built-in one. Repo: <a href="https://github.com/gnachman/iTerm2" target="_blank" rel="noopener">gnachman/iTerm2</a></div></div>
+      <div class="pq">
+        <div><div class="nm">iTerm2 &middot; <a href="https://iterm2.com" target="_blank" rel="noopener">iterm2.com</a></div>
+          <div class="wy">A nicer terminal than the built-in one.</div></div>
         <code class="cx">brew install --cask iterm2</code></div>
-      <div class="pq"><span class="tag rec">Recommended</span>
-        <div><div class="nm">Powerlevel10k · <a href="https://github.com/romkatv/powerlevel10k" target="_blank" rel="noopener">romkatv/powerlevel10k</a></div>
-          <div class="wy">A fast, informative prompt. Install it, add it to <code>~/.zshrc</code>, then run <code>p10k configure</code>. <a href="https://github.com/romkatv/powerlevel10k#installation" target="_blank" rel="noopener">Install guide →</a></div></div>
+      <div class="pq">
+        <div><div class="nm">Powerlevel10k &middot; <a href="https://github.com/romkatv/powerlevel10k" target="_blank" rel="noopener">romkatv/powerlevel10k</a></div>
+          <div class="wy">A fast, informative prompt. Install it, add it to <code>~/.zshrc</code>, then run <code>p10k configure</code>.</div></div>
         <code class="cx">brew install powerlevel10k</code></div>
     </div>
     <details class="tech">
-      <summary>Optional: a live statusline<span class="why">edits a settings file &middot; safe to skip</span></summary>
+      <summary>Optional: a live statusline</summary>
       <div class="tbody">
     <p class="body" style="margin-top:6px">The bundle also ships a small statusline. It shows your git branch, the vault this project is linked to, and how full the context window is — a quiet reminder to keep sessions short. Turn it on with one line in <code>~/.claude/settings.json</code>, using the real path to the script.</p>
     <div class="cmd"><div class="cmd-top"><span class="cmd-where">In ~/.claude/settings.json</span><span class="cmd-does">turns the statusline on</span></div>
