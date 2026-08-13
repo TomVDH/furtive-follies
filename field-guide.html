@@ -485,6 +485,21 @@
       <tr><td class="cmd-name"><code>clear</code></td><td>Wipe the screen clean</td><td><code>clear</code></td></tr>
     </table></div>
     <p class="keeps">Not sure what a command does? Run <code>tldr &lt;command&gt;</code> for a plain, example-first reminder (it comes with the suitcase, below).</p>
+
+    <h4>Shortcuts, also called symlinks</h4>
+    <p class="body">A symlink is a signpost: a name in one folder that points at the real file or folder somewhere else. It is not a copy. Open the signpost and you are in the real thing. You do not need to make any of these to use adjudant, but you will meet them, and one is genuinely useful: a shortcut to your vault, sitting inside your project.</p>
+    <div class="tblwrap"><table class="cheat">
+      <tr><td class="cmd-name"><code>ln -s</code></td><td>Make a shortcut: real thing first, then the name you want</td>
+        <td><code>ln -s ~/Obsidian/MyVault vault</code></td></tr>
+      <tr><td class="cmd-name"><code>ls -l</code></td><td>Spot one: a shortcut shows an arrow to its target</td>
+        <td><code>vault -&gt; /Users/you/Obsidian/MyVault</code></td></tr>
+      <tr><td class="cmd-name"><code>cd</code></td><td>Use one exactly like the real folder</td>
+        <td><code>cd vault</code></td></tr>
+      <tr><td class="cmd-name"><code>rm</code></td><td>Remove <b>only the signpost</b>. Your real folder is untouched</td>
+        <td><code>rm vault</code></td></tr>
+    </table></div>
+    <div class="call"><div class="t">Two things that surprise people</div>
+      <p>Deleting a shortcut never deletes what it points at, so <code>rm vault</code> is safe. But move or rename the real folder and the shortcut goes dead, pointing at nothing: make a new one. On <b>Windows</b>, shortcuts work normally inside WSL. If you clone a repository with Windows' own Git instead, symlinks can arrive as small text files holding a path. That is one more reason the setup above puts you in WSL.</p></div>
   </section>
 
   <section class="blk">
