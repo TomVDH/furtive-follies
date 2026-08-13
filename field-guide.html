@@ -49,15 +49,15 @@
   .chip:last-child{border-right:0}.chip b{color:var(--zt-ink); font-weight:600}
 
   /* sections: editorial hairline + serif heading, no eyebrow, no numbers */
-  section.blk{margin-top:66px; padding-top:42px; border-top:1px solid var(--zt-border)}
+  section.blk{margin-top:76px; padding-top:48px; border-top:1px solid var(--zt-border)}
   h2{font-family:var(--f-head); font-weight:600; font-size:clamp(25px,5.4vw,32px); line-height:1.08; letter-spacing:-.01em;
     margin:0 0 2px; max-width:30ch; text-wrap:balance}
-  .body{font-size:16.5px; color:var(--zt-ink-muted); margin:19px 0 0; max-width:82ch} .body b{font-weight:600; color:var(--zt-ink)}
-  h4{font-family:var(--f-head); font-size:17px; font-weight:600; letter-spacing:-.005em; color:var(--zt-ink); margin:38px 0 14px}
+  .body{font-size:16.5px; color:var(--zt-ink-muted); margin:21px 0 0; max-width:82ch} .body b{font-weight:600; color:var(--zt-ink)}
+  h4{font-family:var(--f-head); font-size:17.5px; font-weight:600; letter-spacing:-.005em; color:var(--zt-ink); margin:46px 0 16px}
 
   .grid{display:grid; border:1px solid var(--zt-border); margin-top:6px}
   .grid.c2{grid-template-columns:1fr 1fr} .grid.auto{grid-template-columns:repeat(auto-fill,minmax(212px,1fr))}
-  .grid>div{padding:17px 18px; border-right:1px solid var(--zt-border); border-bottom:1px solid var(--zt-border); background:var(--zt-surface)}
+  .grid>div{padding:19px 21px; border-right:1px solid var(--zt-border); border-bottom:1px solid var(--zt-border); background:var(--zt-surface)}
   .t{font-family:var(--f-mono); font-size:11.5px; font-weight:600; letter-spacing:.04em; color:var(--zt-ink)}
   .d{font-size:13.8px; color:var(--zt-ink-muted); margin-top:5px; line-height:1.45}
 
@@ -79,7 +79,7 @@
   /* verbs: one per row, name column aligned so the descriptions line up */
   .verbs{border:1px solid var(--zt-border); margin-top:6px; background:var(--zt-surface)}
   .verb{display:grid; grid-template-columns:112px minmax(0,1fr); gap:0 16px; align-items:baseline;
-    padding:13px 18px; border-top:1px solid var(--zt-border)}
+    padding:15px 20px; border-top:1px solid var(--zt-border)}
   .verb:first-child{border-top:0}
   .verb code{font-size:13.5px; font-weight:600; color:var(--zt-accent-1)}
   .verb span{font-size:14.5px; color:var(--zt-ink-muted); line-height:1.45}
@@ -87,8 +87,8 @@
   @media (max-width:440px){.verb{grid-template-columns:minmax(0,1fr); gap:3px}}
 
   /* callout — 1px border, no colored bar */
-  .call{margin-top:26px; background:var(--zt-accent-soft); border:1px solid var(--zt-border-strong); padding:16px 18px}
-  .call .t{margin-bottom:6px} .call p{margin:0; font-size:14.5px; color:var(--zt-ink)}
+  .call{margin-top:30px; background:var(--zt-accent-soft); border:1px solid var(--zt-border-strong); padding:16px 18px}
+  .call .t{margin-bottom:8px} .call p{margin:0; font-size:14.5px; color:var(--zt-ink)}
 
   /* command card: plain where + what, then the command, no $ prompt */
   .cmd{margin-top:17px; border:1px solid var(--zt-border); background:var(--zt-surface)}
@@ -109,20 +109,20 @@
 
   /* steps */
   .rail{margin-top:8px}
-  .step{display:grid; grid-template-columns:auto minmax(0,1fr); gap:0 20px; padding:27px 0; border-top:1px solid var(--zt-border)}
+  .step{display:grid; grid-template-columns:auto minmax(0,1fr); gap:0 22px; padding:30px 0; border-top:1px solid var(--zt-border)}
   .step:first-child{border-top:0}
   .idx{font-family:var(--f-mono); font-weight:500; font-size:15px; color:var(--zt-accent-ink); background:var(--zt-accent-1);
     width:30px; height:30px; display:grid; place-items:center; margin-top:1px}
   .step h3{grid-column:2; font-family:var(--f-head); font-weight:600; font-size:20px; margin:0}
   .step .note{grid-column:2; font-size:15px; color:var(--zt-ink-muted); margin:7px 0 0; max-width:76ch; line-height:1.5}
-  .step .cmd{grid-column:2}
+  .step .cmd,.step .shot{grid-column:2}
 
   .done{margin-top:24px; background:var(--zt-accent-soft); border:1px solid var(--zt-border-strong); padding:16px 20px; display:flex; gap:12px; align-items:baseline}
   .done .k{font-family:var(--f-head); color:var(--zt-accent-1); font-weight:700; font-size:17px} .done p{margin:0; font-size:15px} .done b{font-family:var(--f-head); font-weight:600}
 
   /* recommended terminal setup */
   .prereqs{display:flex; flex-direction:column; border:1px solid var(--zt-border); margin-top:6px}
-  .pq{display:grid; grid-template-columns:auto 1fr auto; gap:0 14px; align-items:center; padding:17px 18px; border-top:1px solid var(--zt-border); background:var(--zt-surface)}
+  .pq{display:grid; grid-template-columns:auto 1fr auto; gap:0 16px; align-items:center; padding:19px 21px; border-top:1px solid var(--zt-border); background:var(--zt-surface)}
   .pq:first-child{border-top:0}
   .pq .tag{font-family:var(--f-mono); font-size:9.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; padding:2px 6px; align-self:start; margin-top:2px; white-space:nowrap}
   .pq .tag.req{color:var(--zt-accent-ink); background:var(--zt-accent-1)} .pq .tag.rec{color:var(--zt-ink-muted); border:1px solid var(--zt-border-strong)}
@@ -174,7 +174,7 @@
 
   /* rich bullet list: section prose that earns bullets, with optional sub-points */
   .blist{list-style:none; margin:16px 0 0; padding:0; max-width:82ch}
-  .blist>li{position:relative; padding-left:20px; margin-top:14px; font-size:16px; color:var(--zt-ink); line-height:1.5}
+  .blist>li{position:relative; padding-left:22px; margin-top:16px; font-size:16px; color:var(--zt-ink); line-height:1.5}
   .blist>li::before{content:""; position:absolute; left:0; top:.52em; width:7px; height:7px; background:var(--zt-accent-1)}
   .blist .sub{list-style:none; margin:7px 0 0; padding:0}
   .blist .sub li{position:relative; padding-left:19px; margin-top:7px; font-size:14.5px; color:var(--zt-ink-muted); line-height:1.45}
@@ -209,22 +209,22 @@
   @media print{.slop-txt{-webkit-text-fill-color:#ff00cc; color:#ff00cc; background:none}}
 
   /* screenshot placeholder — swap the box for a real image later */
-  .shot{margin-top:20px; border:1.5px dashed var(--zt-border-strong); background:var(--zt-paper);
+  .shot{margin-top:26px; border:1.5px dashed var(--zt-border-strong); background:var(--zt-paper);
     min-height:190px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center; padding:26px}
   .shot .ic{font-size:26px; line-height:1; color:var(--zt-border-strong)}
   .shot .cap{font-family:var(--f-mono); font-size:11.5px; letter-spacing:.03em; color:var(--zt-ink-muted)}
   .shot .cap b{color:var(--zt-ink); font-weight:600}
 
   /* a real screenshot, once one is dropped in */
-  figure.shot{display:block; margin:22px 0 0; padding:0; border:0; min-height:0; background:none; text-align:left}
+  figure.shot{display:block; margin:28px 0 0; padding:0; border:0; min-height:0; background:none; text-align:left}
   figure.shot img{display:block; width:100%; height:auto; border:1px solid var(--zt-border)}
   figure.shot figcaption{font-size:12.5px; color:var(--zt-ink-muted); margin-top:9px; line-height:1.45}
 
   /* cheat table: command · what it does · example. Reused for terminal basics
      and the suitcase before/after. Scrolls inside its own box on narrow width. */
-  .tblwrap{margin-top:6px; border:1px solid var(--zt-border); overflow-x:auto}
+  .tblwrap{margin-top:10px; border:1px solid var(--zt-border); overflow-x:auto}
   .cheat{width:100%; border-collapse:collapse; font-size:13.8px; background:var(--zt-surface)}
-  .cheat td{border-top:1px solid var(--zt-border); border-right:1px solid var(--zt-border); padding:11px 14px; vertical-align:top}
+  .cheat td{border-top:1px solid var(--zt-border); border-right:1px solid var(--zt-border); padding:14px 17px; line-height:1.5; vertical-align:top}
   .cheat tr:first-child td{border-top:0} .cheat td:last-child{border-right:0}
   .cheat td:first-child{white-space:nowrap}
   .cheat.basics td:first-child{width:104px}
@@ -299,9 +299,31 @@
   .totop.v6:hover{background:var(--zt-accent-1)}
   @media (prefers-reduced-motion:reduce){.totop{transition:none}.totop:hover{transform:none}}
 
+  /* zebra rows: dense tables get easier to track across */
+  .cheat tr:nth-child(even) td{background:var(--zt-paper)}
+
+  /* technical fold: a labelled gate, so nobody wanders into jargon unwarned */
+  details.tech{margin-top:34px; border:1px solid var(--zt-border); background:var(--zt-surface)}
+  details.tech > summary{list-style:none; cursor:pointer; padding:15px 18px; display:flex; align-items:center; gap:11px;
+    font-family:var(--f-head); font-size:16.5px; font-weight:600; color:var(--zt-ink)}
+  details.tech > summary::-webkit-details-marker{display:none}
+  details.tech > summary::before{content:"+"; font-family:var(--f-mono); font-size:15px; font-weight:500;
+    color:var(--zt-accent-ink); background:var(--zt-accent-1); width:22px; height:22px; flex:none;
+    display:grid; place-items:center; line-height:1}
+  details.tech[open] > summary::before{content:"\2212"}
+  details.tech > summary:hover{color:var(--zt-accent-1)}
+  details.tech > summary:focus-visible{outline:2px solid var(--zt-focus-ring); outline-offset:-2px}
+  details.tech .why{font-family:var(--f-body); font-size:13px; font-weight:400; color:var(--zt-ink-muted); margin-left:auto; text-align:right}
+  details.tech .tbody{padding:2px 18px 22px; border-top:1px solid var(--zt-border)}
+  details.tech .tbody > :first-child{margin-top:16px}
+  details.tech h4{margin-top:30px}
+
   /* print / PDF */
   @media print{
     .toc, .totop{display:none}
+    details.tech{border-color:var(--zt-border)}
+    details.tech > summary::before{display:none}
+    details.tech .why{display:none}
     .cmd-line code{white-space:pre-wrap; overflow-wrap:anywhere; overflow-x:visible}
     @page{size:A4; margin:0}
     html,body{background:var(--zt-bg); -webkit-print-color-adjust:exact; print-color-adjust:exact}
@@ -417,6 +439,7 @@
       ├─ tasks/            <span class="a">→ becomes the board</span>
       ├─ board/            <span class="c">the kanban, saved to disk</span>
       └─ _handoff.md       <span class="c">where things stand</span></pre></div>
+    <div class="shot"><span class="ic">▤</span><span class="cap"><b>Screenshot placeholder</b> &middot; a session note in Obsidian: what the assistant wrote today</span></div>
   </section>
 
   <section class="blk" id="s2">
@@ -450,6 +473,7 @@
       <div class="verb"><code>dream</code><span>Advisory review<span class="ro">read only</span></span></div>
       <div class="verb"><code>board</code><span>Drag-and-drop kanban</span></div>
     </div>
+    <div class="shot"><span class="ic">▣</span><span class="cap"><b>Screenshot placeholder</b> &middot; <b>/adjudant sitrep</b>: where you left off, in plain language</span></div>
     <div class="call"><div class="t">On dream, and on cost</div>
       <p><code>dream</code> reads your notes and hands you a report — what's stale, what contradicts, what's orphaned — then <b>stops</b>. It changes nothing on its own; you decide. And the whole plugin is built to be light: heavy reads estimate their cost and ask first.</p></div>
     <div class="shot"><span class="ic">▤</span><span class="cap"><b>Screenshot placeholder</b> · the adjudant at work in the Claude Code CLI</span></div>
@@ -461,6 +485,7 @@
     <p class="body">First, install the two free apps this needs: <b>Claude Code</b> and <b><a href="https://obsidian.md" target="_blank" rel="noopener">Obsidian</a></b>. Downloading Obsidian from <a href="https://obsidian.md" target="_blank" rel="noopener">obsidian.md</a> works on both a Mac and a PC.</p>
     <div class="call"><div class="t">On a Windows PC</div>
       <p>The steps below are the same on both systems, with one extra setup on Windows: Claude Code runs inside <b>WSL</b>, a Linux-flavoured terminal that ships with Windows. Open <b>PowerShell</b>, run <code>wsl --install</code> once, restart, then open <b>Ubuntu</b> from the Start menu and do everything there. Your vault can live in <b>OneDrive</b> as usual: it gets found either way.</p></div>
+    <div class="shot"><span class="ic">▢</span><span class="cap"><b>Screenshot placeholder</b> &middot; Ubuntu running on Windows, opened from the Start menu</span></div>
     <p class="hint">Each box below has a <b>Copy</b> button. Copy it, then paste it where the label says — your Terminal app, or the Claude Code chat. You don't type the box itself.</p>
     <div class="rail">
       <div class="step"><div class="idx">1</div><h3>Get access</h3>
@@ -476,9 +501,13 @@
       <div class="step"><div class="idx">3</div><h3>Connect your project</h3>
         <p class="note">Do this once inside each project. It shows where a vault can live, recommends a spot, and makes it for you.</p>
         <div class="cmd"><div class="cmd-top"><span class="cmd-where">In Claude Code</span><span class="cmd-does">sets up the vault</span></div>
-          <div class="cmd-line"><code>/adjudant connect</code><button class="copy" data-copy="/adjudant connect">Copy</button></div></div></div>
+          <div class="cmd-line"><code>/adjudant connect</code><button class="copy" data-copy="/adjudant connect">Copy</button></div></div>
+        <div class="shot"><span class="ic">▨</span><span class="cap"><b>Screenshot placeholder</b> &middot; <b>/adjudant connect</b> offering where the vault can live</span></div>
+      </div>
       <div class="step"><div class="idx">4</div><h3>Open it in Obsidian</h3>
-        <p class="note">connect makes the vault folder for you. In Obsidian, choose <b>Open folder as vault</b> and pick that folder — now you can read your notes, follow the links between them, and see the board.</p></div>
+        <p class="note">connect makes the vault folder for you. In Obsidian, choose <b>Open folder as vault</b> and pick that folder — now you can read your notes, follow the links between them, and see the board.</p>
+        <div class="shot"><span class="ic">▧</span><span class="cap"><b>Screenshot placeholder</b> &middot; Obsidian's <b>Open folder as vault</b>, pointed at your new folder</span></div>
+      </div>
     </div>
     <h4>Where your vault should live</h4>
     <div class="grid c2">
@@ -505,7 +534,9 @@
     </table></div>
     <p class="keeps">Not sure what a command does? Run <code>tldr &lt;command&gt;</code> for a plain, example-first reminder (it comes with the suitcase, below).</p>
 
-    <h4>Shortcuts, also called symlinks</h4>
+    <details class="tech">
+      <summary>Shortcuts, also called symlinks<span class="why">a little more technical &middot; safe to skip</span></summary>
+      <div class="tbody">
     <p class="body">A symlink is a signpost: a name in one folder that points at the real file or folder somewhere else. It is not a copy. Open the signpost and you are in the real thing. You do not need to make any of these to use adjudant, but you will meet them, and one is genuinely useful: a shortcut to your vault, sitting inside your project.</p>
     <div class="tblwrap"><table class="cheat basics">
       <tr><td class="cmd-name"><code>ln -s</code></td><td>Make a shortcut: real thing first, then the name you want</td>
@@ -519,7 +550,9 @@
     </table></div>
     <div class="call"><div class="t">Two things that surprise people</div>
       <p>Deleting a shortcut never deletes what it points at, so <code>rm vault</code> is safe. But move or rename the real folder and the shortcut goes dead, pointing at nothing: make a new one. On <b>Windows</b>, shortcuts work normally inside WSL. If you clone a repository with Windows' own Git instead, symlinks can arrive as small text files holding a path. That is one more reason the setup above puts you in WSL.</p></div>
-  </section>
+      </div>
+    </details>
+</section>
 
   <section class="blk" id="s5">
     <h2>The suitcase: a friendlier terminal.</h2>
@@ -569,14 +602,18 @@
           <div class="wy">A fast, informative prompt. Install it, add it to <code>~/.zshrc</code>, then run <code>p10k configure</code>. <a href="https://github.com/romkatv/powerlevel10k#installation" target="_blank" rel="noopener">Install guide →</a></div></div>
         <code class="cx">brew install powerlevel10k</code></div>
     </div>
-    <h4>Optional: a live statusline</h4>
+    <details class="tech">
+      <summary>Optional: a live statusline<span class="why">edits a settings file &middot; safe to skip</span></summary>
+      <div class="tbody">
     <p class="body" style="margin-top:6px">The bundle also ships a small statusline. It shows your git branch, the vault this project is linked to, and how full the context window is — a quiet reminder to keep sessions short. Turn it on with one line in <code>~/.claude/settings.json</code>, using the real path to the script.</p>
     <div class="cmd"><div class="cmd-top"><span class="cmd-where">In ~/.claude/settings.json</span><span class="cmd-does">turns the statusline on</span></div>
       <div class="cmd-line wrap"><code>"statusLine": { "type": "command", "command": "bash ~/furtive-follies/onboarding/statusline.sh" }</code><button class="copy" data-copy='"statusLine": { "type": "command", "command": "bash ~/furtive-follies/onboarding/statusline.sh" }'>Copy</button></div></div>
     <div class="shot"><span class="ic">▬</span><span class="cap"><b>Screenshot placeholder</b> · the statusline, at the bottom of a Claude Code session</span></div>
     <p class="keeps">Point the path at wherever you put the folder. It uses <code>jq</code> or <code>python3</code> to read the status; with neither, it still shows the git part.</p>
     <p class="body" style="margin-top:16px">On a <b>Windows</b> PC, run that same installer inside <b>Ubuntu</b> (the WSL terminal from the setup section). It sorts out the rest itself, and skips anything you already have.</p>
-  </section>
+      </div>
+    </details>
+</section>
 
   <section class="blk" id="s6">
     <h2>If something looks off.</h2>
@@ -637,6 +674,22 @@
     }, { threshold: [0, 0.15, 0.4, 0.75, 1] });
     function a2(el, on){ if (on) el.setAttribute("aria-current", "true"); else el.removeAttribute("aria-current"); }
     links.forEach(function(l){ io.observe(l.sec); });
+  })();
+
+  // Paper has no disclosure triangles: open every folded section before printing
+  // so the PDF carries the whole guide, then restore what the reader had open.
+  (function(){
+    var opened = [];
+    window.addEventListener("beforeprint", function(){
+      opened = [];
+      document.querySelectorAll("details.tech").forEach(function(d){
+        if (!d.open) { opened.push(d); d.open = true; }
+      });
+    });
+    window.addEventListener("afterprint", function(){
+      opened.forEach(function(d){ d.open = false; });
+      opened = [];
+    });
   })();
 
   // Back to top: six looks, one drawn at random per load, so the page keeps a
