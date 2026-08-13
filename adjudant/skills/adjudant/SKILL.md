@@ -51,7 +51,7 @@ Verb weights live in `scripts/command-metadata.json` (`weight: light | medium | 
 Load `reference/voice.md` with every verb (the one exception to
 load-only-the-matching-reference; it is small). It defines the banned lexicon, the
 glazing ban, the pushback contract, the ELI5/ELI12/ELICTO explanation modes with
-per-verb defaults, and typography (no em dashes in rendered output or vault writes).
+per-verb defaults, ASD-STE100 (Simplified Technical English) as the preferred register, and typography (no em dashes in rendered output or vault writes).
 The `voice-lexicon` validator enforces the machine-checkable subset.
 
 ## Vault standards — single source of truth

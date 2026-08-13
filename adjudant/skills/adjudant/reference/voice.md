@@ -63,8 +63,18 @@ Request tokens, recognized on any verb:
 | `ELI12` | Granular steps plus the architectural layer |
 | `ELICTO` | Trench detail and big picture, no hand-holding |
 
-Defaults: `sitrep` ELI5, `check` ELI12, `dream` and `ramasse` judging ELICTO;
+Defaults: `sitrep` ELI5, `check` ELI12, `dream` judging ELICTO;
 a request token overrides.
+
+## Simplified Technical English (ASD-STE100)
+
+Preferred register for procedures and reference: ASD-STE100, Simplified Technical
+English. One instruction per sentence, active voice, present tense, and approved
+words used consistently: one word per meaning, no synonym drift. Keep procedure
+sentences under 20 words. Weighted above prose habit: when a sentence could read
+like prose or break an STE rule, choose STE. The ELI modes set reading level
+within STE; they do not permit long sentences or loose vocabulary. Reference: the
+ASD-STE100 specification.
 
 ## Typography
 

@@ -1024,7 +1024,7 @@ class TestDocTrim(unittest.TestCase):
 
     def test_voice_within_budget(self):
         est = len((self.REF / "voice.md").read_text()) // 4
-        self.assertLess(est, 600, f"voice.md is ~{est} tok, budget 600")
+        self.assertLess(est, 780, f"voice.md is ~{est} tok, budget 780")
 
     def test_vault_standards_names_its_enforcers(self):
         text = (self.REF / "vault-standards.md").read_text()
