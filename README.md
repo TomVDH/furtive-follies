@@ -28,8 +28,6 @@ Inside **Claude Code**, run these three, one at a time:
 /adjudant connect
 ```
 
-The repo is private, so if Claude Code can't reach it, sign in once in your
-terminal with `gh auth login`, then try again.
 
 `connect` shows where a vault can live (a cloud-sync folder is recommended so your
 notes follow you across computers), makes it for you, and links your project.

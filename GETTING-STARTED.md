@@ -35,17 +35,8 @@ You'll need three things:
 
 1. **Claude Code installed** and working. If you can type `/plugin` inside it, you're set.
 2. **Obsidian installed** — it's where you read the vault. It's free: [obsidian.md](https://obsidian.md), or `brew install --cask obsidian` on a Mac.
-3. **GitHub access to the private repo** (`TomVDH/furtive-follies`). Because the
-   repo is private, Claude Code needs permission to read it. If it can't, the fix
-   is usually one command in your terminal:
-
-   ```bash
-   gh auth login
-   ```
-
-   That's the GitHub CLI signing you in once. Follow its prompts (pick GitHub.com,
-   log in through the browser), and afterward Claude Code can read the private repo.
-   You only do this once per machine.
+3. **Nothing else.** The plugin is fetched for you when you run the install
+   command below; there is no repository to clone and no account to set up.
 
 ---
 
@@ -63,8 +54,6 @@ Three lines, typed inside Claude Code:
 - The second installs the adjudant plugin.
 - The third links your current project to a vault (more on that next).
 
-If line one or two complains that it can't reach the repo, that's the private-repo
-access thing from step 2 — run `gh auth login`, then try again.
 
 ---
 
