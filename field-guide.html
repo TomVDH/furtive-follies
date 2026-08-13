@@ -30,11 +30,16 @@
 
   /* masthead — the one animated moment, the one named kicker */
   .logo{width:min(292px,72vw); height:auto; display:block; image-rendering:pixelated; border:1px solid var(--zt-border-strong)}
-  .kicker{font-size:13px; font-weight:600; color:var(--zt-ink-muted); margin:18px 0 0; display:flex; align-items:center; gap:9px}
+  /* masthead row: logo left, provenance + version right, baselines aligned */
+  .mast{display:flex; align-items:flex-end; justify-content:space-between; gap:20px; flex-wrap:wrap}
+  .mast-meta{text-align:right; line-height:1.5}
+  .kicker{font-size:13px; font-weight:600; color:var(--zt-ink-muted); margin:0}
+  .kicker .ver{display:block; font-size:12px; font-weight:400; color:var(--zt-ink-muted); opacity:.75; margin-top:2px}
+  @media (max-width:560px){.mast{align-items:flex-start}.mast-meta{text-align:left}}
   .kicker .sq{width:7px; height:7px; background:var(--zt-accent-1)}
   h1{font-family:var(--f-head); font-weight:600; font-size:clamp(36px,7.6vw,54px); line-height:1.0; letter-spacing:-.01em;
-    margin:14px 0 0; max-width:15ch; text-wrap:balance}
-  .lede{font-size:clamp(16px,3.5vw,18px); color:var(--zt-ink-muted); max-width:54ch; margin:18px 0 0}
+    margin:14px 0 0; max-width:19ch; text-wrap:balance}
+  .lede{font-size:clamp(16px,3.5vw,18px); color:var(--zt-ink-muted); max-width:72ch; margin:18px 0 0}
   .chips{display:flex; flex-wrap:wrap; margin-top:24px; border:1px solid var(--zt-border)}
   .chip{font-family:var(--f-mono); font-size:11.5px; color:var(--zt-ink-muted); padding:8px 13px; border-right:1px solid var(--zt-border); background:var(--zt-surface)}
   .chip:last-child{border-right:0}.chip b{color:var(--zt-ink); font-weight:600}
@@ -42,8 +47,8 @@
   /* sections: editorial hairline + serif heading, no eyebrow, no numbers */
   section.blk{margin-top:52px; padding-top:34px; border-top:1px solid var(--zt-border)}
   h2{font-family:var(--f-head); font-weight:600; font-size:clamp(25px,5.4vw,32px); line-height:1.08; letter-spacing:-.01em;
-    margin:0 0 2px; max-width:22ch; text-wrap:balance}
-  .body{font-size:15.5px; color:var(--zt-ink-muted); margin:16px 0 0; max-width:62ch} .body b{font-weight:600; color:var(--zt-ink)}
+    margin:0 0 2px; max-width:30ch; text-wrap:balance}
+  .body{font-size:15.5px; color:var(--zt-ink-muted); margin:16px 0 0; max-width:82ch} .body b{font-weight:600; color:var(--zt-ink)}
   h4{font-family:var(--f-head); font-size:16px; font-weight:600; letter-spacing:-.005em; color:var(--zt-ink); margin:30px 0 12px}
 
   .grid{display:grid; border:1px solid var(--zt-border); margin-top:6px}
@@ -103,7 +108,7 @@
   .idx{font-family:var(--f-mono); font-weight:500; font-size:15px; color:var(--zt-accent-ink); background:var(--zt-accent-1);
     width:30px; height:30px; display:grid; place-items:center; margin-top:1px}
   .step h3{grid-column:2; font-family:var(--f-head); font-weight:600; font-size:20px; margin:0}
-  .step .note{grid-column:2; font-size:14px; color:var(--zt-ink-muted); margin:7px 0 0; max-width:58ch; line-height:1.5}
+  .step .note{grid-column:2; font-size:14px; color:var(--zt-ink-muted); margin:7px 0 0; max-width:76ch; line-height:1.5}
   .step .cmd{grid-column:2}
 
   .done{margin-top:24px; background:var(--zt-accent-soft); border:1px solid var(--zt-border-strong); padding:16px 20px; display:flex; gap:12px; align-items:baseline}
@@ -146,7 +151,7 @@
   .checklist b{color:var(--zt-ink); font-weight:600}
 
   /* rich bullet list: section prose that earns bullets, with optional sub-points */
-  .blist{list-style:none; margin:16px 0 0; padding:0; max-width:62ch}
+  .blist{list-style:none; margin:16px 0 0; padding:0; max-width:82ch}
   .blist>li{position:relative; padding-left:20px; margin-top:11px; font-size:15px; color:var(--zt-ink); line-height:1.5}
   .blist>li::before{content:""; position:absolute; left:0; top:.52em; width:7px; height:7px; background:var(--zt-accent-1)}
   .blist .sub{list-style:none; margin:7px 0 0; padding:0}
@@ -204,8 +209,29 @@
   .keeps{margin-top:12px; font-size:13.5px; color:var(--zt-ink-muted)} .keeps code{color:var(--zt-ink)}
   @media (max-width:480px){.cmd-line{flex-wrap:wrap}.cmd-line .copy{width:100%; margin-top:2px}}
 
+  /* ToC scrubber — fixed tick marks in the left gutter. Marks are short lines;
+     the section name appears on hover/focus. Click scrolls to the section.
+     Hidden below 1100px (no gutter to live in) and in print. */
+  .toc{position:fixed; left:22px; top:50%; transform:translateY(-50%); z-index:20;
+    display:flex; flex-direction:column; gap:11px; padding:6px 4px}
+  .toc a{position:relative; display:block; width:22px; height:2px; background:var(--zt-border-strong);
+    opacity:.5; transition:opacity .15s, width .15s, background .15s}
+  .toc a:hover, .toc a:focus-visible{opacity:1; width:30px; background:var(--zt-accent-1); outline:none}
+  .toc a[aria-current="true"]{opacity:1; width:30px; background:var(--zt-accent-1)}
+  .toc a .tip{position:absolute; left:38px; top:50%; transform:translateY(-50%) translateX(-4px);
+    white-space:nowrap; font-size:12px; line-height:1; color:var(--zt-ink); background:var(--zt-surface);
+    border:1px solid var(--zt-border-strong); padding:6px 9px; opacity:0; pointer-events:none;
+    transition:opacity .15s, transform .15s}
+  .toc a:hover .tip, .toc a:focus-visible .tip{opacity:1; transform:translateY(-50%) translateX(0)}
+  @media (max-width:1100px){.toc{display:none}}
+  @media (prefers-reduced-motion:reduce){.toc a,.toc a .tip{transition:none}}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+  section.blk{scroll-margin-top:24px}
+
   /* print / PDF */
   @media print{
+    .toc{display:none}
     @page{size:A4; margin:0}
     html,body{background:var(--zt-bg); -webkit-print-color-adjust:exact; print-color-adjust:exact}
     body{font-size:10.5pt; line-height:1.5}
@@ -219,10 +245,16 @@
   }
 </style>
 
+<nav class="toc" aria-label="Sections"></nav>
+
 <div class="wrap">
   <header>
+    <div class="mast">
     <img class="logo wipe" src="data:image/png;base64,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" alt="ZenaSoft" width="1300" height="280">
-    <div class="kicker rise d1"><span class="sq"></span>Internal Ops · Field guide</div>
+    <div class="mast-meta rise d1">
+      <div class="kicker">Internal Ops · Field guide<span class="ver">v1.0 · August 2026</span></div>
+    </div>
+    </div>
     <h1 class="rise d2">Giving your projects a memory.</h1>
     <p class="lede rise d3">With busy days for each of us, you may find that parts of your AI-involved work start to drift, or produce gaffes, as chats, iterations and your ideas move along. The bots hallucinate: 'tis how it is. Follow this guide to learn how to manage your projects, and give them a bit of a memory.</p>
     <div class="need rise d3">
@@ -457,6 +489,46 @@
 </div>
 
 <script>
+  // ToC scrubber: build one tick per section from its own <h2>, so the nav can
+  // never drift from the content. Marks the section in view via IntersectionObserver
+  // (falls back to no highlight where unsupported; clicking still works).
+  (function(){
+    var nav = document.querySelector(".toc");
+    var secs = [].slice.call(document.querySelectorAll("section.blk"));
+    if (!nav || !secs.length) return;
+    var links = secs.map(function(sec, i){
+      var h = sec.querySelector("h2");
+      if (!h) return null;
+      if (!sec.id) sec.id = "s" + (i + 1);
+      var label = (h.textContent || "").trim().replace(/[.:]$/, "");
+      var a = document.createElement("a");
+      a.href = "#" + sec.id;
+      a.setAttribute("aria-label", label);
+      var tip = document.createElement("span");
+      tip.className = "tip";
+      tip.textContent = label;
+      a.appendChild(tip);
+      nav.appendChild(a);
+      return { a: a, sec: sec };
+    }).filter(Boolean);
+
+    if (!("IntersectionObserver" in window)) return;
+    var visible = new Map();
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ visible.set(en.target, en.intersectionRatio); });
+      var best = null, bestRatio = 0;
+      links.forEach(function(l){
+        var r = visible.get(l.sec) || 0;
+        if (r > bestRatio) { bestRatio = r; best = l; }
+      });
+      links.forEach(function(l){
+        if (l === best && bestRatio > 0) a2(l.a, true); else a2(l.a, false);
+      });
+    }, { threshold: [0, 0.15, 0.4, 0.75, 1] });
+    function a2(el, on){ if (on) el.setAttribute("aria-current", "true"); else el.removeAttribute("aria-current"); }
+    links.forEach(function(l){ io.observe(l.sec); });
+  })();
+
   document.querySelectorAll(".copy").forEach(function(b){b.addEventListener("click",function(){
     var t=b.getAttribute("data-copy"),d=function(){b.textContent="Copied";b.classList.add("done");setTimeout(function(){b.textContent="Copy";b.classList.remove("done")},1400)};
     if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(d).catch(function(){fb(t);d()})}else{fb(t);d()}})});
