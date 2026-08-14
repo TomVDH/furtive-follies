@@ -364,6 +364,7 @@
         <li><span><b>Claude&nbsp;Code</b>, signed in</span><a class="lnk" href="https://claude.com/claude-code" target="_blank" rel="noopener">claude.com&nbsp;↗</a></li>
         <li><span><b>Obsidian</b>, free, to read your vault</span><a class="lnk" href="https://obsidian.md" target="_blank" rel="noopener">obsidian.md&nbsp;↗</a></li>
         <li><span>a <b>Mac</b> or a <b>Windows</b> PC</span></li>
+        <li><span><b>Python</b>, used behind the scenes. Setup checks it for you</span></li>
         <li><span>about <b>10&nbsp;minutes</b>, once</span></li>
       </ul>
     </div>
@@ -524,6 +525,9 @@
       <tr><td class="cmd-name">Plugin</td><td>An add-on that teaches Claude Code new commands. <b>adjudant</b> is one.</td></tr>
       <tr><td class="cmd-name">Marketplace</td><td>A list of plugins Claude Code can install from. You point it at one, once, and then install from it.</td></tr>
       <tr><td class="cmd-name">Markdown</td><td>Plain text with a few marks for formatting: <code>#</code> starts a heading, <code>-</code> starts a list item. Your notes are markdown files, readable in any text editor, forever.</td></tr>
+      <tr><td class="cmd-name">Python</td><td>A programming language. adjudant uses it to do its filing. You never write any and never see it; it only has to be installed.</td></tr>
+      <tr><td class="cmd-name">Homebrew</td><td>A way of installing other tools on a Mac in one line, instead of hunting for downloads. Only needed for the optional toolkit at the end.</td></tr>
+      <tr><td class="cmd-name">Shell, Zsh</td><td>The part of the terminal that reads what you type. <b>Zsh</b> is the one Macs use. Nothing to choose or configure.</td></tr>
       <tr><td class="cmd-name">Kanban</td><td>Cards in columns: waiting, doing, done. You drag a card across as the work moves. That is the board.</td></tr>
     </table></div>
   </section>
@@ -533,6 +537,15 @@
     <p class="body">First, install the two free apps this needs: <b>Claude Code</b> and <b><a href="https://obsidian.md" target="_blank" rel="noopener">Obsidian</a></b>. Downloading Obsidian from <a href="https://obsidian.md" target="_blank" rel="noopener">obsidian.md</a> works on both a Mac and a PC.</p>
     <div class="call"><div class="t">On a Windows PC</div>
       <p>The steps below are the same on both systems, with one extra setup on Windows: Claude Code runs inside <b>WSL</b>, a Linux-flavoured terminal that ships with Windows. Open <b>PowerShell</b>, run <code>wsl --install</code> once, restart, then open <b>Ubuntu</b> from the Start menu and do everything there. Your vault can live in <b>OneDrive</b> as usual: it gets found either way.</p></div>
+    <div class="call"><div class="t">One thing that runs in the background</div>
+      <p>adjudant does its filing with <b>Python</b>, which is already on most machines. You never write
+        any and you never see it: it only has to be present, version <b>3.9 or newer</b>. Rather than go
+        looking for it yourself, paste this into Claude Code and let it check.</p>
+      <div class="cmd"><div class="cmd-top"><span class="cmd-where">In Claude Code</span><span class="cmd-does">checks, and tells you how to fix it</span></div>
+        <div class="cmd-line wrap"><code>Do I have Python 3.9 or newer? If not, tell me exactly how to get it on this machine.</code><button class="copy" data-copy="Do I have Python 3.9 or newer? If not, tell me exactly how to get it on this machine.">Copy</button></div></div>
+      <p style="margin-top:14px">On a Mac the answer is usually Apple's own free developer tools, and your
+        computer offers to install them in a window. Inside Ubuntu on Windows it is already there.</p></div>
+
     <p class="hint">Nothing to download for this part, and nothing to sign in to. Each box below has a <b>Copy</b> button. Copy it, then paste it where the label says — your Terminal app, or the Claude Code chat. You don't type the box itself.</p>
     <div class="rail">
       <div class="step"><div class="idx">1</div><h3>Install the plugin</h3>

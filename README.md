@@ -4,8 +4,17 @@ A small **ZenaSoft** kit that gives your projects a memory: **adjudant** — a C
 Code plugin that keeps a vault of notes (sessions, decisions, a handoff, a board)
 for each project — plus an optional terminal **suitcase** of quality-of-life tools.
 
-You don't need to be a terminal person — but you do need two free apps: **Claude Code**
-and **[Obsidian](https://obsidian.md)**, which is where you read and navigate the vault.
+You don't need to be a terminal person. Claude Code runs as a desktop app for Mac and
+Windows as well as in a terminal, and adjudant behaves the same either way.
+
+**What you need**
+
+- **Claude Code**, signed in
+- **[Obsidian](https://obsidian.md)** (free) — where you read and navigate the vault
+- **Python 3.9 or newer** — adjudant uses it behind the scenes. You never write any.
+  Not sure? Ask Claude Code: *"Do I have Python 3.9 or newer? If not, tell me exactly
+  how to get it on this machine."* On a Mac the fix is usually Apple's free developer
+  tools, which your computer offers to install for you.
 
 ## 📖 Read the field guide
 
@@ -13,7 +22,6 @@ and **[Obsidian](https://obsidian.md)**, which is where you read and navigate th
 self-contained, offline visual guide (nothing to install to read it).
 
 - **Download it and double-click** to open in your browser, or
-- clone the repo and open the file locally, or
 - **prefer a PDF?** Grab **[`field-guide.pdf`](field-guide.pdf)** — same guide, opens anywhere, nothing to install.
 
 It's the same guide as this README, just nicer to read — share it with anyone.
@@ -36,10 +44,16 @@ Come back with `/adjudant sitrep` after a break.
 
 ## Optional: the suitcase
 
-A small kit of friendly command-line tools. On a Mac with Homebrew:
+A small kit of terminal tools that make the occasional command-line moment nicer.
+Entirely optional: everything above works without it.
+
+It needs the files on your machine, so download the folder first
+([zip](https://github.com/TomVDH/furtive-follies/archive/refs/heads/master.zip)),
+unzip it, then open a terminal inside it. The field guide walks through that,
+including the drag-the-folder trick for getting the terminal to the right place.
 
 ```bash
-bash onboarding/onboard.sh --check   # dry run — changes nothing
+bash onboarding/onboard.sh --check   # looks and reports, changes nothing
 bash onboarding/onboard.sh           # installs the tools
 ```
 

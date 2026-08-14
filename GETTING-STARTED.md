@@ -34,9 +34,18 @@ between them, and the board come to life. You'll install Obsidian as part of set
 You'll need three things:
 
 1. **Claude Code installed** and working. If you can type `/plugin` inside it, you're set.
+   It runs as a desktop app on Mac and Windows as well as in a terminal; either is fine.
 2. **Obsidian installed** — it's where you read the vault. It's free: [obsidian.md](https://obsidian.md), or `brew install --cask obsidian` on a Mac.
-3. **Nothing else.** The plugin is fetched for you when you run the install
-   command below; there is no repository to clone and no account to set up.
+3. **Python 3.9 or newer.** adjudant uses it behind the scenes to do its filing. You
+   never write any and never see it, it just has to be there. Not sure? Ask Claude Code:
+
+   > Do I have Python 3.9 or newer? If not, tell me exactly how to get it on this machine.
+
+   On a Mac the answer is usually Apple's free developer tools, which your computer
+   offers to install in a window. Inside Ubuntu on Windows it is already there.
+
+Nothing else: the plugin is fetched for you by the install command below, so there is
+no folder to download and no account to set up.
 
 ---
 
