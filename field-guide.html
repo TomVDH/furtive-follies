@@ -142,7 +142,14 @@
   @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
   .d1{animation-delay:.46s}.d2{animation-delay:.56s}.d3{animation-delay:.66s}
   @media (prefers-reduced-motion:reduce){.wipe,.rise{animation:none!important;clip-path:none!important;opacity:1!important;transform:none!important}}
-  @media (max-width:440px){.step{grid-template-columns:minmax(0,1fr)}.idx{margin-bottom:11px}.step h3,.step .note,.step .cmd{grid-column:1}.grid.c2{grid-template-columns:1fr}}
+  @media (max-width:440px){
+    /* single column: EVERY child must be placed in it. A child left in column 2
+       creates an implicit track that takes the width, collapsing the text to 0. */
+    .step{grid-template-columns:minmax(0,1fr)}
+    .idx{margin-bottom:11px}
+    .step.step > *{grid-column:1}
+    .grid.c2{grid-template-columns:1fr}
+  }
 
   /* "you'll need" panel — a quiet, boxed checklist that sits under the lede */
   /* header two-up: what you need, and where you're going */
@@ -325,6 +332,34 @@
     font-weight:600; letter-spacing:.04em; padding:4px 9px; line-height:1.2;
     background:var(--zt-ink); color:var(--zt-bg)}
   .pair-tag.on{background:var(--zt-accent-1); color:var(--zt-accent-ink)}
+
+  /* Touch: fingers are not cursors. On a coarse pointer or a narrow screen the
+     controls grow to a comfortable hit area. Text stays the same size; only the
+     tappable box changes, so nothing reflows on desktop. */
+  /* On a phone the page runs edge to edge, so a wide floating button parks itself
+     on top of the words. Below 560px every variant collapses to one small circle
+     with just an arrow: still easy to hit, no longer covering a paragraph. */
+  @media (max-width:560px){
+    .totop.totop{width:48px; height:48px; min-width:0; min-height:0; padding:0; border-radius:50%;
+      font-size:0; gap:0; right:14px; bottom:14px; transform:none; overflow:hidden}
+    .totop.totop > *{display:none}                 /* variant labels and glyph spans */
+    .totop.v4.v4{transform:rotate(-6deg)}
+    .totop.totop::before{content:"\2191"; font-size:20px; font-family:var(--f-body);
+      font-weight:600; line-height:1; display:block}
+    .totop.totop:hover{transform:none}
+  }
+
+  @media (pointer:coarse), (max-width:900px){
+    .copy{min-height:44px; padding:12px 16px}
+    .toc-list li{margin-top:2px}
+    .toc-list a{display:block; padding:11px 0; line-height:1.35}
+    .checklist li{gap:6px 11px}
+    .checklist .lnk{display:inline-block; padding:9px 0}
+    details.tech > summary{padding:19px 18px}
+    .totop{min-width:50px; min-height:50px}
+    .pq .cx{padding:9px 11px}
+    figure.shot figcaption{margin-top:11px}
+  }
 
   /* print / PDF */
   @media print{
