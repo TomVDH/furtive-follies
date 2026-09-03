@@ -1,7 +1,7 @@
 ---
 name: adjudant
 description: Operate an Obsidian vault from a code project. `/adjudant {connect|status|clean|dream|board}` — connect onboards a project and asks where it lives; status reports where you are, what is wrong, and what is stale; clean removes what the vault does not need; dream reads the prose and reports what only judgement finds; board runs a self-hosted kanban. Also fires whenever decisions, sessions, or notes are written into a linked vault.
-version: 1.0.0
+version: 2.0.0
 user-invocable: true
 argument-hint: "[connect|status|clean|dream|board] [args]"
 license: MIT
