@@ -64,7 +64,9 @@ a:focus-visible,button:focus-visible{outline:3px solid var(--focus); outline-off
    flip-book cadence — stepped, not silk. The only animation on the page. */
 header{padding:var(--s-xl) 0 0}
 .mast{width:min(440px,80vw)}
-.mast img{width:100%; display:block; background:transparent; image-rendering:pixelated;
+/* height:auto or the width/height ATTRIBUTES pin the box: the logo is
+   1300x280 and rendered 440x280, stretched three times over. */
+.mast img{width:100%; height:auto; display:block; background:transparent; image-rendering:pixelated;
   animation:logoWipe .5s steps(12) .1s both}
 .mast .sub{margin:10px 0 0; text-align:right; font-family:var(--f-head);
   font-size:19px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
