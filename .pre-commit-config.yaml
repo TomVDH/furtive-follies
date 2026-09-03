@@ -1,0 +1,15 @@
+repos:
+  - repo: local
+    hooks:
+      - id: adjudant-validate
+        name: Adjudant — validate vault standards & template coherence
+        entry: python3 adjudant/scripts/validate.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: adjudant-tests
+        name: Adjudant — unit tests
+        entry: python3 -m unittest discover -s adjudant/scripts -p "test_*.py"
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
