@@ -85,7 +85,7 @@ def _looks_like_a_path(token: str) -> bool:
         return False
     # A command is not a path. `go test -- x/y.sh` and `bash x/y.sh` both end
     # in something path-shaped and can never resolve. But a real path may
-    # contain spaces -- this very repository lives under "ZenaTech CC Space" --
+    # contain spaces -- this plugin is developed in a path that contains one --
     # so a space is allowed only behind an explicit path prefix. A command
     # begins with its program name; a path with spaces is written absolute.
     if any(c.isspace() for c in t) and not t.startswith(("/", "~/", "./", "../")):

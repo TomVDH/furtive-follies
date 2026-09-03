@@ -107,7 +107,8 @@ def bump(plugin: str, version: str, root: Path = ROOT) -> list[str]:
         (plugin_dir / "scripts" / "command-metadata.json", _set_json_version),
     ]
     # Every skill's SKILL.md with a frontmatter `version:` — not just the one
-    # named after the plugin (cabinet-of-imd's skill dir is `crew-roster`).
+    # named after the plugin: a plugin's skill directory may carry a
+    # different name than the plugin itself.
     targets.extend(
         (skill_md, _set_skill_version)
         for skill_md in sorted((plugin_dir / "skills").glob("*/SKILL.md"))

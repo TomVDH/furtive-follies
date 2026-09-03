@@ -258,7 +258,7 @@ class TestNamesSomethingThatIsNotThere(unittest.TestCase):
                              "a project reported a lie on the day it was created")
 
     def test_the_repo_verdict_does_not_depend_on_where_you_ran_it(self):
-        # `TomVDH/toolshed` is a plausible answer to "path or url" and is not
+        # `acme/toolkit` is a plausible answer to "path or url" and is not
         # a claim about this disk. Statting it resolves against the shell's
         # cwd, so the same brief was clean from one directory and wrong-now
         # from another. Only an absolute path is settleable.

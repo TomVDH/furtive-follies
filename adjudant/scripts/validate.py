@@ -29,8 +29,9 @@ Validators:
   23. advisor-wiring              : the advisor's contract doc, SessionStart banner, and AGENTS.md marker stay wired
   24. place-zone-parity           : _place's lifecycle folder set matches _vault_walk.PROJECT_ZONES
   25. standards-structure-parity  : reference/vault-standards.md names every folder in KIND_FOLDER and PROJECT_ZONES
+  26. readme-counts-are-true   : README's Facts table matches the tree it describes
 
-25 validators total.
+26 validators total.
 """
 
 import ast
@@ -999,6 +1000,69 @@ def validate_standards_structure_parity(r: Result) -> None:
     r.add_pass(name)
 
 
+
+def validate_readme_counts_are_true(r: Result) -> None:
+    """26. readme-counts-are-true — the Facts table matches the tree.
+
+    Three of its four numbers were wrong at once, byte-identical in both
+    repos, which is how you know the line was copied rather than rendered:
+    it claimed 24 validators against a real 25, 16 templates against 20, and
+    1358 tests against 1460. validate.py's own trailer was right the whole
+    time, because a test watches it. This is that test, for the file a reader
+    actually opens.
+
+    The test count is deliberately NOT stated in README and NOT checked here.
+    It moves on almost every commit, so a validator on it would fail
+    constantly and be papered over; the command beside it prints the truth.
+    """
+    name = "readme-counts-are-true"
+    readme = ROOT / "README.md"
+    try:
+        text = readme.read_text()
+    except OSError as e:
+        r.add_fail(name, f"README.md unreadable: {e}")
+        return
+
+    problems: list[str] = []
+
+    m = re.search(r"(\d+) validators, run on pre-commit", text)
+    real_validators = len(re.findall(r"^\s*\d+\.\s+[a-z0-9-]+", sys.modules[__name__].__doc__ or "", re.M))
+    if m is None:
+        problems.append("no validator count stated")
+    elif int(m.group(1)) != real_validators:
+        problems.append(f"validators: README {m.group(1)}, real {real_validators}")
+
+    m = re.search(r"\| Templates \| (\d+) file-type scaffolds", text)
+    tpl_dir = ROOT / "skills" / "adjudant" / "templates"
+    real_templates = len(sorted(tpl_dir.glob("*.md"))) if tpl_dir.is_dir() else 0
+    if m is None:
+        problems.append("no template count stated")
+    elif int(m.group(1)) != real_templates:
+        problems.append(f"templates: README {m.group(1)}, real {real_templates}")
+
+    m = re.search(r"\| Hooks \| (\d+) entries across (\d+) events", text)
+    try:
+        hooks = json.loads((ROOT / "hooks" / "hooks.json").read_text())
+        events = hooks.get("hooks", hooks)
+        real_entries = sum(len(v) if isinstance(v, list) else 1 for v in events.values())
+        real_events = len(events)
+    except (OSError, ValueError, AttributeError):
+        real_entries = real_events = -1
+    if m is None:
+        problems.append("no hook count stated")
+    elif real_entries >= 0 and (int(m.group(1)), int(m.group(2))) != (real_entries, real_events):
+        problems.append(f"hooks: README {m.group(1)}/{m.group(2)}, "
+                        f"real {real_entries}/{real_events}")
+
+    # A number that moves every commit does not belong in a hand-written doc.
+    if re.search(r"\| Tests \| \d", text):
+        problems.append("a hardcoded test count is back; state the command, not the number")
+
+    if problems:
+        r.add_fail(name, "; ".join(problems))
+        return
+    r.add_pass(name)
+
 def main() -> int:
     print(f"adjudant validators — running from {ROOT}")
     r = Result()
@@ -1027,6 +1091,7 @@ def main() -> int:
     validate_advisor_wiring(r)
     validate_place_zone_parity(r)
     validate_standards_structure_parity(r)
+    validate_readme_counts_are_true(r)
     return r.report()
 
 

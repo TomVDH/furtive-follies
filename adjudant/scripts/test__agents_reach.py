@@ -163,8 +163,9 @@ class TestPrecisionBeatsRecall(unittest.TestCase):
         return None
 
     def test_prose_with_a_slash_is_not_a_path(self):
-        # Every one of these is real prose from this repo's AGENTS.md.
-        text = ("The `TomVDH/toolshed` repo. A vault `editor/writer`. "
+        # Every one of these has the shape of real AGENTS.md prose: two
+        # English words joined by a slash, which is not a path.
+        text = ("The `acme/toolkit` repo. A vault `editor/writer`. "
                 "A `Crew/persona` layer. Direct `push/PR` is not used.\n")
         self.assertEqual(named_paths(text), [],
                          "a slash between two English words is not a path")
@@ -275,11 +276,11 @@ class TestPrecisionBeatsRecall(unittest.TestCase):
             self.assertEqual(agents_reach(root)["missing"], [])
 
     def test_a_path_containing_spaces_is_still_a_path(self):
-        # This repository lives under "ZenaTech CC Space". Rejecting every
-        # token with a space to kill shell commands would have blinded the
-        # check to its own home.
+        # This plugin is developed under a path containing a space, so
+        # rejecting every token with a space to kill shell commands would
+        # have blinded the check to its own home.
         import _agents_reach as ar
-        self.assertTrue(ar._looks_like_a_path("~/Docs/ZenaTech CC Space/a.md"))
+        self.assertTrue(ar._looks_like_a_path("~/Docs/Cloud Storage/a.md"))
         self.assertFalse(ar._looks_like_a_path("npm test -- auth.spec.ts"))
 
     def test_a_file_url_is_not_a_path(self):

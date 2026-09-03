@@ -184,7 +184,7 @@ def _is_a_claim_about_this_disk(value: str) -> bool:
     An elided path (`~/…/Acme - Web`) is a person shortening a real
     one. And a value that is not absolute after `~` expansion is measured
     against whatever directory the command ran from, which made the same
-    brief clean from one shell and wrong from the next; `TomVDH/toolshed` is
+    brief clean from one shell and wrong from the next; `acme/toolkit` is
     a perfectly good answer to "path or url" and names no directory here.
     """
     if value.startswith("{") and value.endswith("}"):

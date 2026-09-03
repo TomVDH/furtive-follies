@@ -112,7 +112,7 @@ class TestBump(unittest.TestCase):
 class TestSkillMdCoverage(unittest.TestCase):
 
     def test_bumps_skill_dir_not_named_after_plugin(self):
-        # cabinet-of-imd's skill dir is crew-roster — the old hard-coded
+        # a plugin whose skill directory is named differently from the
         # skills/<plugin>/SKILL.md path silently missed it.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
