@@ -90,6 +90,28 @@ except Exception:
     fi
   fi
 
+  # --- 0. Drift canary, before anything about a vault ---
+  #
+  # One rare word, stated HERE and nowhere else, printed at the end of every
+  # reply and checked by the Stop hook. A model that stops honouring a one-word
+  # instruction it was given minutes ago has stopped honouring instructions
+  # generally, and the rest of the session is worth less. The per-turn hook
+  # reports a lapse but never restates the word: a re-assertion would keep the
+  # model printing it and measure nothing.
+  #
+  # This runs FIRST, on purpose. It used to sit inside the vault section, after
+  # the breadcrumb check below, so a project with no vault linked got no word
+  # and no check. That is backwards: the canary measures the model, not the
+  # vault, and an unconfigured session is where drift is least likely to be
+  # noticed by anything else.
+  local canary_word=""
+  canary_word=$(canary_start "$session_id") || true
+  if [ -n "${canary_word:-}" ]; then
+    printf -- '## Adjudant\n\n'
+    printf -- '- Session canary: end every message with `%s` on its own line. It is a drift check, so do not explain it or mention it otherwise.\n' "$canary_word"
+    CANARY_HEADER_PRINTED=1
+  fi
+
   # --- 1. Read breadcrumb ---
   local breadcrumb="$project_dir/.claude/adjudant"
   # (zone_project_dir is defined above main; mirrors _vault_walk.find_project_dir)
@@ -152,7 +174,7 @@ print(v or "")' "$CLAUDE_PLUGIN_ROOT/scripts" "$project_dir" 2>/dev/null || true
   rel_project="${vault_project#"$vault_path"/}"
 
   # --- 2. Inject context block ---
-  printf '## Adjudant\n\n'
+  [ "${CANARY_HEADER_PRINTED:-0}" = "1" ] || printf '## Adjudant\n\n'
 
   # Voice first: it governs everything printed after it, and everything said
   # for the rest of the session. The validators and the write gate only reach
@@ -188,18 +210,6 @@ print(v or "")' "$CLAUDE_PLUGIN_ROOT/scripts" "$project_dir" 2>/dev/null || true
       ;;
     *) : ;;
   esac
-
-  # Drift canary. One rare word, stated HERE and nowhere else, printed at the
-  # end of every reply and checked by the Stop hook. A model that stops
-  # honouring a one-word instruction it was given minutes ago has stopped
-  # honouring instructions generally, and the rest of the session is worth
-  # less. The per-turn hook reports a lapse but never restates the word: a
-  # re-assertion would keep the model printing it and measure nothing.
-  local canary_word=""
-  canary_word=$(canary_start "$session_id") || true
-  if [ -n "${canary_word:-}" ]; then
-    printf -- '- Session canary: end every message with `%s` on its own line. It is a drift check, so do not explain it or mention it otherwise.\n' "$canary_word"
-  fi
 
   printf -- '- Vault: `%s` (linked to project `%s`)\n' "$(basename "$vault_path")" "$slug"
 

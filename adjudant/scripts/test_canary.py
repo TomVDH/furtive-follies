@@ -118,6 +118,13 @@ class TestCanary(unittest.TestCase):
 
 class TestTheWordIsStatedOnce(unittest.TestCase):
 
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.home = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
     def test_the_per_turn_hook_never_names_the_word(self):
         # The rule the whole design rests on. A re-assertion keeps the model
         # printing the word and the canary measures nothing.
@@ -125,10 +132,61 @@ class TestTheWordIsStatedOnce(unittest.TestCase):
         self.assertNotIn("CANARY_WORDS", src)
         self.assertNotIn("canary word", src.lower())
 
-    def test_session_start_emits_the_word_once(self):
-        src = (HOOKS / "session-start.sh").read_text()
-        self.assertEqual(src.count('"$canary_word"'), 1,
-                         "the word reaches the context block more than once")
+    def _start(self, project_dir: Path, sid: str) -> str:
+        env = dict(os.environ)
+        env["TMPDIR"] = str(self.home)
+        env["CLAUDE_PROJECT_DIR"] = str(project_dir)
+        env.pop("OB_VAULT", None)
+        return subprocess.run(
+            ["bash", str(HOOKS / "session-start.sh")], env=env,
+            input=json.dumps({"session_id": sid, "source": "startup"}),
+            capture_output=True, text=True, timeout=30).stdout
+
+    def test_an_unlinked_project_still_gets_a_canary(self):
+        # The bug this replaces: the canary was armed AFTER the breadcrumb
+        # check, so a project with no vault linked got no word, no banner and
+        # no drift check. The canary measures the MODEL, not the vault, and an
+        # unconfigured session is where drift is least likely to be caught by
+        # anything else.
+        #
+        # The old guard here read session-start.sh and counted a substring. It
+        # passed throughout, because source text cannot tell you which branch
+        # runs.
+        bare = self.home / "unlinked"
+        (bare / ".claude").mkdir(parents=True)
+        out = self._start(bare, "unlinked-1")
+        self.assertIn("Session canary:", out,
+                      "a project with no vault got no drift check")
+        armed = list(self.home.glob("adjudant-canary-*.json"))
+        self.assertEqual(len(armed), 1, "no canary state was written")
+
+    def test_the_word_in_the_banner_is_the_word_on_disk(self):
+        import re
+        bare = self.home / "p2"
+        (bare / ".claude").mkdir(parents=True)
+        out = self._start(bare, "match-1")
+        m = re.search(r"end every message with `([A-Z]+)`", out)
+        self.assertIsNotNone(m, f"no canary line in: {out[:200]!r}")
+        state = json.loads(
+            (self.home / "adjudant-canary-match-1.json").read_text())
+        self.assertEqual(m.group(1), state["word"])
+
+    def test_the_banner_header_appears_once(self):
+        # The canary opens the block now, and the vault section has its own
+        # header. A linked project must not get two.
+        bare = self.home / "p3"
+        (bare / ".claude").mkdir(parents=True)
+        self.assertEqual(self._start(bare, "hdr-1").count("## Adjudant"), 1)
+
+    def test_a_resume_keeps_the_same_word(self):
+        bare = self.home / "p4"
+        (bare / ".claude").mkdir(parents=True)
+        first = self._start(bare, "resume-1")
+        second = self._start(bare, "resume-1")
+        import re
+        w1 = re.search(r"with `([A-Z]+)`", first).group(1)
+        w2 = re.search(r"with `([A-Z]+)`", second).group(1)
+        self.assertEqual(w1, w2, "a resume re-rolled the word")
 
 
 if __name__ == "__main__":
