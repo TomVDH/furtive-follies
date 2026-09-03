@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Report whether field-guide.html still names the verbs adjudant ships.
 
-The guide is one self-contained page carrying eleven embedded WebP screenshots,
-a PNG and an SVG: 1.4 MB of HTML and a 5.7 MB PDF beside it. Regenerating it
+The guide is one self-contained page carrying six embedded WebP screenshots
+and a PNG: 0.9 MB of HTML and a 3.3 MB PDF beside it. Regenerating it
 for a one-word change would push megabytes of near-identical binary into
 history, and the screenshots are shot by hand. So it is regenerated at a
 RELEASE BOUNDARY only, and this script is how you learn the boundary arrived.
@@ -26,11 +26,18 @@ from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# <div class="verb"><code>connect</code>...
-VERB_CARD_RE = re.compile(r'<div class="verb"><code>([a-z-]+)</code>')
-# <h4>The adjudant has seven <span ...>verbs</span></h4> — the number and the
-# word are separated by a styled span, so a plain "seven verbs" finds nothing.
-COUNT_RE = re.compile(r'has\s+([a-z]+)\s*<span[^>]*>\s*verbs\s*</span>', re.I)
+# The guide marks its verb region. Everything named in a <code> inside it is a
+# verb the guide teaches.
+#
+# This replaced a regex for one visual shape, `<div class="verb"><code>x</code>`.
+# That asserted the MARKUP, not the fact the checker exists to protect, so a
+# redesign that still listed all five verbs correctly reported five missing
+# cards. A marker survives a restyle; a class name does not.
+VERB_REGION_RE = re.compile(
+    r'<!--\s*VERBS:GUIDE:START.*?-->(.*?)<!--\s*VERBS:GUIDE:END\s*-->', re.S)
+VERB_NAME_RE = re.compile(r'<code>([a-z][a-z-]*)</code>')
+# "The five verbs." — the spelled-out count, wherever the guide states it.
+COUNT_RE = re.compile(r'\b(?:the\s+)?([a-z]+)\s+verbs\b', re.I)
 
 NUMBER_WORDS = (
     "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
@@ -39,7 +46,19 @@ NUMBER_WORDS = (
 
 
 def baked_verbs(html: str) -> list[str]:
-    return VERB_CARD_RE.findall(html)
+    """Verb names the guide teaches, read from its marked region.
+
+    An unmarked guide returns nothing, and `report` says so plainly rather
+    than claiming every verb is missing.
+    """
+    region = VERB_REGION_RE.search(html)
+    if region is None:
+        return []
+    seen: list[str] = []
+    for name in VERB_NAME_RE.findall(region.group(1)):
+        if name not in seen:
+            seen.append(name)
+    return seen
 
 
 def baked_count_word(html: str) -> Optional[str]:
@@ -60,6 +79,9 @@ def report(root: Path = REPO_ROOT) -> list[str]:
         return [f"{guide.name} is missing"]
     html = guide.read_text(errors="replace")
     shipped = shipped_verbs(root)
+    if VERB_REGION_RE.search(html) is None:
+        return ["the guide carries no VERBS:GUIDE region; the checker cannot "
+                "read its verbs. Wrap the verb list in the marker comments."]
     baked = baked_verbs(html)
     lines: list[str] = []
     for name in baked:

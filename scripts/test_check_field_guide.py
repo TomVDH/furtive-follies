@@ -1,8 +1,13 @@
 """Tests for scripts/check_field_guide.py.
 
-The field guide is 1.4 MB of embedded screenshots and it bakes the verb list
-into markup. It is regenerated at a release boundary, never per change, so this
-is a reporter and not a gate: it tells you the boundary has arrived.
+The field guide bakes the verb list into markup and is regenerated at a
+release boundary, never per change. So this is a reporter and not a gate: it
+tells you the boundary has arrived.
+
+The guide marks its verb region with a comment. The checker used to match one
+visual shape instead, `<div class="verb">`, which meant a restyle that still
+listed every verb correctly reported every verb missing. These tests use the
+marker, because the marker is the contract.
 """
 
 import sys
@@ -15,23 +20,35 @@ import check_field_guide as cfg
 
 REPO = Path(__file__).resolve().parent.parent
 
-SAMPLE = """<h4>The adjudant has seven <span style="color:var(--zt-accent-1)">verbs</span></h4>
-<div class="verbs">
-  <div class="verb"><code>connect</code><span>Link a project to its vault</span></div>
-  <div class="verb"><code>sync</code><span>Push current state to the vault</span></div>
-  <div class="verb"><code>board</code><span>Drag-and-drop kanban</span></div>
-</div>
+SAMPLE = """<h2>The seven verbs.</h2>
+<!-- VERBS:GUIDE:START -->
+<table><tbody>
+  <tr><td><code>connect</code></td><td>Link a project to its vault</td></tr>
+  <tr><td><code>sync</code></td><td>Push current state to the vault</td></tr>
+  <tr><td><code>board</code></td><td>Drag-and-drop kanban</td></tr>
+</tbody></table>
+<!-- VERBS:GUIDE:END -->
+<p>Elsewhere the guide writes <code>status</code>, outside the region.</p>
 """
 
 
 class TestParsing(unittest.TestCase):
 
-    def test_reads_the_baked_verb_cards(self):
+    def test_reads_the_verbs_from_the_marked_region(self):
         self.assertEqual(cfg.baked_verbs(SAMPLE), ["connect", "sync", "board"])
 
-    def test_reads_the_baked_count_word_across_the_span(self):
-        # The number and the word "verbs" are separated by a styled span, which
-        # is why a plain "seven verbs" search finds nothing.
+    def test_code_outside_the_region_is_not_a_verb(self):
+        # The guide names verbs in its prose too. Only the region counts, or
+        # every inline mention would read as a card.
+        self.assertNotIn("status", cfg.baked_verbs(SAMPLE))
+
+    def test_the_markup_inside_the_region_does_not_matter(self):
+        # The point of the marker: restyle freely, keep the names in <code>.
+        divs = SAMPLE.replace("<table><tbody>", "<div>").replace(
+            "</tbody></table>", "</div>")
+        self.assertEqual(cfg.baked_verbs(divs), ["connect", "sync", "board"])
+
+    def test_reads_the_spelled_out_count(self):
         self.assertEqual(cfg.baked_count_word(SAMPLE), "seven")
 
     def test_absent_markup_reports_none_rather_than_raising(self):
@@ -62,8 +79,22 @@ class TestReport(unittest.TestCase):
                 '{"name": "connect"}, {"name": "sync"}, {"name": "board"}],'
                 ' "content_references": []}\n')
             (root / "field-guide.html").write_text(
-                SAMPLE.replace("has seven", "has three"))
+                SAMPLE.replace("The seven verbs", "The three verbs"))
             self.assertEqual(cfg.report(root), [])
+
+    def test_a_guide_with_no_region_says_so_plainly(self):
+        # It must not report every verb missing when the truth is that it
+        # cannot read the guide at all.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "adjudant" / "scripts").mkdir(parents=True)
+            (root / "adjudant" / "scripts" / "command-metadata.json").write_text(
+                '{"name": "adjudant", "version": "1.0.0", "verbs": ['
+                '{"name": "connect"}], "content_references": []}\n')
+            (root / "field-guide.html").write_text("<p>a guide with no marker</p>")
+            lines = cfg.report(root)
+            self.assertEqual(len(lines), 1)
+            self.assertIn("no VERBS:GUIDE region", lines[0])
 
     def test_the_shipped_guide_is_checked_and_the_result_is_reported(self):
         # After task 9 the guide is five verbs behind. The test records that
