@@ -1,4 +1,6 @@
 """Tests for repo_tidy symlink repair (preview -> apply, idempotent)."""
+import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -7,6 +9,26 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import repo_tidy as rt
 from test_repo_walk import _make_plugin
+
+_MODULE_TMP = None
+_OLD_TMPDIR = None
+
+
+def setUpModule():
+    """Pin $TMPDIR: repo-tidy scratch lives there now, and backups persist."""
+    global _MODULE_TMP, _OLD_TMPDIR
+    _OLD_TMPDIR = os.environ.get("TMPDIR")
+    _MODULE_TMP = tempfile.mkdtemp(prefix="adjudant-test-repo-tidy-")
+    os.environ["TMPDIR"] = _MODULE_TMP
+
+
+def tearDownModule():
+    if _OLD_TMPDIR is None:
+        os.environ.pop("TMPDIR", None)
+    else:
+        os.environ["TMPDIR"] = _OLD_TMPDIR
+    if _MODULE_TMP:
+        shutil.rmtree(_MODULE_TMP, ignore_errors=True)
 
 
 class TestRepoTidy(unittest.TestCase):
@@ -50,7 +72,7 @@ class TestRepoTidy(unittest.TestCase):
             self.assertTrue(link.is_symlink())
             self.assertEqual(link.resolve(), (root / "alpha" / "skills" / "alpha").resolve())
             self.assertTrue(backup.is_dir())
-            self.assertFalse((root / rt.PREVIEW_DIR_NAME).exists())  # preview consumed
+            self.assertFalse(rt.scratch_dir(root, "repo-tidy-preview").exists())  # consumed
 
     def test_idempotent_second_detect_empty_after_apply(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -124,6 +146,39 @@ class TestRepoTidyDestructiveGuards(unittest.TestCase):
             self.assertEqual(
                 sorted(p.name for p in backup.iterdir()), ["SKIPPED.txt"],
                 "a refused link must leave no backup record behind")
+
+
+class TestRepoScratchIsOutsideTheRepo(unittest.TestCase):
+    """repo-tidy wrote its preview and its backup into the repo it was
+    repairing. Since v3 both live under $TMPDIR."""
+
+    def test_preview_and_backup_land_outside(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            _make_plugin(root, "alpha", "1.0.0", skills=True, adopt=True)
+            (root / "alpha" / ".gemini" / "skills" / "alpha").unlink()  # missing
+            repairs = rt.detect_repairs(root)
+            self.assertEqual(len(repairs), 1)
+            rt.write_preview(root, repairs)
+            self.assertEqual(list(root.rglob(".adjudant-repo-tidy-*")), [])
+            backup = rt.apply_preview(root)
+            self.assertEqual(list(root.rglob(".adjudant-repo-tidy-*")), [])
+            self.assertNotIn(root, backup.parents)
+            self.assertTrue(any(backup.iterdir()), "the backup record still gets written")
+
+    def test_backups_rotate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir()
+            _make_plugin(root, "alpha", "1.0.0", skills=True, adopt=True)
+            for _ in range(rt.BACKUP_KEEP + 3):
+                (root / "alpha" / ".gemini" / "skills" / "alpha").unlink()
+                rt.write_preview(root, rt.detect_repairs(root))
+                rt.apply_preview(root)
+            parent = rt.scratch_dir(root, "repo-tidy-backup")
+            kept = [d for d in parent.iterdir() if d.is_dir()]
+            self.assertLessEqual(len(kept), rt.BACKUP_KEEP)
 
 
 if __name__ == "__main__":

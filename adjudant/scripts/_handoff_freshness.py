@@ -2,7 +2,7 @@
 """Shared handoff-freshness primitives for adjudant.
 
 Pure functions (stdlib only, read-only) used by BOTH the PreCompact hook
-(`hooks/scripts/precompact.py`) and the `/adjudant sync` verb (`sync.py`) so
+(`hooks/scripts/precompact.py`) and the `/adjudant status` verb (`status.py`) so
 the freshness header they write stays identical and can't drift.
 
 Freshness is computed from REAL activity (latest `.remember/today-*.md`
@@ -15,6 +15,8 @@ import datetime as _dt
 import re
 from pathlib import Path
 from typing import Optional
+
+from _render import frontmatter
 
 
 # Traffic-light thresholds, in hours
@@ -241,19 +243,60 @@ def compute_freshness(
 
 
 # ============================================================
-# The one handoff layout — shared by /adjudant sync and the hooks
+# The handoff's source — one picker, one probe
 # ============================================================
 
 
-HANDOFF_FRONTMATTER_TEMPLATE = (
-    "---\n"
-    "type: handoff\n"
-    "updated: {today}\n"
-    "source: {source_stem}\n"
-    "tags:\n"
-    "  - handoff\n"
-    "---\n\n"
-)
+# The handoff body's source, when the remember plugin is installed. This lived
+# in two near-identical copies (the sync verb and precompact.py) that had already
+# drifted; this module exists to hold exactly this kind of shared primitive.
+_REMEMBER_CANDIDATES = ("remember.md", "now.md")
+
+
+def find_remember_source(project_dir: Path) -> Optional[Path]:
+    """`.remember/remember.md`, falling back to `.remember/now.md`. None when
+    the remember plugin is not installed for this project."""
+    base = project_dir / ".remember"
+    for name in _REMEMBER_CANDIDATES:
+        candidate = base / name
+        try:
+            if candidate.is_file():
+                return candidate
+        except OSError:
+            continue
+    return None
+
+
+def remember_status(project_dir: Path) -> dict:
+    """Whether the remember plugin is usable here, for `check` to report.
+
+    Adjudant read `.remember/` as the handoff's source and said nothing when it
+    was missing or empty: 7 of 12 handoffs in the real vault were a banner and
+    an empty body, because an empty source mirrored to an empty handoff. A
+    dependency that fails silently is worse than one that is absent.
+    """
+    source = find_remember_source(project_dir)
+    if source is None:
+        return {"present": False, "source": None, "empty": True}
+    try:
+        empty = not source.read_text(errors="replace").strip()
+    except OSError:
+        empty = True
+    return {"present": True, "source": str(source), "empty": empty}
+
+
+# ============================================================
+# The one handoff layout — shared by /adjudant status and the hooks
+# ============================================================
+
+
+# Derived from templates/handoff.md, not declared here. The block this used
+# to hardcode carried `source` and a `handoff` tag and omitted `created`,
+# three disagreements with the template nothing ever reconciled, because
+# nothing read templates/handoff.md at all. `{today}` survives the render as
+# a str.format field, so the two call sites keep their `.format(...)` call.
+HANDOFF_FRONTMATTER_TEMPLATE = frontmatter(
+    "handoff", {"created": "{today}", "updated": "{today}"}) + "\n"
 
 
 def preserved_frontmatter(handoff_path: Path, today: str) -> Optional[str]:

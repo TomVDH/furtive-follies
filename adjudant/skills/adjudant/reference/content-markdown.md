@@ -1,207 +1,57 @@
-> **`adjudant` vault?** Frontmatter must follow the canonical schema in `adjudant:vault-standards (reference/vault-standards.md)` (`#{type}` tags, ISO dates, omit-don't-null). Project membership is the folder path: never write a `project:` field, no type's `FIELD_SCHEMA` has a slot for it and `tidy` strips it. A `note` requires `type:`, `created:`, `updated:` and `tags:`; `title:` and `cssclasses:` are legal options, `aliases:` is not. `aliases:` belongs to a project's `brief.md`, and `tidy` strips it from a note. For diagrams in fenced `mermaid` blocks, defer to `adjudant:mermaid`. The generic property guidance below applies only when no plugin schema is in force.
+# Markdown elements
 
-# Obsidian Flavored Markdown Skill
+One rule per element, applied to every template and every vault write.
+Obsidian's own syntax (embeds, callout folding, block references) still works
+exactly as Obsidian defines it; nothing here overrides Obsidian, it narrows
+which parts of it adjudant uses.
 
-Create and edit valid Obsidian Flavored Markdown. Obsidian extends CommonMark and GFM with wikilinks, embeds, callouts, properties, comments, and other syntax. This skill covers only Obsidian-specific extensions -- standard Markdown (headings, bold, italic, lists, quotes, code blocks, tables) is assumed knowledge.
+## Headings
 
-## When to Use
-- Use when writing or editing Markdown notes intended for Obsidian.
-- Use when the task involves wikilinks, embeds, callouts, frontmatter properties, or Obsidian-specific syntax.
-- Use when the user wants notes that render correctly inside an Obsidian vault.
+One H1, the title, and only in documents that need one. H2 for sections. H3
+sparingly. Never H4 or deeper. No decorative punctuation in headings.
 
-## Workflow: Creating an Obsidian Note
+## Lists
 
-1. **Add frontmatter** with properties at the top of the file. The generic Obsidian defaults are `title`, `tags` and `aliases`; in an adjudant vault the legal keys are fixed per `type:` by `FIELD_SCHEMA`, and `aliases:` is not one of a note's. See [the official Properties docs](https://help.obsidian.md/properties) for all property types.
-2. **Write content** using standard Markdown for structure, plus Obsidian-specific syntax below.
-3. **Link related notes** using wikilinks (`[[Note]]`) for internal vault connections, or standard Markdown links for external URLs.
-4. **Embed content** from other notes, images, or PDFs using the `![[embed]]` syntax. See [the official Embeds docs](https://help.obsidian.md/embeds) for all embed types.
-5. **Add callouts** for highlighted information using `> [!type]` syntax. See [the official Callouts docs](https://help.obsidian.md/callouts) for all callout types.
-6. **Verify** the note renders correctly in Obsidian's reading view.
+`-` for bullets, `1.` for ordered. Never `*` or `+`.
 
-> When choosing between wikilinks and Markdown links: use `[[wikilinks]]` for notes within the vault (Obsidian tracks renames automatically) and plain Markdown links for external URLs only.
+## Emphasis
 
-## Internal Links (Wikilinks)
+`*italic*` and `**bold**`. Never `_underscore_` forms. Bold the first words of
+a bullet, never a whole sentence.
 
-```markdown
-[[Note Name]]                          Link to note
-[[Note Name|Display Text]]             Custom display text
-[[Note Name#Heading]]                  Link to heading
-[[Note Name#^block-id]]                Link to block
-[[#Heading in same note]]              Same-note heading link
-```
+## Code
 
-Define a block ID by appending `^block-id` to any paragraph:
+Fenced with a language tag, always. Never four-space indentation. This alone
+removes the class of bug where an unfenced `[[ -z "$VAR" ]]` became a
+wikilink.
 
-```markdown
-This paragraph can be linked to. ^my-block-id
-```
+## Tables
 
-For lists and quotes, place the block ID on a separate line after the block:
-
-```markdown
-> A quote block
-
-^quote-id
-```
-
-## Embeds
-
-Prefix any wikilink with `!` to embed its content inline:
-
-```markdown
-![[Note Name]]                         Embed full note
-![[Note Name#Heading]]                 Embed section
-![[image.png]]                         Embed image
-![[image.png|300]]                     Embed image with width
-![[document.pdf#page=3]]               Embed PDF page
-```
-
-See [the official Embeds docs](https://help.obsidian.md/embeds) for audio, video, search embeds, and external images.
+For anything with three or more parallel attributes. Escape pipes.
 
 ## Callouts
 
-```markdown
-> [!note]
-> Basic callout.
+`> [!note]` and `> [!warning]` only. Plain `>` is a quotation.
 
-> [!warning] Custom Title
-> Callout with a custom title.
+## Links
 
-> [!faq]- Collapsed by default
-> Foldable callout (- collapsed, + expanded).
-```
+Wikilinks with the project-relative path and a display alias for anything in
+the vault. Markdown links for anything outside it. The exact shape, and the
+refusal on a target that names a lifecycle folder, are in `vault-standards.md`
+section 4.
 
-Common types: `note`, `tip`, `warning`, `info`, `example`, `quote`, `bug`, `danger`, `success`, `failure`, `question`, `abstract`, `todo`.
+## Mermaid
 
-See [the official Callouts docs](https://help.obsidian.md/callouts) for the full list with aliases, nesting, and custom CSS callouts.
+For flow, sequence, and state. Never for a list or a table that would read
+better as one. Diagrams follow `draw`'s generation rules in
+`mermaid-generation-rules.md`.
 
-## Properties (Frontmatter)
+## Emoji
 
-```yaml
----
-title: My Note
-date: 2024-01-15
-tags:
-  - project
-  - active
-aliases:
-  - Alternative Name
-cssclasses:
-  - custom-class
----
-```
+None as semantic markup, with one documented exception: the handoff traffic
+light, which the statusline reads.
 
-Default properties: `tags` (searchable labels), `aliases` (alternative note names for link suggestions), `cssclasses` (CSS classes for styling).
+## Register
 
-In an adjudant vault that block is not a legal `note`: `date:` and `aliases:` sit outside `FIELD_SCHEMA` and `tidy` strips them. The vault shape is `type:`, `created:`, `updated:`, `tags:`, plus optional `title:` and `cssclasses:`.
-
-See [the official Properties docs](https://help.obsidian.md/properties) for all property types, tag syntax rules, and advanced usage.
-
-## Tags
-
-```markdown
-#tag                    Inline tag
-#nested/tag             Nested tag with hierarchy
-```
-
-Tags can contain letters, numbers (not first character), underscores, hyphens, and forward slashes. Tags can also be defined in frontmatter under the `tags` property.
-
-## Comments
-
-```markdown
-This is visible %%but this is hidden%% text.
-
-%%
-This entire block is hidden in reading view.
-%%
-```
-
-## Obsidian-Specific Formatting
-
-```markdown
-==Highlighted text==                   Highlight syntax
-```
-
-## Math (LaTeX)
-
-```markdown
-Inline: $e^{i\pi} + 1 = 0$
-
-Block:
-$$
-\frac{a}{b} = c
-$$
-```
-
-## Diagrams (Mermaid)
-
-````markdown
-```mermaid
-graph TD
-    A[Start] --> B{Decision}
-    B -->|Yes| C[Do this]
-    B -->|No| D[Do that]
-```
-````
-
-To link Mermaid nodes to Obsidian notes, add `class NodeName internal-link;`.
-
-## Footnotes
-
-```markdown
-Text with a footnote[^1].
-
-[^1]: Footnote content.
-
-Inline footnote.^[This is inline.]
-```
-
-## Complete Example
-
-Plain Obsidian, not adjudant: the frontmatter below shows generic properties, and `date:` and `status:` are not legal on a vault `note`. Keep the body syntax, swap the frontmatter for the type's `FIELD_SCHEMA` key set.
-
-````markdown
----
-title: Project Alpha
-date: 2024-01-15
-tags:
-  - project
-  - active
-status: in-progress
----
-
-# Project Alpha
-
-This project aims to [[improve workflow]] using modern techniques.
-
-> [!important] Key Deadline
-> The first milestone is due on ==January 30th==.
-
-## Tasks
-
-- [x] Initial planning
-- [ ] Development phase
-  - [ ] Backend implementation
-  - [ ] Frontend design
-
-## Notes
-
-The algorithm uses $O(n \log n)$ sorting. See [[Algorithm Notes#Sorting]] for details.
-
-![[Architecture Diagram.png|600]]
-
-Reviewed in [[Meeting Notes 2024-01-10#Decisions]].
-````
-
-## References
-
-- [Obsidian Flavored Markdown](https://help.obsidian.md/obsidian-flavored-markdown)
-- [Internal links](https://help.obsidian.md/links)
-- [Embed files](https://help.obsidian.md/embeds)
-- [Callouts](https://help.obsidian.md/callouts)
-- [Properties](https://help.obsidian.md/properties)
-
-## Limitations
-- Use this skill only when the task clearly matches the scope described above.
-- Do not treat the output as a substitute for environment-specific validation, testing, or expert review.
-- Stop and ask for clarification if required inputs, permissions, safety boundaries, or success criteria are missing.
+ASD-STE100 across every write. One instruction per sentence, active voice,
+present tense, one word per meaning, under twenty words.

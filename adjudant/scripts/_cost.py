@@ -11,7 +11,7 @@ Public API:
     est_tokens(n_bytes) -> int
     stat_walk(root, exts=(".md",), skip=DEFAULT_SKIP) -> (files, bytes)
     breadcrumb_int(code_root, key, default) -> int
-    read_threshold(code_root) -> int          # breadcrumb cost_warn_tokens or 10000
+    read_threshold(code_root) -> int          # breadcrumb cost_warn_tokens, else the build profile's
     cost_block(files, n_bytes, threshold) -> dict
     verb_weights() -> dict[str, str]           # verb name -> light|medium|heavy
 """
@@ -22,12 +22,12 @@ import json
 from pathlib import Path
 from typing import Optional
 
+import _profile
 from _vault_walk import DEFAULT_SKIP, parse_breadcrumb
 
-# Token-frugal default: the reduced build asks before pulling more than this
-# many estimated tokens into context (heavy verbs pre-flight on it). Override
-# per project with `cost_warn_tokens:` in `.claude/adjudant`.
-DEFAULT_WARN_TOKENS = 10000
+# One declaration, in scripts/build-profile.json. connect.py used to write
+# the same number as a string into every breadcrumb; the two agreed by luck.
+DEFAULT_WARN_TOKENS = _profile.cost_warn_tokens()
 VALID_WEIGHTS = ("light", "medium", "heavy")
 METADATA_PATH = Path(__file__).resolve().parent / "command-metadata.json"
 

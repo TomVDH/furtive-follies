@@ -2,7 +2,7 @@
 
 A Claude Code auto-memory note is `name` / `description` / `metadata.type`.
 Something flattened `metadata.type` up to a top-level `type:` on 9 of 50 files
-in a real vault, which made adjudant read them as project briefs. The value was
+in one real vault, which made adjudant read them as project briefs. The value was
 PRESERVED by that flattening, so the repair is a mechanical re-nest, not a
 reconstruct-from-content — provided nothing strips `name:`/`description:`
 first.

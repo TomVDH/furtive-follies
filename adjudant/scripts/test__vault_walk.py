@@ -26,10 +26,6 @@ from _vault_walk import (
     resolve_project_from_cwd,
     smart_project_dir,
     VaultUnresolvableError,
-    is_bucket_d_tag,
-    is_bucket_b_migration,
-    BUCKET_A_TYPES,
-    BUCKET_B_MIGRATIONS,
 )
 
 
@@ -300,29 +296,69 @@ class TestWalkProject(unittest.TestCase):
 
 class TestVaultIndex(unittest.TestCase):
 
-    def test_resolves_relative_and_bare(self):
+    def _vault(self, tmp: Path) -> Path:
+        vault = tmp / "v"
+        p = vault / "projects" / "active" / "demo" / "decisions"
+        p.mkdir(parents=True)
+        (p / "2026-08-12-branch-track.md").write_text("# d")
+        (vault / "projects" / "active" / "demo" / "brief.md").write_text("# b")
+        return vault
+
+    def test_the_zone_less_form_resolves(self):
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp)
-            (vault / "projects").mkdir()
-            (vault / "projects" / "x").mkdir()
-            (vault / "projects" / "x" / "brief.md").write_text("# brief")
-            idx = build_vault_index(vault)
-            # Relative path with extension
-            self.assertTrue(resolve_wikilink("projects/x/brief.md", idx))
-            # Without extension
-            self.assertTrue(resolve_wikilink("projects/x/brief", idx))
-            # Bare basename
-            self.assertTrue(resolve_wikilink("brief", idx))
-            # Non-existent
+            idx = build_vault_index(self._vault(Path(tmp)))
+            self.assertTrue(resolve_wikilink(
+                "demo/decisions/2026-08-12-branch-track", idx))
+            self.assertTrue(resolve_wikilink(
+                "demo/decisions/2026-08-12-branch-track.md", idx))
+            self.assertTrue(resolve_wikilink("demo/brief", idx))
+
+    def test_the_full_vault_path_still_resolves(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            idx = build_vault_index(self._vault(Path(tmp)))
+            self.assertTrue(resolve_wikilink(
+                "projects/active/demo/brief", idx))
+            self.assertTrue(resolve_wikilink(
+                "projects/active/demo/brief.md", idx))
+
+    def test_a_bare_stem_no_longer_resolves(self):
+        # Obsidian's default resolution matches any `brief.md` anywhere. In a
+        # vault with 27 projects that is 27 files answering to one name, and
+        # adjudant reported such a link as healthy.
+        with tempfile.TemporaryDirectory() as tmp:
+            idx = build_vault_index(self._vault(Path(tmp)))
+            self.assertFalse(resolve_wikilink("brief", idx))
+            self.assertFalse(resolve_wikilink("brief.md", idx))
+            self.assertFalse(resolve_wikilink("2026-08-12-branch-track", idx))
+
+    def test_a_wrong_project_does_not_resolve(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            idx = build_vault_index(self._vault(Path(tmp)))
+            self.assertFalse(resolve_wikilink("other/brief", idx))
+
+    def test_non_existent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            idx = build_vault_index(self._vault(Path(tmp)))
             self.assertFalse(resolve_wikilink("does/not/exist", idx))
 
-    def test_canvas_indexed(self):
+    def test_canvas_and_base_indexed_by_path(self):
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp)
-            (vault / "art.canvas").write_text("{}")
+            vault = Path(tmp) / "v"
+            (vault / "projects" / "active" / "demo" / "canvases").mkdir(parents=True)
+            (vault / "projects" / "active" / "demo" / "canvases" / "art.canvas").write_text("{}")
             idx = build_vault_index(vault)
-            self.assertTrue(resolve_wikilink("art.canvas", idx))
-            self.assertTrue(resolve_wikilink("art", idx))
+            self.assertTrue(resolve_wikilink("demo/canvases/art.canvas", idx))
+            self.assertTrue(resolve_wikilink("demo/canvases/art", idx))
+            self.assertFalse(resolve_wikilink("art", idx))
+
+    def test_a_vault_root_file_resolves_by_its_own_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "v"
+            vault.mkdir()
+            (vault / "Home.md").write_text("# h")
+            idx = build_vault_index(vault)
+            self.assertTrue(resolve_wikilink("Home", idx))
+            self.assertTrue(resolve_wikilink("Home.md", idx))
 
 
 # ============================================================
@@ -365,50 +401,6 @@ class TestBreadcrumb(unittest.TestCase):
     def test_resolve_vault_env_override(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as vault:
             self.assertEqual(resolve_vault(Path(tmp), env_vault=vault), Path(vault))
-
-
-# ============================================================
-# Schema constants + Bucket D classification
-# ============================================================
-
-
-class TestBucketDClassification(unittest.TestCase):
-
-    def test_ob_prefix_is_bucket_d(self):
-        self.assertTrue(is_bucket_d_tag("ob/doc"))
-        self.assertTrue(is_bucket_d_tag("ob/session"))
-        self.assertTrue(is_bucket_d_tag("ob/project"))
-
-    def test_vague_topicals_dropped(self):
-        for t in ["architecture", "frontend", "moc", "scheduler"]:
-            self.assertTrue(is_bucket_d_tag(t), f"{t} should be Bucket D")
-
-    def test_project_type_tag_dropped(self):
-        self.assertTrue(is_bucket_d_tag("type/coding"))
-        self.assertTrue(is_bucket_d_tag("type/plugin"))
-
-    def test_project_slug_self_tag_dropped(self):
-        self.assertTrue(is_bucket_d_tag("acme-web", project_slug="acme-web"))
-        # slug-variant: "slug/sub"
-        self.assertTrue(is_bucket_d_tag("acme-web/sub", project_slug="acme-web"))
-        # slug-variant: "slug-suffix"
-        self.assertTrue(is_bucket_d_tag("acme-web-thing", project_slug="acme-web"))
-        # unrelated tag with no slug context
-        self.assertFalse(is_bucket_d_tag("project"))  # Bucket A
-
-    def test_bucket_a_passes_through(self):
-        for t in ["decision", "session", "note", "project"]:
-            self.assertFalse(is_bucket_d_tag(t))
-
-    def test_bucket_b_migration_lookup(self):
-        # Bucket B migrations are opt-in and empty by default.
-        self.assertIsNone(is_bucket_b_migration("custom/decision"))
-        self.assertIsNone(is_bucket_b_migration("project"))
-
-    def test_task_type_in_schema(self):
-        # task is a first-class file type; its bare #task tag is Bucket A
-        self.assertIn("task", BUCKET_A_TYPES)
-        self.assertFalse(is_bucket_d_tag("task"))
 
 
 # ============================================================
@@ -476,7 +468,7 @@ class TestSmartProjectDir(unittest.TestCase):
 
     def test_raises_when_breadcrumb_present_but_vault_unresolvable(self):
         # Regression: this used to fall through and return the CODE REPO as the
-        # scan dir, letting write-path verbs (tidy apply) rewrite the repository.
+        # scan dir, letting write-path verbs (clean apply) rewrite the repository.
         with tempfile.TemporaryDirectory() as tmp:
             code = Path(tmp) / "code"; code.mkdir()
             (code / ".claude").mkdir()
@@ -644,7 +636,7 @@ class TestRoundThreeRegressions(unittest.TestCase):
             root = Path(tmp)
             (root / "notes").mkdir()
             (root / "notes" / "real.md").write_text("# real")
-            scratch = root / ".adjudant-tidy-preview" / "files" / "notes"
+            scratch = root / ".adjudant-remise-preview" / "files" / "notes"
             scratch.mkdir(parents=True)
             (scratch / "pending.md").write_text("# pending")
             names = [f.rel_path.name for f in walk_project(root)]
@@ -700,7 +692,7 @@ class TestBreadcrumbSlugIsGatedOnTheVerbPath(unittest.TestCase):
     def _assert_under_projects(self, vault: Path, path: Path) -> None:
         """A real project dir always sits UNDER `{vault}/projects`. Asserting
         that, rather than 'inside the vault', also rejects the `..` slug that
-        resolves to the vault root itself (which tidy apply would rewrite
+        resolves to the vault root itself (which clean apply would rewrite
         wholesale)."""
         projects = (vault / "projects").resolve()
         p = Path(path).resolve()
@@ -750,7 +742,7 @@ class TestBreadcrumbSlugIsGatedOnTheVerbPath(unittest.TestCase):
             self.assertIn("connect", msg)
 
     def test_smart_project_dir_never_hands_a_verb_a_path_outside_the_vault(self):
-        # The shared resolver behind check/tidy/dream/ramasse/sitrep/board.
+        # The shared resolver behind check/clean/dream/sitrep/board.
         for slug in self.HOSTILE:
             with self.subTest(slug=slug), tempfile.TemporaryDirectory() as tmp:
                 code, vault = self._setup(Path(tmp), slug)
@@ -846,7 +838,8 @@ from datetime import date
 
 from _vault_walk import (
     DEFAULT_STALE_DAYS,
-    PROJECT_STATUS_VALUES,
+    LEGACY_ZONES,
+    LEGACY_ZONE_ALIAS,
     PROJECT_ZONES,
     ZONE_FOR_STATUS,
     enumerate_projects_all_zones,
@@ -854,7 +847,7 @@ from _vault_walk import (
     newest_dated_stem,
     resolve_project_from_cwd,
     suggest_status,
-    zone_matches_status,
+    zone_dir,
     zone_of,
 )
 
@@ -872,18 +865,36 @@ def _mk_project(vault: Path, slug: str, zone: str = "", status: str = "active",
     return pdir
 
 
-class TestStatusVocabulary(unittest.TestCase):
+class TestLifecycleFolders(unittest.TestCase):
 
-    def test_locked_values(self):
-        self.assertEqual(PROJECT_STATUS_VALUES,
-                         ("active", "stale", "fridge", "done", "dead", "seed"))
+    def test_four_named_folders(self):
+        self.assertEqual(PROJECT_ZONES,
+                         ("active", "paused", "finished", "archive"))
+        self.assertNotIn("", PROJECT_ZONES,
+                         "the live zone is a named folder now, not the absence of one")
 
-    def test_zone_map_total(self):
-        self.assertEqual(set(ZONE_FOR_STATUS), set(PROJECT_STATUS_VALUES))
-        self.assertEqual(ZONE_FOR_STATUS["fridge"], "_fridge")
-        self.assertEqual(ZONE_FOR_STATUS["done"], "_archive")
-        self.assertEqual(ZONE_FOR_STATUS["dead"], "_archive")
-        self.assertEqual(ZONE_FOR_STATUS["active"], "")
+    def test_legacy_shapes_map_onto_the_four(self):
+        self.assertEqual(LEGACY_ZONES, ("", "_fridge", "_archive"))
+        self.assertEqual(set(LEGACY_ZONE_ALIAS.values()) - set(PROJECT_ZONES), set())
+        self.assertEqual(LEGACY_ZONE_ALIAS[""], "active")
+        self.assertEqual(LEGACY_ZONE_ALIAS["_fridge"], "paused")
+        self.assertEqual(LEGACY_ZONE_ALIAS["_archive"], "archive")
+
+    def test_status_migration_map_lands_in_the_four(self):
+        # The retired project status vocabulary still sits in briefs written
+        # before v3. It is read to SUGGEST a folder during triage, never to
+        # grade one.
+        self.assertEqual(set(ZONE_FOR_STATUS.values()) - set(PROJECT_ZONES), set())
+        self.assertEqual(ZONE_FOR_STATUS["active"], "active")
+        self.assertEqual(ZONE_FOR_STATUS["stale"], "active")
+        self.assertEqual(ZONE_FOR_STATUS["seed"], "active")
+        self.assertEqual(ZONE_FOR_STATUS["fridge"], "paused")
+        self.assertEqual(ZONE_FOR_STATUS["done"], "finished")
+        self.assertEqual(ZONE_FOR_STATUS["dead"], "archive")
+
+    def test_zone_dir(self):
+        self.assertEqual(zone_dir(Path("/v"), "paused"),
+                         Path("/v/projects/paused"))
 
 
 class TestSuggestStatus(unittest.TestCase):
@@ -972,32 +983,53 @@ class TestSuggestStatus(unittest.TestCase):
 
 class TestZones(unittest.TestCase):
 
-    def test_find_project_dir_across_zones(self):
+    def test_find_project_dir_across_the_four(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _mk_project(vault, "alive")
-            _mk_project(vault, "cold", zone="_fridge", status="fridge")
-            _mk_project(vault, "gone", zone="_archive", status="dead")
-            self.assertEqual(zone_of(find_project_dir(vault, "alive")), "")
-            self.assertEqual(zone_of(find_project_dir(vault, "cold")), "_fridge")
-            self.assertEqual(zone_of(find_project_dir(vault, "gone")), "_archive")
+            for zone in ("active", "paused", "finished", "archive"):
+                _mk_project(vault, f"p-{zone}", zone=zone)
+            for zone in ("active", "paused", "finished", "archive"):
+                found = find_project_dir(vault, f"p-{zone}")
+                self.assertEqual(zone_of(found), zone)
             self.assertIsNone(find_project_dir(vault, "nope"))
 
-    def test_zone_matches_status(self):
-        self.assertTrue(zone_matches_status("fridge", "_fridge"))
-        self.assertFalse(zone_matches_status("fridge", ""))
-        self.assertTrue(zone_matches_status("active", ""))
-        self.assertFalse(zone_matches_status("dead", ""))
-        self.assertTrue(zone_matches_status("not-a-status", "_archive"))
-
-    def test_enumerate_all_zones(self):
+    def test_find_project_dir_still_finds_an_unmigrated_project(self):
+        # A vault that has not been triaged yet must keep working: every hook
+        # and every verb resolves through this one function.
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _mk_project(vault, "a")
-            _mk_project(vault, "b", zone="_fridge", status="fridge")
+            _mk_project(vault, "bare", zone="")
+            _mk_project(vault, "cold", zone="_fridge")
+            _mk_project(vault, "gone", zone="_archive")
+            self.assertEqual(find_project_dir(vault, "bare"),
+                             vault / "projects" / "bare")
+            self.assertEqual(zone_of(find_project_dir(vault, "bare")), "active")
+            self.assertEqual(zone_of(find_project_dir(vault, "cold")), "paused")
+            self.assertEqual(zone_of(find_project_dir(vault, "gone")), "archive")
+
+    def test_named_folder_beats_a_legacy_twin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            _mk_project(vault, "p", zone="")
+            _mk_project(vault, "p", zone="active")
+            self.assertEqual(find_project_dir(vault, "p"),
+                             vault / "projects" / "active" / "p")
+
+    def test_enumerate_normalises_the_zone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            _mk_project(vault, "a", zone="active")
+            _mk_project(vault, "b", zone="_fridge")
             (vault / "projects" / "_index.md").write_text("idx")
             rows = enumerate_projects_all_zones(vault)
-            self.assertEqual([(s, z) for s, _p, z in rows], [("a", ""), ("b", "_fridge")])
+            self.assertEqual([(s, z) for s, _p, z in rows],
+                             [("a", "active"), ("b", "paused")])
+
+    def test_zone_matches_status_is_gone(self):
+        import _vault_walk
+        self.assertFalse(hasattr(_vault_walk, "zone_matches_status"),
+                         "the folder IS the lifecycle state; nothing grades it "
+                         "against a field the brief no longer carries")
 
     def test_resolve_project_from_cwd_finds_archived(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1012,51 +1044,30 @@ class TestZones(unittest.TestCase):
             self.assertTrue(ctx.is_connected)
             self.assertEqual(ctx.vault_project_dir,
                              vault / "projects" / "_archive" / "proj")
+            self.assertEqual(zone_of(ctx.vault_project_dir), "archive")
 
 
 from _vault_walk import (
-    BUCKET_A_TYPES,
-    DECISION_STATUS_VALUES,
     FIELD_SCHEMA,
-    ITERATION_STATUS_VALUES,
     STATUS_VALUES_FOR_TYPE,
-    TASK_STATUS_VALUES,
 )
 
 
 class TestFieldSchema(unittest.TestCase):
-
-    def test_decision_status_values_locked(self):
-        self.assertEqual(DECISION_STATUS_VALUES,
-                         ("active", "superseded", "reversed", "implemented", "deferred"))
-
-    def test_task_status_values_locked(self):
-        # v1.0.0: `next` joined the vocabulary so every board lane has a
-        # status that means it - the write-back has nothing to write
-        # otherwise, and the Next lane would diverge silently forever.
-        self.assertEqual(TASK_STATUS_VALUES,
-                         ("todo", "next", "doing", "review", "blocked",
-                          "done", "icebox"))
 
     def test_every_board_lane_has_a_canonical_status(self):
         from board import CANONICAL_STATUS_FOR_COLUMN, DEFAULT_COLUMNS
         for col in DEFAULT_COLUMNS:
             status = CANONICAL_STATUS_FOR_COLUMN.get(col["id"])
             self.assertIsNotNone(status, f"lane {col['id']} has no status")
-            self.assertIn(status, TASK_STATUS_VALUES)
-
-    def test_iteration_status_values_locked(self):
-        self.assertEqual(ITERATION_STATUS_VALUES,
-                         ("drafting", "on-shelf", "picked", "parked", "rejected", "superseded"))
+            self.assertIn(status, STATUS_VALUES_FOR_TYPE["task"])
 
     def test_status_values_for_type_keys(self):
+        # Derived: a kind has a status vocabulary exactly when its template
+        # writes one as a trailing `# a | b | c` comment. project lost its
+        # status with the brief; spec gained one.
         self.assertEqual(set(STATUS_VALUES_FOR_TYPE),
-                         {"decision", "task", "project", "iteration"})
-        self.assertIs(STATUS_VALUES_FOR_TYPE["decision"], DECISION_STATUS_VALUES)
-        self.assertIs(STATUS_VALUES_FOR_TYPE["project"], PROJECT_STATUS_VALUES)
-
-    def test_schema_covers_every_bucket_a_type_plus_home(self):
-        self.assertEqual(set(FIELD_SCHEMA), set(BUCKET_A_TYPES) | {"vault-home"})
+                         {"decision", "task", "spec"})
 
     def test_every_entry_has_required_and_optional_frozensets(self):
         for ftype, spec in FIELD_SCHEMA.items():
@@ -1073,17 +1084,6 @@ class TestFieldSchema(unittest.TestCase):
         for ftype, spec in FIELD_SCHEMA.items():
             self.assertNotIn("project", spec["required"], ftype)
             self.assertNotIn("project", spec["optional"], ftype)
-
-    def test_decision_shape(self):
-        self.assertEqual(FIELD_SCHEMA["decision"]["required"],
-                         frozenset({"type", "status", "date", "tags"}))
-        # v0.22.0: the epistemic freshness set joined every content type.
-        self.assertEqual(FIELD_SCHEMA["decision"]["optional"],
-                         frozenset({"supersedes", "superseded_by", "implemented_verified",
-                                    "source_session", "related", "title", "name",
-                                    "description", "cssclasses",
-                                    "freshness", "certainty", "validity_context",
-                                    "valid_from", "valid_until"}))
 
     def test_is_safe_slug_accepts_kebab(self):
         from _vault_walk import is_safe_slug
@@ -1114,8 +1114,8 @@ class TestFieldSchema(unittest.TestCase):
                 self.assertIsNone(safe_project_root(vault, bad), bad)
 
     def test_connect_shares_the_slug_rule(self):
-        # port.py calls connect.validate_slug "the single source of the
-        # kebab-case rule"; the hooks and resolve_project_from_cwd gate on
+        # connect.validate_slug is the single source of the kebab-case
+        # rule; the hooks and resolve_project_from_cwd gate on
         # is_safe_slug. Asserted as behavioural agreement rather than shared
         # identity: validate_slug used to match SLUG_RE without the length
         # bound, so connect accepted a 100-char slug that every hook then
@@ -1128,117 +1128,6 @@ class TestFieldSchema(unittest.TestCase):
         for value in cases:
             self.assertEqual(connect.validate_slug(value) is None,
                              is_safe_slug(value), repr(value))
-
-    def test_board_read_fields_never_strippable(self):
-        # Regression, audit 2026-07-27: board.py cards_from_tasks reads
-        # `code`/`id` for card identity and `title` for the label. If tidy
-        # strips them the next reseed re-keys the card to the file stem and
-        # the user's dragged column is lost.
-        from board import STATUS_TO_COLUMN  # noqa: F401 - import parity w/ tidy
-        task_opt = FIELD_SCHEMA["task"]["optional"]
-        for key in ("id", "code", "title"):
-            self.assertIn(key, task_opt, key)
-        vf = _vf("---\ntype: task\nstatus: doing\nid: LOGIN-7\n"
-                 "title: Fix login\ntags:\n  - task\n---\n")
-        self.assertIsNone(schema_drift_for_file(vf, set(STATUS_TO_COLUMN)))
-
-    def test_handoff_preserved_keys_never_strippable(self):
-        # Regression, audit 2026-07-27: _handoff_freshness.preserved_frontmatter
-        # contractually preserves session_id on handoffs; tidy must agree.
-        self.assertIn("session_id", FIELD_SCHEMA["handoff"]["optional"])
-        vf = _vf("---\ntype: handoff\nupdated: 2026-01-01\nsource: remember\n"
-                 "session_id:\n  - abc\ntags:\n  - handoff\n---\n")
-        self.assertIsNone(schema_drift_for_file(vf))
-
-    def test_cssclasses_never_strippable(self):
-        # Regression: vault-standards.md section 2 documents `cssclasses:` as
-        # an Obsidian CSS class that "tag normalization leaves alone" - legal
-        # on any note a human authors. It was in no FIELD_SCHEMA optional
-        # set, so tidy feature 5 (the schema strip) flagged it as unknown and
-        # stripped it, breaking the document's own promise. A brief and an
-        # index are equally human-styled notes, so they get it too; session,
-        # handoff and vault-home stay narrow since they are machine-written.
-        for ftype in ("note", "decision", "project", "index"):
-            self.assertIn("cssclasses", FIELD_SCHEMA[ftype]["optional"], ftype)
-        for ftype in ("session", "handoff", "vault-home"):
-            self.assertNotIn("cssclasses", FIELD_SCHEMA[ftype]["optional"], ftype)
-        note = ("---\ntype: note\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
-                "cssclasses: wide-page\ntags:\n  - note\n---\n")
-        self.assertIsNone(schema_drift_for_file(_vf(note)))
-        decision = ("---\ntype: decision\nstatus: active\ndate: 2026-07-27\n"
-                    "cssclasses: wide-page\ntags:\n  - decision\n---\n")
-        self.assertIsNone(schema_drift_for_file(_vf(decision)))
-        project = ("---\ntype: project\nproject_type: coding\nslug: demo\n"
-                   "aliases:\n  - demo\nstatus: active\ncreated: 2026-01-01\n"
-                   "updated: 2026-01-01\ncssclasses: wide-page\ntags:\n"
-                   "  - project\n---\n")
-        self.assertIsNone(schema_drift_for_file(_vf(project, rel="projects/demo/brief.md")))
-        index = "---\ntype: index\ncssclasses: wide-page\ntags:\n  - index\n---\n"
-        self.assertIsNone(schema_drift_for_file(_vf(index, rel="notes/_index.md")))
-
-    def test_content_docs_do_not_prescribe_stripped_keys(self):
-        # Third instance of a bug class this branch fixed twice: a reference
-        # doc tells a model to write a key FIELD_SCHEMA rejects, and tidy
-        # feature 5 deletes it on the next pass. content-clipper.md prescribed
-        # `created:` on a `source` and never mentioned the REQUIRED `title:`;
-        # content-markdown.md prescribed `aliases:` on notes. Both documents
-        # now say so, and these assertions are what makes that saying true.
-        ref = Path(__file__).resolve().parent.parent / "skills" / "adjudant" / "reference"
-        source = FIELD_SCHEMA["source"]
-        self.assertNotIn("created", source["required"] | source["optional"],
-                         "content-clipper.md tells the reader tidy strips "
-                         "created: from a source")
-        self.assertIn("title", source["required"],
-                      "content-clipper.md names title: as required on a source")
-        note = FIELD_SCHEMA["note"]
-        self.assertNotIn("aliases", note["required"] | note["optional"],
-                         "content-markdown.md tells the reader tidy strips "
-                         "aliases: from a note")
-        self.assertIn("aliases", FIELD_SCHEMA["project"]["required"],
-                      "content-markdown.md sends aliases: to brief.md instead")
-        for ftype, spec in FIELD_SCHEMA.items():
-            self.assertNotIn("project", spec["required"] | spec["optional"],
-                             f"{ftype}: membership is the folder path, and both "
-                             "content docs say never to write project:")
-        clipper = (ref / "content-clipper.md").read_text()
-        self.assertIn("`title:`", clipper)
-        self.assertNotIn("ISO `created:` date", clipper)
-        markdown = (ref / "content-markdown.md").read_text()
-        self.assertIn("`aliases:` is not", markdown)
-        self.assertNotIn("piped wikilink `project:` fields", markdown)
-
-    def test_content_optional_widening(self):
-        # 2026-07-27: related/title/name/description legal on every content
-        # type; superseded_by on decision/doc/note; implemented_verified on
-        # decision only. System shapes stay narrow.
-        for ftype in ("decision", "note", "task", "release", "source",
-                      "iteration", "dream-report", "doc"):
-            for key in ("related", "name", "description"):
-                self.assertIn(key, FIELD_SCHEMA[ftype]["optional"], (ftype, key))
-        # title is REQUIRED on doc/source, optional elsewhere - never both
-        for ftype in ("decision", "note", "task", "release", "iteration", "dream-report"):
-            self.assertIn("title", FIELD_SCHEMA[ftype]["optional"], ftype)
-        for ftype in ("doc", "source"):
-            self.assertIn("title", FIELD_SCHEMA[ftype]["required"], ftype)
-            self.assertNotIn("title", FIELD_SCHEMA[ftype]["optional"], ftype)
-        for ftype in ("decision", "doc", "note"):
-            self.assertIn("superseded_by", FIELD_SCHEMA[ftype]["optional"], ftype)
-        self.assertIn("implemented_verified", FIELD_SCHEMA["decision"]["optional"])
-        self.assertNotIn("implemented_verified", FIELD_SCHEMA["note"]["optional"])
-        for ftype in ("session", "handoff", "index", "project", "vault-home"):
-            self.assertNotIn("related", FIELD_SCHEMA[ftype]["optional"], ftype)
-
-    def test_session_requires_session_id(self):
-        self.assertIn("session_id", FIELD_SCHEMA["session"]["required"])
-        self.assertEqual(FIELD_SCHEMA["session"]["optional"], frozenset())
-
-    def test_project_brief_shape(self):
-        self.assertEqual(FIELD_SCHEMA["project"]["required"],
-                         frozenset({"type", "project_type", "slug", "aliases",
-                                    "status", "created", "updated", "tags"}))
-        self.assertIn("codename", FIELD_SCHEMA["project"]["optional"])
-        self.assertIn("marketplace", FIELD_SCHEMA["project"]["optional"])
-
 
 from _vault_walk import (
     DECISION_STATUS_ALIASES,
@@ -1256,7 +1145,8 @@ def _vf(text: str, rel: str = "notes/x.md") -> VaultFile:
 
 
 _CLEAN_DECISION = (
-    "---\ntype: decision\nstatus: active\ndate: 2026-07-27\ntags:\n  - decision\n---\n\nBody\n")
+    "---\ntype: decision\nstatus: active\ncreated: 2026-07-27\n"
+    "updated: 2026-07-27\n---\n\nBody\n")
 
 
 class TestSchemaDrift(unittest.TestCase):
@@ -1265,8 +1155,8 @@ class TestSchemaDrift(unittest.TestCase):
         self.assertIsNone(schema_drift_for_file(_vf(_CLEAN_DECISION)))
 
     def test_missing_required_flagged(self):
-        d = schema_drift_for_file(_vf(_CLEAN_DECISION.replace("date: 2026-07-27\n", "")))
-        self.assertEqual(d["missing_required"], ["date"])
+        d = schema_drift_for_file(_vf(_CLEAN_DECISION.replace("created: 2026-07-27\n", "")))
+        self.assertEqual(d["missing_required"], ["created"])
 
     def test_project_field_is_unknown(self):
         d = schema_drift_for_file(_vf(_CLEAN_DECISION.replace(
@@ -1296,16 +1186,21 @@ class TestSchemaDrift(unittest.TestCase):
     def test_task_alias_status_accepted_with_alias_set(self):
         # Aliases are accepted input (vault-standards section 4): with the
         # alias set supplied a wip task is clean; without it, flagged but
-        # never normalizable (tidy must not rewrite lane information).
-        task = "---\ntype: task\nstatus: wip\ntags:\n  - task\n---\n"
+        # never normalizable (clean must not rewrite lane information).
+        task = ("---\ntype: task\nstatus: wip\ncreated: 2026-07-27\n"
+                "updated: 2026-07-27\n---\n")
         self.assertIsNone(schema_drift_for_file(_vf(task), aliases={"wip", "parked"}))
         d = schema_drift_for_file(_vf(task))
         self.assertFalse(d["status_invalid"]["normalizable"])
 
-    def test_session_with_empty_id_list_clean(self):
-        s = ("---\ntype: session\ndate: 2026-07-27\nstarted: \"09:00\"\n"
-             "session_id: []\ntags:\n  - session\n---\n")
+    def test_session_is_three_fields_and_nothing_else(self):
+        # v3 dropped date, started, session_id and the bare tag: one note had
+        # stacked eighteen conversation UUIDs into session_id.
+        s = "---\ntype: session\ncreated: 2026-07-27\nupdated: 2026-07-27\n---\n"
         self.assertIsNone(schema_drift_for_file(_vf(s)))
+        d = schema_drift_for_file(_vf(s.replace(
+            "updated: 2026-07-27\n", "updated: 2026-07-27\nsession_id: []\n")))
+        self.assertEqual(d["unknown_fields"], ["session_id"])
 
     def test_decision_alias_map_locked(self):
         self.assertEqual(DECISION_STATUS_ALIASES,
@@ -1314,7 +1209,7 @@ class TestSchemaDrift(unittest.TestCase):
     def test_aggregate_counts_and_skips(self):
         files = [
             _vf(_CLEAN_DECISION),                                     # clean
-            _vf(_CLEAN_DECISION.replace("date: 2026-07-27\n", "")),   # flagged
+            _vf(_CLEAN_DECISION.replace("created: 2026-07-27\n", "")),  # flagged
             _vf("no frontmatter at all\n"),                           # unchecked
             _vf("---\ntype: tasks\n---\n"),                           # non-canonical type
             _vf("---\ntype: decision\nbroken"),                       # parse error
@@ -1329,8 +1224,8 @@ class TestSchemaDrift(unittest.TestCase):
 
     def test_schema_drift_for_text_matches_file_variant(self):
         from _vault_walk import schema_drift_for_text
-        text = ("---\ntype: decision\nstatus: accepted\ndate: 2026-01-01\n"
-                "tags:\n  - decision\n---\n\nBody.\n")
+        text = ("---\ntype: decision\nstatus: accepted\ncreated: 2026-01-01\n"
+                "updated: 2026-01-01\n---\n\nBody.\n")
         by_text = schema_drift_for_text(text, "decisions/d.md")
         by_file = schema_drift_for_file(_vf(text, rel="decisions/d.md"))
         self.assertEqual(by_text, by_file)
@@ -1344,13 +1239,12 @@ class TestSchemaDrift(unittest.TestCase):
 
     def test_schema_drift_for_text_clean_returns_none(self):
         from _vault_walk import schema_drift_for_text
-        text = ("---\ntype: note\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
-                "tags:\n  - note\n---\n\nB\n")
+        text = "---\ntype: note\ncreated: 2026-01-01\nupdated: 2026-01-01\n---\n\nB\n"
         self.assertIsNone(schema_drift_for_text(text, "notes/n.md"))
 
     def test_schema_drift_for_text_ignores_unjudgeable(self):
         from _vault_walk import schema_drift_for_text
-        # no frontmatter, unknown type, and a parse error are all ramasse
+        # no frontmatter, unknown type, and a parse error are all deep-pass
         # territory, not schema territory
         self.assertIsNone(schema_drift_for_text("no frontmatter\n", "notes/n.md"))
         self.assertIsNone(schema_drift_for_text(
@@ -1552,151 +1446,12 @@ class TestFileLock(unittest.TestCase):
             self.assertTrue(lock_path_for(target).exists())
 
 
-class TestEpistemicFields(unittest.TestCase):
-    """v0.22.0 tranche 1: per-fact truth-lifetime frontmatter. Fields are
-    optional on content types, illegal on system shapes, and malformed
-    declarations are schema drift the write gate refuses."""
+class TestWalkSkipsWorkingDirs(unittest.TestCase):
+    """archived-context/ and the remise working dirs are never walked.
 
-    def _drift_note(self, extra: str):
-        from _vault_walk import schema_drift_for_text
-        text = ("---\ntype: note\ncreated: 2026-07-01\nupdated: 2026-07-01\n"
-                "tags:\n  - note\n" + extra + "---\nbody\n")
-        return schema_drift_for_text(text, "notes/x.md")
-
-    def test_all_five_fields_legal_on_note(self):
-        self.assertIsNone(self._drift_note(
-            "freshness: dated\ncertainty: 4\n"
-            "validity_context: while OneDrive hosts the git store\n"
-            "valid_from: 2026-07-01\nvalid_until: 2026-12-31\n"))
-
-    def test_fields_illegal_on_session(self):
-        from _vault_walk import schema_drift_for_text
-        text = ("---\ntype: session\ndate: 2026-07-01\nstarted: 09:00\n"
-                "session_id: []\ntags:\n  - session\ncertainty: 3\n---\n")
-        d = schema_drift_for_text(text, "sessions/2026-07-01.md")
-        self.assertIsNotNone(d)
-        self.assertIn("certainty", d.get("unknown_fields", []))
-
-    def test_bad_freshness_value_is_drift(self):
-        d = self._drift_note("freshness: eternal\n")
-        self.assertIsNotNone(d)
-        fields = [e["field"] for e in d.get("epistemic_invalid", [])]
-        self.assertIn("freshness", fields)
-
-    def test_certainty_out_of_range_and_shape(self):
-        for bad in ("certainty: 7\n", "certainty: high\n", "certainty: 3.5\n",
-                    "certainty:\n  - 3\n"):
-            d = self._drift_note(bad)
-            self.assertIsNotNone(d, bad)
-            fields = [e["field"] for e in d.get("epistemic_invalid", [])]
-            self.assertIn("certainty", fields, bad)
-        self.assertIsNone(self._drift_note("certainty: 1\n"))
-        self.assertIsNone(self._drift_note("certainty: 5\n"))
-
-    def test_impossible_and_malformed_dates_are_drift(self):
-        for bad in ("valid_until: 2026-99-99\n", "valid_from: soon\n"):
-            d = self._drift_note(bad)
-            self.assertIsNotNone(d, bad)
-            self.assertTrue(d.get("epistemic_invalid"), bad)
-
-    def test_inverted_validity_window_is_drift(self):
-        d = self._drift_note("valid_from: 2026-12-31\nvalid_until: 2026-01-01\n")
-        self.assertIsNotNone(d)
-        reasons = " ".join(e.get("reason", "") for e in d.get("epistemic_invalid", []))
-        self.assertIn("valid_from", reasons)
-
-
-class TestFreshnessReport(unittest.TestCase):
-    """v0.22.0 tranche 1: read-only semantics over VALID epistemic
-    declarations - expiry, dangling supersession, dated-without-bounds."""
-
-    def _report(self, tmp: Path):
-        from datetime import date
-        from _vault_walk import freshness_report, walk_project
-        return freshness_report(list(walk_project(tmp)), date(2026, 7, 30))
-
-    def _note(self, tmp: Path, name: str, extra: str) -> None:
-        p = tmp / "notes" / name
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text("---\ntype: note\ncreated: 2026-07-01\n"
-                     "updated: 2026-07-01\ntags:\n  - note\n" + extra
-                     + "---\nbody\n")
-
-    def test_expired_validity_is_reported(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            tmpp = Path(tmp)
-            self._note(tmpp, "old.md", "valid_until: 2026-01-01\n")
-            self._note(tmpp, "current.md", "valid_until: 2026-12-31\n")
-            rep = self._report(tmpp)
-            self.assertEqual(len(rep["expired"]), 1)
-            e = rep["expired"][0]
-            self.assertIn("old.md", str(e["file"]))
-            self.assertEqual(e["days_expired"], 210)
-
-    def test_dangling_supersession_is_reported(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            tmpp = Path(tmp)
-            self._note(tmpp, "a.md", 'superseded_by: "[[notes/gone|the new one]]"\n')
-            self._note(tmpp, "b.md", 'superseded_by: "[[notes/target]]"\n')
-            self._note(tmpp, "target.md", "")
-            rep = self._report(tmpp)
-            self.assertEqual(len(rep["dangling_supersession"]), 1)
-            d = rep["dangling_supersession"][0]
-            self.assertIn("a.md", str(d["file"]))
-            self.assertEqual(d["target"], "gone")
-
-    def test_dated_without_bounds_is_reported(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            tmpp = Path(tmp)
-            self._note(tmpp, "vague.md", "freshness: dated\n")
-            self._note(tmpp, "bounded.md",
-                       "freshness: dated\nvalid_until: 2026-12-31\n")
-            self._note(tmpp, "forever.md", "freshness: timeless\n")
-            rep = self._report(tmpp)
-            self.assertEqual(len(rep["dated_unbounded"]), 1)
-            self.assertIn("vague.md", str(rep["dated_unbounded"][0]["file"]))
-
-    def test_adoption_counts_and_clean_vault(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            tmpp = Path(tmp)
-            self._note(tmpp, "one.md", "freshness: timeless\ncertainty: 5\n")
-            self._note(tmpp, "plain.md", "")
-            rep = self._report(tmpp)
-            self.assertEqual(rep["counts"]["freshness"], 1)
-            self.assertEqual(rep["counts"]["certainty"], 1)
-            self.assertEqual(rep["expired"], [])
-            self.assertEqual(rep["dangling_supersession"], [])
-
-
-class TestMemoryType(unittest.TestCase):
-    """remise groundwork: MEMORY.md is a schema type that never stales,
-    never carries epistemic fields, and never gets walked into archives."""
-
-    def test_memory_schema_shape(self):
-        self.assertIn("memory", FIELD_SCHEMA)
-        self.assertEqual(FIELD_SCHEMA["memory"]["required"],
-                         frozenset({"type", "updated", "tags"}))
-        from _vault_walk import _EPISTEMIC_OPTIONAL
-        self.assertFalse(_EPISTEMIC_OPTIONAL & FIELD_SCHEMA["memory"]["optional"],
-                         "memory is timeless by construction; epistemic fields are contradictory")
-
-    def test_memory_headings_constant(self):
-        from _vault_walk import MEMORY_HEADINGS
-        self.assertEqual(MEMORY_HEADINGS,
-                         ("Decisions that held", "Preferences",
-                          "Gotchas", "Domain facts"))
-
-    def test_memory_exempt_from_freshness_and_staleness(self):
-        from datetime import date
-        from _vault_walk import freshness_report, walk_project
-        with tempfile.TemporaryDirectory() as tmp:
-            proot = Path(tmp)
-            (proot / "MEMORY.md").write_text(
-                "---\ntype: memory\nupdated: 2020-01-01\ntags:\n  - memory\n---\n\n"
-                "## Gotchas\n\n- 2020-01-01 · old but never stale\n")
-            files = list(walk_project(proot))
-            rep = freshness_report(files, date(2026, 8, 1))
-            self.assertEqual(rep["counts"], {k: 0 for k in rep["counts"]})
+    Was TestMemoryType, whose other three tests asserted the `memory` kind's
+    schema shape; the kind went with its template in v3.
+    """
 
     def test_archived_context_and_remise_dirs_skipped(self):
         from _vault_walk import walk_project
@@ -1714,6 +1469,56 @@ class TestMemoryType(unittest.TestCase):
             self.assertFalse(any("buried.md" in r for r in rels),
                              "archived and remise working dirs must never be walked")
 
+
+class TestUnownedFolders(unittest.TestCase):
+    """`memory/` is walked, never graded.
+
+    The plan called for these on `TestMemoryType`, which no longer exists:
+    the memory KIND went with its template in v3 and the class was renamed
+    TestWalkSkipsWorkingDirs. The memory FOLDER is a separate thing and gets
+    its own class.
+    """
+
+    def test_memory_folder_is_never_schema_graded(self):
+        # 69 of check's 99 failures came from grading memory/ against a schema
+        # adjudant does not own. A Claude Code auto-memory note is name /
+        # description / metadata.type; Obsidian's Properties editor flattens
+        # metadata.type to a top-level type:, and adjudant then read the file
+        # as whatever type: claimed and proposed stripping the rest.
+        from _vault_walk import schema_drift, walk_project
+        flattened = ("---\nname: prefers-agents-md\ndescription: a preference\n"
+                     "type: project\n---\n\nbody\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            proot = Path(tmp)
+            (proot / "memory").mkdir()
+            (proot / "memory" / "flattened.md").write_text(flattened)
+            (proot / "notes").mkdir()
+            (proot / "notes" / "ours.md").write_text(
+                "---\ntype: note\ncreated: 2026-09-01\nupdated: 2026-09-01\n"
+                "---\n\nbody\n")
+            report = schema_drift(list(walk_project(proot)))
+            self.assertEqual(report["flagged"], 0,
+                             "memory/ was graded against a schema we do not own")
+            self.assertEqual(report["exempt"], 1)
+            self.assertEqual(report["checked"] + report["unchecked"], 1)
+            self.assertEqual([s["file"] for s in report["samples"]], [])
+
+            # The same bytes outside memory/ are graded exactly as before: the
+            # exemption is the folder, not the content, and it does not fail open.
+            (proot / "notes" / "flattened.md").write_text(flattened)
+            report = schema_drift(list(walk_project(proot)))
+            self.assertEqual(report["flagged"], 1)
+            self.assertEqual(report["exempt"], 1)
+            self.assertEqual([s["file"] for s in report["samples"]],
+                             ["notes/flattened.md"])
+
+    def test_the_unowned_set_is_named_and_narrow(self):
+        from _vault_walk import UNOWNED_FOLDERS, is_unowned
+        self.assertEqual(UNOWNED_FOLDERS, frozenset({"memory"}))
+        self.assertTrue(is_unowned(Path("memory/a.md")))
+        self.assertTrue(is_unowned("memory/deep/a.md"))
+        self.assertFalse(is_unowned(Path("notes/memory.md")))
+        self.assertFalse(is_unowned(Path("MEMORY.md")))
 
 class TestObsidianCliProbe(unittest.TestCase):
     """Tranche 2C: capability probe only - never a wrapper."""
@@ -1770,7 +1575,7 @@ class TestSchemaDriftStatusShape(unittest.TestCase):
     def _drift(self, status_block: str):
         from _vault_walk import schema_drift_for_text
         text = ("---\ntype: decision\n" + status_block +
-                "date: 2026-01-01\ntags:\n  - decision\n---\nbody\n")
+                "created: 2026-01-01\nupdated: 2026-01-01\n---\nbody\n")
         return schema_drift_for_text(text, "decisions/x.md")
 
     def test_blank_status_is_flagged(self):
@@ -1890,6 +1695,27 @@ class TestResolverHardening(unittest.TestCase):
                 "A vault home is marked with\ntype: vault-home\nin frontmatter.\n")
             self.assertIsNone(resolve_vault(proj))
 
+    def test_home_md_of_type_index_is_a_vault_marker(self):
+        # v3 retired the `vault-home` kind, so templates/home.md declares
+        # `type: index`. A vault built from the shipped template has to stay
+        # findable, and every pre-v3 vault keeps working.
+        for marker in ("vault-home", "index"):
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "vault"
+                proj = root / "nested" / "proj"
+                proj.mkdir(parents=True)
+                (root / "Home.md").write_text(f"---\ntype: {marker}\n---\n\n# Vault\n")
+                self.assertEqual(resolve_vault(proj).resolve(), root.resolve(),
+                                 f"type: {marker} did not mark the vault")
+
+    def test_home_md_of_an_unrelated_type_is_not_a_vault_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "notes"
+            proj = root / "nested" / "proj"
+            proj.mkdir(parents=True)
+            (root / "Home.md").write_text("---\ntype: note\n---\n\n# Home\n")
+            self.assertIsNone(resolve_vault(proj))
+
     def test_bom_prefixed_frontmatter_parses(self):
         # F30: a BOM silently dropped the note out of every schema check
         # while Obsidian rendered it fine.
@@ -1899,31 +1725,11 @@ class TestResolverHardening(unittest.TestCase):
         self.assertEqual(body, "body\n")
 
 
-class TestSuggestVaultRoots(unittest.TestCase):
-    """Guided 'no vault yet' setup: existing cloud/local roots, cloud first."""
-
-    def test_returns_labeled_roots_with_home_local(self):
-        from _vault_walk import suggest_vault_roots
-        roots = suggest_vault_roots()
-        self.assertIsInstance(roots, list)
-        self.assertTrue(roots, "home folder should always yield at least one root")
-        for r in roots:
-            self.assertEqual(set(r), {"path", "label", "kind", "recommended"})
-            self.assertIn(r["kind"], ("cloud", "local"))
-        home_entries = [r for r in roots if r["path"] == str(Path.home())]
-        self.assertEqual(len(home_entries), 1)
-        self.assertEqual(home_entries[0]["kind"], "local")
-        self.assertFalse(home_entries[0]["recommended"])
-        kinds = [r["kind"] for r in roots]
-        if "cloud" in kinds and "local" in kinds:
-            self.assertLess(kinds.index("cloud"), kinds.index("local"))
-
-
 class TestVaultSearchRoots(unittest.TestCase):
     """OS-aware vault-root taxonomy: the same breadcrumb must find a vault on
     macOS, native Windows, and Linux/WSL. Each OS branch is exercised with a
-    mocked OS-kind and filesystem probe, so the test is deterministic on any
-    host."""
+    mocked platform, home, and filesystem probe, so the test is deterministic on
+    any host."""
 
     def _roots(self, kind, home, subdirs=None):
         # Mock _os_kind (not sys.platform/os.name): patching os.name globally
@@ -1949,7 +1755,7 @@ class TestVaultSearchRoots(unittest.TestCase):
         self.assertIn("/Users/x/Library/CloudStorage/OneDrive-Acme", roots)
         self.assertIn("/Users/x/Dropbox", roots)
         self.assertIn("/Users/x/Documents", roots)
-        self.assertEqual(roots[-1], "/Users/x")
+        self.assertEqual(roots[-1], "/Users/x")   # bare home is the last resort
 
     def test_windows_offers_onedrive_variants(self):
         home = "C:/Users/x"
@@ -1985,11 +1791,118 @@ class TestVaultSearchRoots(unittest.TestCase):
         import _vault_walk
         self.assertEqual(_vault_walk._safe_subdirs(Path("/no/such/path/ever")), [])
 
-    def test_wsl_root_label_marks_windows_drive(self):
+
+class TestSuggestVaultRoots(unittest.TestCase):
+
+    def test_returns_only_existing_dirs_with_labels(self):
         import _vault_walk
-        label = _vault_walk._describe_vault_root(
-            Path("/mnt/c/Users/tom/OneDrive"), Path("/home/x"), is_local=False)
-        self.assertIn("[Windows drive]", label)
+        roots = _vault_walk.suggest_vault_roots()
+        for entry in roots:
+            self.assertTrue(Path(entry["path"]).is_dir(), entry["path"])
+            self.assertTrue(entry["label"])
+            self.assertIn(entry["kind"], ("local", "cloud"))
+            self.assertIsInstance(entry["recommended"], bool)
+
+    def test_no_duplicate_paths(self):
+        import _vault_walk
+        paths = [e["path"] for e in _vault_walk.suggest_vault_roots()]
+        self.assertEqual(len(paths), len(set(paths)))
+
+    def test_cloud_roots_are_recommended_and_home_is_not(self):
+        import _vault_walk
+        home = str(Path.home())
+        for entry in _vault_walk.suggest_vault_roots():
+            if entry["path"] == home:
+                self.assertFalse(entry["recommended"])
+                self.assertEqual(entry["kind"], "local")
+
+
+class TestSchemaIsDerived(unittest.TestCase):
+    """The templates are the schema; this module only re-exports it.
+
+    Before v3 a kind's shape was declared twice, as a Python constant here and
+    as the template file a writer copies, and validators existed to check the
+    two agreed. One declaration cannot disagree with itself.
+    """
+
+    def test_vault_walk_reexports_the_template_schema(self):
+        import _template_schema
+        import _vault_walk
+        self.assertIs(_vault_walk.FIELD_SCHEMA, _template_schema.FIELD_SCHEMA)
+        self.assertIs(_vault_walk.STATUS_VALUES_FOR_TYPE,
+                      _template_schema.STATUS_VALUES_FOR_TYPE)
+
+    def test_no_hand_written_field_schema_remains(self):
+        # A literal FIELD_SCHEMA dict in this file would be the second
+        # declaration this plan exists to remove.
+        import _vault_walk
+        src = Path(_vault_walk.__file__).read_text()
+        self.assertNotIn("FIELD_SCHEMA: dict[str, dict[str, frozenset[str]]] = {", src)
+        for gone in ("DECISION_STATUS_VALUES", "TASK_STATUS_VALUES",
+                     "ITERATION_STATUS_VALUES", "_EPISTEMIC_OPTIONAL",
+                     "FRESHNESS_VALUES", "MEMORY_HEADINGS",
+                     "PROJECT_STATUS_VALUES"):
+            self.assertNotIn(f"{gone}:", src, f"{gone} survived")
+
+    def test_the_retired_kinds_are_absent(self):
+        import _vault_walk
+        for gone in ("memory", "iteration", "dream-report", "vault-home"):
+            self.assertNotIn(gone, _vault_walk.FIELD_SCHEMA)
+
+    def test_headings_are_re_exported_too(self):
+        import _template_schema
+        import _vault_walk
+        self.assertIs(_vault_walk.HEADINGS_FOR_TYPE,
+                      _template_schema.HEADINGS_FOR_TYPE)
+
+
+class TestLegacyBreadcrumbIsNotResolved(unittest.TestCase):
+    """The retired obsidian-bridge breadcrumb stops being a resolution step.
+
+    Its only migration partner was port.py, deleted in v3, so a resolved legacy
+    path led nowhere: adjudant would quietly work from a stale vault the user
+    was never told about. Reporting it is strictly more useful than silently
+    honouring it, and it is one of the differences keeping this module forked
+    between the two builds.
+    """
+
+    def _legacy_project(self, tmp: Path):
+        vault = tmp / "OldVault"
+        (vault / "projects").mkdir(parents=True)
+        (vault / "Home.md").write_text("---\ntype: vault-home\n---\n\n# Home\n")
+        project = tmp / "code"
+        (project / ".claude").mkdir(parents=True)
+        (project / ".claude" / "obsidian-bridge").write_text(
+            f"vault: {vault}\nslug: legacy-proj\n")
+        return project, vault
+
+    def test_legacy_breadcrumb_alone_resolves_to_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project, _vault = self._legacy_project(Path(tmp))
+            self.assertIsNone(resolve_vault(project))
+
+    def test_an_adjudant_breadcrumb_still_wins_normally(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project, _old = self._legacy_project(root)
+            new_vault = root / "NewVault"
+            (new_vault / "projects").mkdir(parents=True)
+            (new_vault / "Home.md").write_text("---\ntype: vault-home\n---\n\n# Home\n")
+            (project / ".claude" / "adjudant").write_text(
+                f"vault_path: {new_vault}\nvault_name: NewVault\nslug: demo\n")
+            self.assertEqual(resolve_vault(project), new_vault)
+
+    def test_the_docstring_offers_four_steps_and_disclaims_the_fifth(self):
+        # The docstring is the contract readers trust; a five-step docstring
+        # over a four-step function is the drift this whole plan removes.
+        # The numbered list is the contract: the prose under it is allowed to
+        # name the retired breadcrumb, because saying it is not a step is the
+        # whole point of keeping the paragraph.
+        doc = resolve_vault.__doc__
+        self.assertIn("4-step resolution:", doc)
+        steps = doc.split("\n\n")[0]
+        self.assertNotIn("obsidian-bridge", steps)
+        self.assertIn("is NOT a resolution step", doc)
 
 
 if __name__ == "__main__":

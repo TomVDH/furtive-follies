@@ -3,28 +3,27 @@
 import contextlib
 import io
 import json
+import re
 import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
 
+from _cost import DEFAULT_WARN_TOKENS
 from connect import (
     VALID_PROJECT_TYPES,
     append_gitignore,
     build_contract,
-    count_non_index_files,
     derive_project_name,
     derive_project_type,
     detect_state,
     infer_initial_status,
     infer_project_type,
-    newest_session_date,
     provision_context_files,
     resolve_vault_for_connect,
     run_connect,
     scaffold_vault_project,
     slug_to_title,
-    upsert_projects_index_row,
     validate_slug,
     write_breadcrumb,
     write_session_note,
@@ -217,47 +216,87 @@ class TestProvisionContextFiles(unittest.TestCase):
 
 
 class TestScaffoldVaultProject(unittest.TestCase):
+    """v3: a folder exists when something is in it. connect used to create
+    four to seven folders up front and drop an empty _index.md into each,
+    which produced fifteen index files with a body under 25 bytes."""
 
-    def test_coding_project_creates_default_folders(self):
+    def test_creates_the_project_dir_and_the_brief_and_nothing_else(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_vault(tmp)
-            result = scaffold_vault_project(vault, "my-slug", "coding", "My Slug", "2026-05-27")
-            proj_dir = vault / "projects" / "my-slug"
+            scaffold_vault_project(vault, "my-slug", "coding", "My Slug", "2026-05-27")
+            proj_dir = vault / "projects" / "active" / "my-slug"
             self.assertTrue((proj_dir / "brief.md").is_file())
-            for sub in ["decisions", "notes", "tasks", "references", "sessions", "images"]:
-                self.assertTrue((proj_dir / sub).is_dir(), f"{sub} missing")
-            # Index-required folders have _index.md, exempt ones don't
-            self.assertTrue((proj_dir / "decisions" / "_index.md").is_file())
-            self.assertFalse((proj_dir / "sessions" / "_index.md").is_file())
-            self.assertFalse((proj_dir / "images" / "_index.md").is_file())
+            self.assertEqual([p.name for p in proj_dir.iterdir()], ["brief.md"])
 
-    def test_plugin_project_includes_releases(self):
+    def test_no_index_file_is_written_anywhere(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_vault(tmp)
             scaffold_vault_project(vault, "p", "plugin", "P", "2026-05-27")
-            self.assertTrue((vault / "projects" / "p" / "releases").is_dir())
-            self.assertTrue((vault / "projects" / "p" / "releases" / "_index.md").is_file())
+            self.assertEqual(list(vault.rglob("_index.md")), [])
+
+    def test_new_projects_land_in_active(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = _make_vault(tmp)
+            scaffold_vault_project(vault, "p", "coding", "P", "2026-05-27")
+            self.assertTrue((vault / "projects" / "active" / "p" / "brief.md").is_file())
+            self.assertFalse((vault / "projects" / "p").exists())
 
     def test_brief_has_slug_and_date_substituted(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_vault(tmp)
             scaffold_vault_project(vault, "abc", "coding", "Abc Project", "2026-05-27")
-            brief = (vault / "projects" / "abc" / "brief.md").read_text()
-            self.assertIn("slug: abc", brief)
+            brief = (vault / "projects" / "active" / "abc" / "brief.md").read_text()
             self.assertIn("2026-05-27", brief)
             self.assertIn("# Abc Project", brief)
-            # No placeholder leftovers
+            # v3 dropped slug: and aliases: from the brief; the folder is the slug.
+            self.assertNotIn("slug:", brief)
             self.assertNotIn("{kebab-slug}", brief)
             self.assertNotIn("{YYYY-MM-DD}", brief)
+
+    def test_when_markers_pick_sections_by_project_type(self):
+        # One brief replaced four variants: the project type now decides which
+        # sections get written, and the marker never survives into the file.
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = _make_vault(tmp)
+            scaffold_vault_project(vault, "code", "coding", "Code", "2026-05-27")
+            scaffold_vault_project(vault, "know", "knowledge", "Know", "2026-05-27")
+            active = vault / "projects" / "active"
+            coding = (active / "code" / "brief.md").read_text()
+            knowledge = (active / "know" / "brief.md").read_text()
+            self.assertIn("## Stack", coding)
+            self.assertIn("## Constraints", coding)
+            self.assertNotIn("## Stack", knowledge)
+            self.assertNotIn("## Constraints", knowledge)
+            for text in (coding, knowledge):
+                self.assertNotIn("<!-- when:", text)
+                self.assertIn("## Where things are", text)
 
     def test_idempotent_preserves_brief(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_vault(tmp)
             scaffold_vault_project(vault, "abc", "coding", "Abc", "2026-05-27")
-            brief_path = vault / "projects" / "abc" / "brief.md"
+            brief_path = vault / "projects" / "active" / "abc" / "brief.md"
             brief_path.write_text("USER EDITED")
             scaffold_vault_project(vault, "abc", "coding", "Abc 2", "2026-05-28")
             self.assertEqual(brief_path.read_text(), "USER EDITED")
+
+    def test_an_unknown_project_type_is_refused(self):
+        # The per-type folder table was the only thing that rejected a typo.
+        # Deleting it must not turn a bad type into a brief with every gated
+        # section silently missing.
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = _make_vault(tmp)
+            with self.assertRaises(RuntimeError):
+                scaffold_vault_project(vault, "p", "codin", "P", "2026-05-27")
+            self.assertFalse((vault / "projects" / "active" / "p").exists())
+
+    def test_reconnect_fills_no_folders_into_a_paused_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = _make_vault(tmp)
+            proj_dir = vault / "projects" / "paused" / "p"
+            scaffold_vault_project(vault, "p", "coding", "P", "2026-05-27",
+                                   proj_dir=proj_dir)
+            self.assertEqual([x.name for x in proj_dir.iterdir()], ["brief.md"])
 
 
 # ============================================================
@@ -270,10 +309,11 @@ class TestWriteSessionNote(unittest.TestCase):
     def test_creates(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_vault(tmp)
-            (vault / "projects" / "x").mkdir()
+            (vault / "projects" / "active" / "x").mkdir(parents=True)
             r = write_session_note(vault, "x", "2026-05-27", "09:30")
             self.assertEqual(r, "created")
-            self.assertTrue((vault / "projects" / "x" / "sessions" / "2026-05-27.md").is_file())
+            self.assertTrue((vault / "projects" / "active" / "x" / "sessions"
+                             / "2026-05-27.md").is_file())
 
     def test_idempotent(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -313,156 +353,6 @@ class TestAppendGitignore(unittest.TestCase):
 
 
 # ============================================================
-# Step 6: projects/_index.md row upsert
-# ============================================================
-
-
-class TestUpsertProjectsIndexRow(unittest.TestCase):
-
-    def test_creates_index_if_missing(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(tmp)
-            r = upsert_projects_index_row(vault, "x", "coding", "active", 0, 0, "—")
-            self.assertEqual(r, "created-index")
-            text = (vault / "projects" / "_index.md").read_text()
-            self.assertIn("x/brief", text)
-
-    def test_inserts_if_index_exists(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(tmp)
-            upsert_projects_index_row(vault, "a", "coding", "active", 0, 0, "—")
-            r = upsert_projects_index_row(vault, "b", "plugin", "active", 1, 2, "2026-05-27")
-            self.assertEqual(r, "inserted")
-            text = (vault / "projects" / "_index.md").read_text()
-            self.assertIn("a/brief", text)
-            self.assertIn("b/brief", text)
-
-    def test_hand_maintained_index_is_never_corrupted(self):
-        # Audit 2026-07-27 finding 13: the row was inserted after the FIRST
-        # `|---|` anywhere in the file, so it landed inside an unrelated table
-        # in a hand-curated index. port.py already guarded against this;
-        # connect, sync and shelf all used this unguarded copy.
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(tmp)
-            idx = vault / "projects" / "_index.md"
-            custom = (
-                "---\ntype: index\ntags:\n  - index\n---\n\n"
-                "# Projects by quarter\n\n"
-                "| Quarter | Theme |\n"
-                "|---------|-------|\n"
-                "| Q1 | Platform |\n"
-            )
-            idx.write_text(custom)
-            r = upsert_projects_index_row(vault, "x", "coding", "active", 0, 0, "—")
-            self.assertEqual(r, "skipped-unknown-format")
-            self.assertEqual(idx.read_text(), custom,
-                             "a custom index must be left byte-identical")
-
-    def test_canonical_index_still_takes_rows(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(tmp)
-            idx = vault / "projects" / "_index.md"
-            idx.write_text(
-                "---\ntype: index\ntags:\n  - index\n---\n\n"
-                "# All Projects\n\n"
-                "| Project | Type | Status | Decisions | Sessions | Last Session |\n"
-                "|---------|------|--------|-----------|----------|--------------|\n")
-            r = upsert_projects_index_row(vault, "x", "coding", "active", 0, 0, "—")
-            self.assertEqual(r, "inserted")
-            self.assertIn("x/brief", idx.read_text())
-
-    def test_updates_existing_row(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(tmp)
-            upsert_projects_index_row(vault, "a", "coding", "active", 0, 0, "—")
-            r = upsert_projects_index_row(vault, "a", "coding", "active", 5, 10, "2026-05-27")
-            self.assertEqual(r, "updated")
-            text = (vault / "projects" / "_index.md").read_text()
-            # Row contains updated counts + last_session, with wikilink form preserved
-            self.assertIn("coding | active | 5 | 10 | 2026-05-27", text)
-            # And the old "0 | 0" row is gone
-            self.assertNotIn("active | 0 | 0 | —", text)
-
-
-class TestUpsertReplacementIsConfinedToTheCanonicalTable(unittest.TestCase):
-    """Fix wave 1 finding 4: finding 13's remediation guarded only the INSERT
-    path. The row-REPLACEMENT path still matched `| [[slug/brief\\|` on ANY
-    line, so a row for that slug living inside the user's own hand-maintained
-    table was overwritten with the canonical 6-column row.
-    """
-
-    _HAND_ROW = "| [[demo/brief\\|demo]] | my own annotation |"
-
-    def test_hand_maintained_row_is_not_overwritten(self):
-        # No canonical table anywhere: nothing may be written at all.
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(tmp)
-            idx = vault / "projects" / "_index.md"
-            custom = (
-                "---\ntype: index\ntags:\n  - index\n---\n\n"
-                "# Reading notes\n\n"
-                "| Source | Note |\n"
-                "|--------|------|\n"
-                + self._HAND_ROW + "\n"
-            )
-            idx.write_text(custom)
-            r = upsert_projects_index_row(vault, "demo", "coding", "done", 3, 4, "2026-07-01")
-            self.assertEqual(r, "skipped-unknown-format")
-            self.assertEqual(idx.read_text(), custom,
-                             "a hand-maintained table must be left byte-identical")
-
-    def test_canonical_row_updates_while_hand_row_survives(self):
-        # Both tables in one file: the canonical row must still be refreshed,
-        # and only that one.
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(tmp)
-            idx = vault / "projects" / "_index.md"
-            idx.write_text(
-                "---\ntype: index\ntags:\n  - index\n---\n\n"
-                "# Reading notes\n\n"
-                "| Source | Note |\n"
-                "|--------|------|\n"
-                + self._HAND_ROW + "\n\n"
-                "# All Projects\n\n"
-                "| Project | Type | Status | Decisions | Sessions | Last Session |\n"
-                "|---------|------|--------|-----------|----------|--------------|\n"
-                "| [[demo/brief\\|demo]] | coding | active | 0 | 0 | — |\n")
-            r = upsert_projects_index_row(vault, "demo", "coding", "done", 3, 4, "2026-07-01")
-            self.assertEqual(r, "updated")
-            text = idx.read_text()
-            self.assertIn(self._HAND_ROW, text,
-                          "the user's own row must survive verbatim")
-            self.assertIn("coding | done | 3 | 4 | 2026-07-01", text,
-                          "the canonical row must still be refreshed")
-            self.assertNotIn("active | 0 | 0 | —", text)
-            self.assertEqual(text.count("my own annotation"), 1)
-
-    def test_row_below_the_canonical_table_is_not_touched(self):
-        # A second table AFTER the canonical one: the span must end at the
-        # canonical table's last row, not run to end of file.
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(tmp)
-            idx = vault / "projects" / "_index.md"
-            idx.write_text(
-                "---\ntype: index\ntags:\n  - index\n---\n\n"
-                "# All Projects\n\n"
-                "| Project | Type | Status | Decisions | Sessions | Last Session |\n"
-                "|---------|------|--------|-----------|----------|--------------|\n"
-                "| [[other/brief\\|other]] | coding | active | 0 | 0 | — |\n\n"
-                "# Reading notes\n\n"
-                "| Source | Note |\n"
-                "|--------|------|\n"
-                + self._HAND_ROW + "\n")
-            r = upsert_projects_index_row(vault, "demo", "coding", "done", 3, 4, "2026-07-01")
-            self.assertEqual(r, "inserted",
-                             "the slug is absent from the canonical table, so insert")
-            text = idx.read_text()
-            self.assertIn(self._HAND_ROW, text,
-                          "the trailing hand-maintained row must survive verbatim")
-            self.assertIn("| [[demo/brief\\|demo]] | coding | done | 3 | 4 | 2026-07-01 |", text)
-
-
-# ============================================================
 # End-to-end run_connect
 # ============================================================
 
@@ -485,15 +375,21 @@ class TestRunConnectEndToEnd(unittest.TestCase):
             )
             # Breadcrumb
             self.assertTrue((proj / ".claude" / "adjudant").is_file())
-            # Vault scaffold
-            self.assertTrue((vault / "projects" / "my-project" / "brief.md").is_file())
-            self.assertTrue((vault / "projects" / "my-project" / "decisions" / "_index.md").is_file())
+            # Vault scaffold: a real connect lands the project in active/, not
+            # in the un-zoned projects/{slug} it used before v3.
+            pdir = vault / "projects" / "active" / "my-project"
+            self.assertTrue((pdir / "brief.md").is_file())
+            self.assertFalse((vault / "projects" / "my-project").exists())
+            # No folder exists that nothing was written into. decisions/ used
+            # to arrive here holding one empty _index.md.
+            self.assertFalse((pdir / "decisions").exists())
             # Session note
-            self.assertTrue((vault / "projects" / "my-project" / "sessions" / "2026-05-27.md").is_file())
+            self.assertTrue((pdir / "sessions" / "2026-05-27.md").is_file())
             # .gitignore
             self.assertIn(".claude/adjudant", (proj / ".gitignore").read_text())
-            # Projects index row
-            self.assertIn("my-project", (vault / "projects" / "_index.md").read_text())
+            # projects/_index.md is retired: Home groups every project by
+            # lifecycle folder instead, and connect writes no row anywhere.
+            self.assertFalse((vault / "projects" / "_index.md").exists())
 
     def test_reconnect_is_idempotent(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -502,30 +398,6 @@ class TestRunConnectEndToEnd(unittest.TestCase):
             for _ in range(2):
                 run_connect(proj, vault, "v", "p", "coding", "P", "2026-05-27", "10:00")
             self.assertEqual(detect_state(proj, vault, "p"), "connected")
-
-
-# ============================================================
-# Counts + dates
-# ============================================================
-
-
-class TestCounts(unittest.TestCase):
-
-    def test_count_non_index_files(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            d = Path(tmp)
-            (d / "_index.md").write_text("idx")
-            (d / "a.md").write_text("a")
-            (d / "b.md").write_text("b")
-            (d / "c.txt").write_text("c")
-            self.assertEqual(count_non_index_files(d), 2)
-
-    def test_newest_session_date(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            d = Path(tmp)
-            for date in ["2026-05-25", "2026-05-27", "2026-05-26"]:
-                (d / f"{date}.md").write_text("x")
-            self.assertEqual(newest_session_date(d), "2026-05-27")
 
 
 # ============================================================
@@ -615,7 +487,7 @@ class TestContract(unittest.TestCase):
             payload = json.loads(buf.getvalue())
             self.assertIn("contract", payload)
             self.assertFalse((code / ".claude" / "adjudant").exists())
-            self.assertFalse((vault / "projects" / "proj").exists())
+            self.assertFalse((vault / "projects" / "active" / "proj").exists())
 
 
 from connect import build_receipt
@@ -641,7 +513,7 @@ class TestApplyContract(unittest.TestCase):
             summary = self._connect(code, vault)
             self.assertTrue((code / "GEMINI.md").is_file())
             bc = (code / ".claude" / "adjudant").read_text()
-            self.assertIn("cost_warn_tokens: 10000", bc)
+            self.assertIn(f"cost_warn_tokens: {DEFAULT_WARN_TOKENS}", bc)
             self.assertIn("stale_after_days: 30", bc)
             self.assertIn("receipt", summary)
             states = {r["artifact"]: r["state"] for r in summary["receipt"]}
@@ -655,11 +527,12 @@ class TestApplyContract(unittest.TestCase):
             self._connect(code, vault)
             bc_path = code / ".claude" / "adjudant"
             bc_path.write_text(bc_path.read_text().replace(
-                "cost_warn_tokens: 10000", "cost_warn_tokens: 99000"))
+                f"cost_warn_tokens: {DEFAULT_WARN_TOKENS}",
+                "cost_warn_tokens: 99000"))
             self._connect(code, vault)
             self.assertIn("cost_warn_tokens: 99000", bc_path.read_text())
 
-    def test_purpose_and_initial_status_land(self):
+    def test_purpose_lands_in_the_brief_and_agents_md(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); vault = root / "vault"
             (vault / "projects").mkdir(parents=True)
@@ -671,8 +544,9 @@ class TestApplyContract(unittest.TestCase):
             self.assertIn("> Track the garden irrigation build.", agents)
             self.assertNotIn("{Project Name}", agents)
             self.assertNotIn("{slug}", agents)
-            brief = (vault / "projects" / "proj" / "brief.md").read_text()
-            self.assertIn("status: seed", brief)
+            brief = (vault / "projects" / "active" / "proj" / "brief.md").read_text()
+            # v3 dropped status: from the brief; the zone folder is the status.
+            self.assertNotIn("status:", brief)
             self.assertIn("Track the garden irrigation build.", brief)
 
     def test_receipt_names_board(self):
@@ -740,7 +614,9 @@ class TestZoneAwareReconnect(unittest.TestCase):
                 slug="p", project_type="coding", type_signal="test",
                 initial_status="active", status_signal="test", purpose=None)
             self.assertEqual(contract["state"], "connected")
-            self.assertEqual(contract["zone"], "_fridge")
+            # zone_of() normalises since Task 1: the legacy _fridge/ folder
+            # reads as "paused", one of the four named lifecycle folders.
+            self.assertEqual(contract["zone"], "paused")
             states = {a["artifact"]: a["state"] for a in contract["artifacts"]}
             self.assertEqual(states["vault scaffold"], "already-present")
 
@@ -783,28 +659,45 @@ class TestZoneAwareReconnect(unittest.TestCase):
             self.assertTrue((sess_dir / f"{today}.md").is_file())
             self.assertFalse((vault / "projects" / "p" / "sessions").exists())
 
+    def _reconnect_project_type(self, root: Path, vault: Path, brief_text: str) -> str:
+        proj_dir = vault / "projects" / "_fridge" / "p"
+        scaffold_vault_project(
+            vault, "p", "plugin", "P", "2026-05-27",
+            initial_status="fridge", proj_dir=proj_dir)
+        (proj_dir / "brief.md").write_text(brief_text)
+        code = root / "p"; code.mkdir()
+        # A code file makes infer_project_type() say "coding"
+        (code / "main.py").write_text("print('x')")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            rc = connect_cli([
+                "--project-root", str(code), "--vault-path", str(vault),
+                "--slug", "p"])
+        self.assertEqual(rc, 0)
+        return json.loads(buf.getvalue())["project_type"]
+
     def test_zoned_brief_drives_project_type_on_reconnect(self):
-        """A fridged brief declaring project_type plugin must win over
+        """A fridged pre-v3 brief declaring project_type plugin must win over
         re-inference when --project-type is omitted."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             vault = root / "vault"
             (vault / "projects").mkdir(parents=True)
-            proj_dir = vault / "projects" / "_fridge" / "p"
-            scaffold_vault_project(
-                vault, "p", "plugin", "P", "2026-05-27",
-                initial_status="fridge", proj_dir=proj_dir)
-            code = root / "p"; code.mkdir()
-            # A code file would make infer_project_type() say "coding"
-            (code / "main.py").write_text("print('x')")
-            buf = io.StringIO()
-            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
-                rc = connect_cli([
-                    "--project-root", str(code), "--vault-path", str(vault),
-                    "--slug", "p"])
-            self.assertEqual(rc, 0)
-            summary = json.loads(buf.getvalue())
-            self.assertEqual(summary["project_type"], "plugin")
+            legacy = ("---\ntype: project\nproject_type: plugin\nslug: p\n"
+                      "status: fridge\ncreated: 2026-05-27\nupdated: 2026-05-27\n"
+                      "---\n\n# P\n")
+            self.assertEqual(self._reconnect_project_type(root, vault, legacy), "plugin")
+
+    def test_a_v3_brief_declares_no_project_type_so_inference_wins(self):
+        """v3 dropped project_type from the brief, so a brief carrying none
+        cannot override re-inference. Pinned rather than discovered later."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vault = root / "vault"
+            (vault / "projects").mkdir(parents=True)
+            v3 = ("---\ntype: project\ncreated: 2026-05-27\nupdated: 2026-05-27\n"
+                  "verified: 2026-05-27\nverified_by: read\n---\n\n# P\n")
+            self.assertEqual(self._reconnect_project_type(root, vault, v3), "coding")
 
 
 class TestProvisionDashboards(unittest.TestCase):
@@ -824,55 +717,60 @@ class TestProvisionDashboards(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); vault = root / "vault"; vault.mkdir()
             self._connect(root, vault)
-            bases = vault / "projects" / "proj" / "bases"
+            pdir = vault / "projects" / "active" / "proj"
+            bases = pdir / "bases"
             names = sorted(p.name for p in bases.glob("dashboard-*.base"))
             self.assertEqual(names, ["dashboard-decisions.base",
                                      "dashboard-freshness.base",
                                      "dashboard-sessions.base",
                                      "dashboard-tasks.base"])
-            text = (bases / "dashboard-sessions.base").read_text()
-            self.assertIn('file.inFolder("projects/proj/sessions")', text)
-            self.assertNotIn("{slug}", text)
+            # The filter must name the folder the project is actually in. A
+            # dashboard scoped to a path the project left returns nothing at
+            # all, with no error to notice.
+            rel = pdir.relative_to(vault).as_posix()
+            for tpl in bases.glob("dashboard-*.base"):
+                text = tpl.read_text()
+                self.assertNotIn("{slug}", text)
+                for folder in re.findall(r'file\.inFolder\("([^"]+)"\)', text):
+                    self.assertTrue(folder.startswith(rel + "/"),
+                                    f"{tpl.name} filters on {folder}, but the "
+                                    f"project lives at {rel}")
 
     def test_edited_dashboard_never_clobbered(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); vault = root / "vault"; vault.mkdir()
             self._connect(root, vault)
-            target = vault / "projects" / "proj" / "bases" / "dashboard-tasks.base"
+            target = (vault / "projects" / "active" / "proj" / "bases"
+                      / "dashboard-tasks.base")
             target.write_text("filters: 'status == \"done\"'\n# my edit\n")
             self._connect(root, vault)   # idempotent re-run
             self.assertIn("# my edit", target.read_text())
 
 
-class TestCreateVaultFlag(unittest.TestCase):
-    """--create-vault makes a new vault; --suggest-vaults lists locations."""
+class TestGuidedVaultSetup(unittest.TestCase):
 
-    def test_create_vault_makes_and_scaffolds(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            code = root / "proj"; code.mkdir()
-            new_vault = root / "Fresh Vault"
-            rc = connect_cli([
-                "--project-root", str(code),
-                "--vault-path", str(new_vault),
-                "--create-vault",
-                "--slug", "demo",
-                "--project-type", "coding",
-                "--purpose", "test create vault",
-                "--initial-status", "seed",
-            ])
-            self.assertEqual(rc, 0)
-            self.assertTrue(new_vault.is_dir())
-            self.assertTrue((new_vault / "projects" / "demo" / "brief.md").is_file())
-
-    def test_suggest_vaults_prints_json(self):
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
+    def test_suggest_vaults_prints_json_and_exits_zero(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
             rc = connect_cli(["--suggest-vaults"])
         self.assertEqual(rc, 0)
-        data = json.loads(buf.getvalue())
-        self.assertIn("vault_roots", data)
-        self.assertIsInstance(data["vault_roots"], list)
+        payload = json.loads(out.getvalue())
+        self.assertIn("vault_roots", payload)
+        self.assertIsInstance(payload["vault_roots"], list)
+
+    def test_create_vault_makes_the_dir_and_projects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "code"
+            (project / ".claude").mkdir(parents=True)
+            new_vault = Path(tmp) / "fresh-vault"
+            connect_cli([
+                "--project-root", str(project),
+                "--vault-path", str(new_vault),
+                "--create-vault",
+                "--detect-only",
+            ])
+            self.assertTrue(new_vault.is_dir())
+            self.assertTrue((new_vault / "projects").is_dir())
 
 
 if __name__ == "__main__":

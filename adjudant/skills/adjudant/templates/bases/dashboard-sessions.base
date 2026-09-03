@@ -10,5 +10,5 @@ views:
         direction: DESC
     order:
       - file.name
-      - date
-      - started
+      - created
+      - updated

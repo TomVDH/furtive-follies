@@ -1,6 +1,6 @@
 # {Project Name}
 
-`{slug}` · type: `{coding|knowledge|plugin|tinkerage}` · vault: [[projects/{slug}/brief|{slug}]]
+`{slug}` · type: `{coding|knowledge|plugin|tinkerage}` · vault: [[{slug}/brief|{slug}]]
 
 > One-line purpose of this project.
 
@@ -13,10 +13,10 @@
 | | |
 |---|---|
 | Working tree | (this folder) |
-| Canonical context | [[projects/{slug}/brief]] |
-| Decisions | [[projects/{slug}/decisions]] |
-| Sessions | [[projects/{slug}/sessions]] |
-| Handoff | [[projects/{slug}/_handoff]] |
+| Canonical context | [[{slug}/brief]] |
+| Decisions | [[{slug}/decisions]] |
+| Sessions | [[{slug}/sessions]] |
+| Handoff | [[{slug}/_handoff]] |
 
 ## Conventions
 

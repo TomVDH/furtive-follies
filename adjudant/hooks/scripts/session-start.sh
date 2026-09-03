@@ -17,17 +17,51 @@ set -euo pipefail
 # costs no extra subprocess on a hook that fires every session.
 # Returns non-zero when the project exists in NO zone — callers must no-op
 # rather than create, or an unconnected slug materializes a phantom project.
+# Four named folders first, then the pre-v3 shapes, so a migrated project
+# always beats a twin left behind by an interrupted move.
 zone_project_dir() {
   local vault="$1" slug="$2" c
-  for c in "$vault/projects/$slug" "$vault/projects/_fridge/$slug" \
-           "$vault/projects/_archive/$slug"; do
+  local zones="active paused finished archive"
+  local legacy="_fridge _archive"
+  local cands=""
+  for c in $zones; do cands="$cands $vault/projects/$c/$slug"; done
+  cands="$cands $vault/projects/$slug"
+  for c in $legacy; do cands="$cands $vault/projects/$c/$slug"; done
+  for c in $cands; do
     if [ -f "$c/brief.md" ]; then printf '%s' "$c"; return 0; fi
   done
-  for c in "$vault/projects/$slug" "$vault/projects/_fridge/$slug" \
-           "$vault/projects/_archive/$slug"; do
+  for c in $cands; do
     if [ -d "$c" ]; then printf '%s' "$c"; return 0; fi
   done
   return 1
+}
+
+# Rare nouns that do not occur in technical prose. ELLIPSIS and its kind are
+# excluded deliberately: a word that can appear naturally would mask a real
+# lapse, which is the one thing this must never do.
+CANARY_WORDS="GRAMERCY QUINCUNX SPANDREL COLOPHON TREBUCHET PALIMPSEST ORRERY CLEPSYDRA CARTOUCHE SCRIPTORIUM INCUNABULA MARGINALIA PORTCULLIS BARBICAN ASTROLABE THEODOLITE VELLUM FIRKIN GAMBREL SALTIRE ZEUGMA MANTICORE"
+
+canary_start() {
+  local session_id="$1" tmp="${TMPDIR:-/tmp}"
+  [ -n "$session_id" ] || return 0
+  case "$session_id" in *[!A-Za-z0-9._-]*) return 0 ;; esac
+  local state="$tmp/adjudant-canary-${session_id}.json"
+  # One word per session. A resume or a compaction must not re-roll it, or the
+  # streak resets exactly when drift is most likely.
+  if [ -f "$state" ]; then
+    python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["word"])' "$state" 2>/dev/null || true
+    return 0
+  fi
+  # Chosen from the session id, so a resume picks the same word without
+  # needing to have stored it first.
+  local n word idx
+  set -- $CANARY_WORDS
+  idx=$(printf '%s' "$session_id" | cksum | cut -d' ' -f1)
+  n=$(( idx % $# + 1 ))
+  eval "word=\${$n}"
+  printf '{"word":"%s","turns":0,"hits":0,"misses":0,"blocked":false}\n' "$word" > "$state" 2>/dev/null || return 0
+  find "$tmp" -maxdepth 1 -name 'adjudant-canary-*.json' -mtime +1 -delete 2>/dev/null || true
+  printf '%s' "$word"
 }
 
 main() {
@@ -68,8 +102,9 @@ except Exception:
   # not leak \r into paths/slugs (it used to create phantom `slug\r/` dirs).
   vault_path=$(sed -n 's/^vault_path[:=][[:space:]]*//p' "$breadcrumb" 2>/dev/null | head -n1 | tr -d '\r' || true)
   slug=$(sed -n 's/^slug[:=][[:space:]]*//p' "$breadcrumb" 2>/dev/null | head -n1 | tr -d '\r' || true)
-  local voice_knob
+  local voice_knob advisor_knob
   voice_knob=$(sed -n 's/^voice[:=][[:space:]]*//p' "$breadcrumb" 2>/dev/null | head -n1 | tr -d '\r' || true)
+  advisor_knob=$(sed -n 's/^advisor[:=][[:space:]]*//p' "$breadcrumb" 2>/dev/null | head -n1 | tr -d '\r' || true)
 
   [ -z "$slug" ] && return 0
   # The breadcrumb is a REPO-COMMITTED file: a cloned repo can carry any slug.
@@ -140,7 +175,38 @@ print(v or "")' "$CLAUDE_PLUGIN_ROOT/scripts" "$project_dir" 2>/dev/null || true
       ;;
   esac
 
+  # Advisor banner: opt-in (`advisor: on` in the breadcrumb; the /adjudant
+  # advisor verb also stamps a marker into AGENTS.md so the mode is visible at
+  # project root). The banner is acute awareness by design: the model
+  # is under the advisor contract from the first turn of every session, not
+  # from whenever it happens to read the doc. After Voice: the register
+  # governs how observations are said before anything decides what to notice.
+  # Same 120-token budget discipline, tested in test_hook_shell.
+  case "${advisor_knob:-off}" in
+    on|true|1|yes)
+      printf -- '- Advisor: on. Load `reference/advisor.md` now and follow it: notice tasks, gaps, gaffes, and stale context while working. Urgent findings surface inline; the rest go to the board or the next status report. Run a context pulse at resume.\n'
+      ;;
+    *) : ;;
+  esac
+
+  # Drift canary. One rare word, stated HERE and nowhere else, printed at the
+  # end of every reply and checked by the Stop hook. A model that stops
+  # honouring a one-word instruction it was given minutes ago has stopped
+  # honouring instructions generally, and the rest of the session is worth
+  # less. The per-turn hook reports a lapse but never restates the word: a
+  # re-assertion would keep the model printing it and measure nothing.
+  local canary_word=""
+  canary_word=$(canary_start "$session_id") || true
+  if [ -n "${canary_word:-}" ]; then
+    printf -- '- Session canary: end every message with `%s` on its own line. It is a drift check, so do not explain it or mention it otherwise.\n' "$canary_word"
+  fi
+
   printf -- '- Vault: `%s` (linked to project `%s`)\n' "$(basename "$vault_path")" "$slug"
+
+  # Register reminder, stated once per session rather than per turn: a
+  # per-turn copy is the ceremony plan 4 removes. content-markdown.md's
+  # `## Register` rule is the full contract; this is the one-line pointer.
+  printf -- '- Register: ASD-STE100 for vault writes. One instruction per sentence, active voice, present tense, under twenty words.\n'
 
   # AGENTS.md + CLAUDE.md detection
   local has_agents=0 has_claude=0
@@ -196,6 +262,19 @@ PY
     [ -n "$board_line" ] && printf '%s\n' "$board_line"
   fi
 
+  # Environment capabilities: probes declared in scripts/build-profile.json,
+  # rendered by _profile.py. Fresh startups only, never resume/compact/clear.
+  # A build whose registry is empty prints nothing, which is why this hook is
+  # now one file across both builds instead of two. The scripts dir is found
+  # from this script's own path, so it works with no CLAUDE_PLUGIN_ROOT set.
+  if [ "$start_source" = "startup" ]; then
+    _adj_scripts=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts" 2>/dev/null && pwd || true)
+    if [ -n "$_adj_scripts" ] && [ -f "$_adj_scripts/_profile.py" ] \
+       && command -v python3 >/dev/null 2>&1; then
+      python3 "$_adj_scripts/_profile.py" --session-banner 2>/dev/null || true
+    fi
+  fi
+
   # --- 3. Session note: create or resume ---
   # No project dir in any zone: the breadcrumb points at something that was
   # never connected (or was deleted). Say so; never materialize it.
@@ -209,75 +288,26 @@ PY
   session_dir="$vault_project/sessions"
   session_file="$session_dir/$today.md"
 
-  mkdir -p "$session_dir" 2>/dev/null || true
+  # v3: the session note is created by the first real vault write, not here.
+  # This hook used to create one on every open and append a resume marker on
+  # every reopen, which produced 76 empty notes and 164 markers followed by
+  # nothing. It also stamped a conversation UUID per resume, stacking 18 into
+  # one note. Provenance now rides on the artefacts themselves. The sessions/
+  # directory is not pre-created either: a folder exists when something is in it.
+  if [ -f "$session_file" ]; then
+    printf -- '- Session note: `%s/sessions/%s.md`\n' "$rel_project" "$today"
+  fi
 
-  # Render the session_id block: list with the current UUID if we got one,
-  # empty list otherwise (the next SessionStart will append).
-  local sid_block
+  # --- 4. Intent-line ownership: the vault-log hook creates the placeholder
+  # with the note, the model fills it. The NUDGE lives in the UserPromptSubmit
+  # hook, not here — at SessionStart there is no purpose to record yet, and
+  # this hook re-runs on every resume and compact, so it nagged early and
+  # repeatedly. All that is left here is handing the resolved path forward;
+  # re-deriving it in the per-turn hook would duplicate the zone-aware lookup,
+  # and two copies drift. The pointer is written whether or not the note exists
+  # yet — it usually does not, since v3 creates it on the first real write —
+  # and the per-turn hook already skips a pointer whose target is absent.
   if [ -n "$session_id" ]; then
-    sid_block=$'session_id:\n  - '"$session_id"
-  else
-    sid_block="session_id: []"
-  fi
-
-  # Atomic create via noclobber: two SessionStarts racing on the same day
-  # can't truncate each other — the loser falls through to the resume branch.
-  if ( set -o noclobber; cat > "$session_file" <<EOF
----
-type: session
-date: $today
-started: $ts
-$sid_block
-tags:
-  - session
----
-
-> {One-line intent. Frozen after first write.}
-
-## Log
-
-- $ts · session started
-EOF
-  ) 2>/dev/null; then
-    # Only claim creation when the write actually succeeded — a failed write
-    # (read-only vault, offline iCloud) must not inject a phantom-file claim.
-    printf -- '- Session note created: `%s/sessions/%s.md`\n' "$rel_project" "$today"
-  elif [ -f "$session_file" ]; then
-    local resumed_ok=0
-    case "$start_source" in
-      compact|clear)
-        # No resumed marker for these sources: after a compaction the
-        # precompact hook already wrote a paused tombstone, and a /clear is
-        # not a return to the note. Appending "resumed" was pure churn.
-        if [ -w "$session_file" ]; then resumed_ok=1; fi
-        ;;
-      *)
-        # brace group: silence stderr BEFORE the >> open (left→right redirections)
-        if { printf '\n--- %s session resumed ---\n\n' "$ts" >> "$session_file"; } 2>/dev/null; then
-          resumed_ok=1
-        fi
-        ;;
-    esac
-    if [ "$resumed_ok" = "1" ]; then
-      # Idempotently append this conversation's UUID to the session_id list.
-      if [ -n "$session_id" ] && [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] \
-         && [ -f "$CLAUDE_PLUGIN_ROOT/scripts/_session_stamp.py" ] \
-         && command -v python3 >/dev/null 2>&1; then
-        python3 "$CLAUDE_PLUGIN_ROOT/scripts/_session_stamp.py" \
-          session-id "$session_file" "$session_id" >/dev/null 2>&1 || true
-      fi
-      printf -- '- Session note resumed: `%s/sessions/%s.md`\n' "$rel_project" "$today"
-    fi
-  fi
-  # else: write failed and no file exists — stay silent, claim nothing.
-
-  # --- 4. Intent-line ownership: the hook creates the placeholder, the model
-  # fills it. The NUDGE lives in the UserPromptSubmit hook, not here — at
-  # SessionStart there is no purpose to record yet, and this hook re-runs on
-  # every resume and compact, so it nagged early and repeatedly. All that is
-  # left here is handing the resolved path forward; re-deriving it in the
-  # per-turn hook would duplicate the zone-aware lookup, and two copies drift.
-  if [ -n "$session_id" ] && [ -f "$session_file" ]; then
     { printf '%s\n' "$session_file" \
         > "${TMPDIR:-/tmp}/adjudant-session-$session_id"; } 2>/dev/null || true
   fi

@@ -7,10 +7,9 @@ Onboards a code-side project to the vault:
   2. Provision AGENTS.md + CLAUDE.md + GEMINI.md at project root (skip if exist)
   3. Scaffold vault project: brief.md (from project_type template) + per-type
      subfolders + per-folder `_index.md` (skip per-folder indexes for
-     INDEX_EXEMPT_FOLDERS like sessions/ and images/)
+     folders like sessions/ and images/)
   4. Write today's session note: `{vault}/projects/{slug}/sessions/{YYYY-MM-DD}.md`
   5. Append `.claude/adjudant` to project `.gitignore`
-  Also: add or update the project's row in `{vault}/projects/_index.md`.
 
 Idempotent. Re-running fills gaps; never overwrites user-authored content.
 
@@ -41,9 +40,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from _cost import DEFAULT_WARN_TOKENS
+from _render import render
 from _vault_walk import (
-    INDEX_EXEMPT_FOLDERS,
-    PROJECT_TYPE_DEFAULT_FOLDERS,
     _candidate_vault_paths,
     find_project_dir,
     parse_breadcrumb,
@@ -90,12 +89,17 @@ def slug_to_title(slug: str) -> str:
 def _project_dir(vault_path: Path, slug: str) -> Path:
     """Resolve a project's vault dir across zones (live / _fridge / _archive).
 
-    Falls back to the default live-zone path when the project doesn't exist
-    yet anywhere (fresh connect). Zone-aware so re-connecting a shelved
-    project fills gaps in place instead of forking a duplicate in
-    `projects/{slug}`.
+    Falls back to `projects/active/{slug}` when the project doesn't exist yet
+    anywhere (fresh connect). Zone-aware so re-connecting a paused project
+    fills gaps in place instead of forking a duplicate.
+
+    This fallback is the one run_connect actually takes: it resolves the dir
+    here and hands it to every writer, so a writer's own default is never
+    reached from the CLI. A bare `projects/{slug}` here would have put every
+    new project outside the four folders no matter what scaffold said.
     """
-    return find_project_dir(vault_path, slug) or (vault_path / "projects" / slug)
+    return find_project_dir(vault_path, slug) or (
+        vault_path / "projects" / "active" / slug)
 
 
 # ============================================================
@@ -283,7 +287,7 @@ def write_breadcrumb(
     Returns 'created' | 'updated' | 'already-present'.
     """
     existing = parse_breadcrumb(project_root) or {}
-    cwt = existing.get("cost_warn_tokens", "10000")
+    cwt = existing.get("cost_warn_tokens", str(DEFAULT_WARN_TOKENS))
     sad = existing.get("stale_after_days", "30")
     canonical = {"vault_path", "vault_name", "slug", "mode",
                  "cost_warn_tokens", "stale_after_days"}
@@ -386,6 +390,43 @@ def derive_project_type(
     return None
 
 
+BRIEF_PURPOSE_PLACEHOLDER = "{One sentence. What this is and who it is for.}"
+SESSION_SUMMARY_PLACEHOLDER = (
+    "{One line, written at session end, saying what this session did.}")
+
+_WHEN_RE = re.compile(r"^<!--\s*when:\s*([^>]*?)\s*-->\s*$")
+
+
+def apply_when_markers(text: str, project_type: str) -> str:
+    """Resolve `<!-- when: a, b -->` section markers for one project type.
+
+    One brief replaced four variants, so project type now picks which sections
+    get written rather than which file you get. A `##` heading whose next line
+    carries the marker is kept only when `project_type` is listed; the marker
+    line itself never survives into a written file.
+    """
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
+        m = _WHEN_RE.match(nxt) if line.startswith("## ") else None
+        if not m:
+            out.append(line)
+            i += 1
+            continue
+        wanted = [k.strip() for k in m.group(1).split(",") if k.strip()]
+        j = i + 2
+        while j < len(lines) and not lines[j].startswith("## "):
+            j += 1
+        if project_type in wanted:
+            out.append(line)
+            out.extend(lines[i + 2:j])          # the marker line is dropped
+        i = j
+    return "".join(out).rstrip("\n") + "\n"
+
+
 def scaffold_vault_project(
     vault_path: Path,
     slug: str,
@@ -396,16 +437,29 @@ def scaffold_vault_project(
     purpose: Optional[str] = None,
     proj_dir: Optional[Path] = None,
 ) -> dict[str, list[str]]:
-    """Create vault project folder, brief, subfolders, per-folder indexes.
+    """Create the vault project folder and its brief. Nothing else.
 
-    `proj_dir` lets the caller pass a zone-resolved dir (e.g. `_fridge/{slug}`)
-    so gaps are filled in place instead of forking `projects/{slug}`. Defaults
-    to the live-zone path when omitted, matching prior behavior.
+    `proj_dir` lets the caller pass a zone-resolved dir (e.g. `paused/{slug}`)
+    so gaps are filled in place instead of forking a duplicate. Defaults to
+    `projects/active/{slug}` when omitted.
 
     Returns dict with 'created' / 'preserved' filenames lists.
+
+    `initial_status` no longer reaches the brief: v3 dropped `status:` from it
+    because the zone folder is the project's state and a second answer can
+    disagree with it. The value still travels into the breadcrumb and receipt.
     """
+    # The per-type folder table used to be the only thing that rejected an
+    # unknown project type, as a side effect of looking the defaults up. The
+    # table is gone; the rejection is not, because apply_when_markers would
+    # otherwise silently drop every gated section for a typo.
+    if project_type not in VALID_PROJECT_TYPES:
+        raise RuntimeError(f"unknown project_type: {project_type}")
+
     if proj_dir is None:
-        proj_dir = vault_path / "projects" / slug
+        # New projects land in active/. A project moves out of it through the
+        # guided triage in `status`, never through a scaffold.
+        proj_dir = vault_path / "projects" / "active" / slug
     created: list[str] = []
     preserved: list[str] = []
 
@@ -416,52 +470,22 @@ def scaffold_vault_project(
     # brief.md
     brief_path = proj_dir / "brief.md"
     if not brief_path.is_file():
-        template_path = TEMPLATES / f"project-brief-{project_type}.md"
-        if not template_path.is_file():
-            raise RuntimeError(f"template missing: {template_path}")
-        text = template_path.read_text()
-        text = (
-            text.replace("{kebab-slug}", slug)
-                .replace("{YYYY-MM-DD}", today)
-                .replace("{Project Name}", project_name)
-        )
-        text = text.replace("status: active", f"status: {initial_status}", 1)
+        body = {"Project Name": project_name}
         if purpose:
-            text = text.replace("## INTRO\n", f"## INTRO\n\n{purpose}\n", 1)
-        brief_path.write_text(text)
+            body[BRIEF_PURPOSE_PLACEHOLDER.strip("{}")] = purpose
+        text = render("project",
+                      {"created": today, "updated": today, "verified": today},
+                      body)
+        brief_path.write_text(apply_when_markers(text, project_type))
         created.append("brief.md")
     else:
         preserved.append("brief.md")
 
-    # Subfolders + per-folder indexes
-    defaults = PROJECT_TYPE_DEFAULT_FOLDERS.get(project_type)
-    if not defaults:
-        raise RuntimeError(f"unknown project_type: {project_type}")
-    with_index = defaults["with_index"]
-    no_index = defaults["no_index"]
-
-    for sub in with_index + no_index:
-        sub_dir = proj_dir / sub
-        if not sub_dir.exists():
-            sub_dir.mkdir()
-            created.append(f"{sub}/")
-        idx = sub_dir / "_index.md"
-        if sub in INDEX_EXEMPT_FOLDERS:
-            continue
-        if sub in with_index and not idx.is_file():
-            heading = " ".join(w.capitalize() for w in sub.replace("-", " ").replace("_", " ").split())
-            idx_content = (
-                "---\n"
-                "type: index\n"
-                f"updated: {today}\n"
-                "tags:\n"
-                "  - index\n"
-                "---\n\n"
-                f"# {heading}\n\n"
-                "## Entries\n\n"
-            )
-            idx.write_text(idx_content)
-            created.append(f"{sub}/_index.md")
+    # v3: no subfolders and no indexes. A folder exists when something is in
+    # it; `_place.place()` creates the one it needs at write time. connect
+    # used to make four to seven folders and drop an empty `_index.md` into
+    # each, which is where the fifteen indexes with a body under 25 bytes
+    # came from — and a scratchpad project got six folders it never used.
 
     return {"created": created, "preserved": preserved}
 
@@ -479,44 +503,32 @@ def write_session_note(
     proj_dir: Optional[Path] = None,
 ) -> str:
     """`proj_dir` lets the caller pass a zone-resolved dir; defaults to the
-    live-zone path when omitted, matching prior behavior."""
+    live-zone path when omitted, matching prior behavior.
+
+    `now_hhmm` no longer reaches the note. v3 dropped `started:` from the
+    session shape, and the Log rows in the template are examples of the three
+    entry forms rather than a first entry to stamp: writing a real time into
+    them would forge three log lines. The argument stays because callers pass
+    it and the day, not the minute, is what a session note records.
+
+    One render call, no fallback. The old template-or-inline branch wrote
+    `date`, `started`, `session_id` and a `session` tag when the template was
+    unreadable, four fields v3 does not have, so a missing template quietly
+    produced a note the schema gate would reject. It now raises.
+    """
     if proj_dir is None:
-        proj_dir = vault_path / "projects" / slug
+        proj_dir = vault_path / "projects" / "active" / slug
     sess_dir = proj_dir / "sessions"
     sess_dir.mkdir(parents=True, exist_ok=True)
     sess_file = sess_dir / f"{today}.md"
     if sess_file.is_file():
         return "preserved"
-    template_path = TEMPLATES / "session.md"
-    if template_path.is_file():
-        text = template_path.read_text()
-        text = (
-            text.replace("{slug}", slug)
-                .replace("{YYYY-MM-DD}", today)
-                .replace("{HH:MM}", now_hhmm)
-        )
-        # Default intent + first log entry if template has placeholder
-        text = text.replace(
-            "{One-line intent. Frozen after first write.}",
-            "Session initiated by /adjudant connect.",
-        )
-    else:
-        # Template-less fallback. session_id starts empty; the SessionStart
-        # hook appends the live conversation UUID on the next session start.
-        text = (
-            "---\n"
-            "type: session\n"
-            f"date: {today}\n"
-            f"started: \"{now_hhmm}\"\n"
-            "session_id: []\n"
-            "tags:\n"
-            "  - session\n"
-            "---\n\n"
-            f"> Session initiated by /adjudant connect.\n\n"
-            "## Log\n\n"
-            f"- {now_hhmm} · session started\n"
-        )
-    sess_file.write_text(text)
+    sess_file.write_text(render(
+        "session",
+        {"created": today, "updated": today},
+        {SESSION_SUMMARY_PLACEHOLDER.strip("{}"):
+            "Session initiated by /adjudant connect."},
+    ))
     return "created"
 
 
@@ -525,25 +537,49 @@ def write_session_note(
 # ============================================================
 
 
+def _vault_rel_project_path(proj_dir: Path, slug: str) -> str:
+    """`projects/{zone}/{slug}` as a vault-relative posix path.
+
+    Derived from the resolved directory rather than assumed, so it is right
+    for a project in any of the four lifecycle folders and for a pre-v3
+    project still sitting at `projects/{slug}`.
+    """
+    parts = proj_dir.parts
+    for i in range(len(parts) - 1, -1, -1):
+        if parts[i] == "projects":
+            return "/".join(parts[i:])
+    return f"projects/{slug}"
+
+
 def provision_dashboards(proj_dir: Path, slug: str) -> str:
     """Install the shipped .base dashboards into {project}/bases/.
 
     Write-if-absent per file: connect is idempotent, and a dashboard the
-    human edited must never be clobbered. `{slug}` in the templates becomes
-    the real slug so the base scopes to this project only. Returns
-    "provisioned" (any file written), "present" (all already there), or
-    "no-templates" (plugin install missing the folder - degrade quietly)."""
+    human edited must never be clobbered. Returns "provisioned" (any file
+    written), "present" (all already there), or "no-templates" (plugin install
+    missing the folder - degrade quietly).
+
+    The templates say `projects/{slug}/…`, which was the project's real path
+    until v3 put every project inside a lifecycle folder. `file.inFolder` takes
+    a literal path, so the substitution is the project's actual vault-relative
+    directory: a dashboard naming a folder the project is not in returns
+    nothing at all, silently, which is worse than no dashboard.
+    """
     src = TEMPLATES / "bases"
     if not src.is_dir():
         return "no-templates"
     dest = proj_dir / "bases"
     wrote = False
+    proj_rel = _vault_rel_project_path(proj_dir, slug)
     for tpl in sorted(src.glob("dashboard-*.base")):
         target = dest / tpl.name
         if target.exists():
             continue
         dest.mkdir(parents=True, exist_ok=True)
-        target.write_text(tpl.read_text().replace("{slug}", slug))
+        target.write_text(
+            tpl.read_text()
+               .replace("projects/{slug}", proj_rel)
+               .replace("{slug}", slug))
         wrote = True
     return "provisioned" if wrote else "present"
 
@@ -564,121 +600,11 @@ def append_gitignore(project_root: Path) -> str:
         return "created"
 
 
-# ============================================================
-# Step 6: projects/_index.md row (upsert)
-# ============================================================
-
-
-PROJECTS_INDEX_ROW_RE = re.compile(
-    r"^\|\s*\[\[(?P<slug>[^/|\]]+)/brief\\?\|[^]]+\]\]\s*\|"
-)
-
-
-def count_non_index_files(folder: Path) -> int:
-    if not folder.is_dir():
-        return 0
-    return sum(
-        1 for f in folder.iterdir()
-        if f.is_file() and f.suffix == ".md" and f.name != "_index.md"
-    )
-
-
-def newest_session_date(sessions_dir: Path) -> str:
-    if not sessions_dir.is_dir():
-        return "—"
-    dates: list[str] = []
-    for f in sessions_dir.iterdir():
-        if not f.is_file() or f.suffix != ".md":
-            continue
-        m = re.match(r"^(\d{4}-\d{2}-\d{2})", f.stem)
-        if m:
-            dates.append(m.group(1))
-    return max(dates) if dates else "—"
-
-
-# The canonical 6-column projects-index header (templates/_index-projects.md).
-# A row is only ever inserted under THIS header — anything else is a
-# hand-maintained or custom index and is left alone.
-_CANONICAL_INDEX_HEADER_RE = re.compile(
-    r"^\|\s*Project\s*\|\s*Type\s*\|\s*Status\s*\|\s*Decisions\s*\|"
-    r"\s*Sessions\s*\|\s*Last Session\s*\|\s*$", re.I)
-
-
-_TABLE_SEPARATOR_RE = re.compile(r"^\|[\s\-|:]+\|\s*$")
-
-
-def _canonical_table_body(lines: list[str]) -> Optional[tuple[int, int]]:
-    """`(start, end)` line range of the canonical projects table's row body.
-
-    `start` is the first line after the header's `|---|` separator; `end` is
-    one past its last row, stopping at the first line that is not a table row.
-    None when there is no canonical header, or no separator beneath it.
-
-    Both the insert AND the replace path go through this: a row for our slug
-    that happens to live in the user's own table is not ours to rewrite.
-    """
-    for i, line in enumerate(lines):
-        if not _CANONICAL_INDEX_HEADER_RE.match(line):
-            continue
-        # Markdown requires the delimiter row directly beneath the header.
-        if i + 1 >= len(lines) or not _TABLE_SEPARATOR_RE.match(lines[i + 1]):
-            return None
-        start = end = i + 2
-        while end < len(lines) and lines[end].lstrip().startswith("|"):
-            end += 1
-        return start, end
-    return None
-
-
-def upsert_projects_index_row(
-    vault_path: Path,
-    slug: str,
-    project_type: str,
-    status: str,
-    decisions_n: int,
-    sessions_n: int,
-    last_session: str,
-) -> str:
-    idx = vault_path / "projects" / "_index.md"
-    new_row = (
-        f"| [[{slug}/brief\\|{slug}]] | {project_type} | {status} | "
-        f"{decisions_n} | {sessions_n} | {last_session} |"
-    )
-    if not idx.is_file():
-        idx.write_text(
-            "---\ntype: index\nupdated: " + datetime.now().strftime("%Y-%m-%d") + "\ntags:\n  - index\n---\n\n"
-            "# All Projects\n\n"
-            "| Project | Type | Status | Decisions | Sessions | Last Session |\n"
-            "|---------|------|--------|-----------|----------|--------------|\n"
-            + new_row + "\n"
-        )
-        return "created-index"
-
-    text = idx.read_text()
-    lines = text.splitlines()
-    # Never corrupt a hand-maintained index (audit 2026-07-27 finding 13, and
-    # fix wave 1 finding 4). Insert used to land after the FIRST `|---|`
-    # anywhere in the file; replace used to match `| [[slug/brief\|` on ANY
-    # line, so a row for this slug inside the user's own table was overwritten
-    # with the canonical 6-column form. Both paths are now confined to the
-    # canonical table's own row body.
-    body = _canonical_table_body(lines)
-    if body is None:
-        return "skipped-unknown-format"
-    start, end = body
-
-    target_pattern = re.compile(
-        r"^\|\s*\[\[" + re.escape(slug) + r"/brief\\?\|"
-    )
-    found = False
-    for i in range(start, end):
-        if target_pattern.search(lines[i]):
-            lines[i] = new_row
-            found = True
-    if not found:
-        lines.insert(start, new_row)
-    idx.write_text("\n".join(lines) + "\n")
-    return "updated" if found else "inserted"
+# Step 6 (projects/_index.md row upsert) lived here. It is gone: Home groups
+# every project by lifecycle folder and is generated whole by plan 4's
+# _index_gen, so a hand-upserted second list of the same projects could only
+# disagree with it — which it did, with 28 rows, two duplicated, and
+# malformed table pipes.
 
 
 # ============================================================
@@ -701,8 +627,7 @@ def detect_state(project_root: Path, vault_path: Optional[Path], slug: Optional[
 
 _RECEIPT_MARK = {
     "created": "created", "preserved": "already-present",
-    "added": "updated", "updated": "updated", "inserted": "updated",
-    "created-index": "created",
+    "added": "updated", "updated": "updated",
 }
 
 
@@ -718,13 +643,14 @@ def build_receipt(summary: dict[str, Any]) -> list[dict[str, str]]:
         {"artifact": "vault scaffold", "state": "created" if scaffold["created"] else "already-present"},
         {"artifact": "session note", "state": _RECEIPT_MARK.get(steps["session_note"], steps["session_note"])},
         {"artifact": ".gitignore entries", "state": _RECEIPT_MARK.get(steps["gitignore"], steps["gitignore"])},
-        {"artifact": "projects/_index.md row", "state": _RECEIPT_MARK.get(steps["projects_index_row"], steps["projects_index_row"])},
     ]
-    # Board pointer for the project types that get a tasks/ folder by default
+    # Board pointer for the project types that get a tasks/ folder by default.
+    # The board is opt-in and never auto-seeded: v3 deleted the PostToolUse
+    # branch that scaffolded a deck on the first write under tasks/.
     if summary.get("project_type") in ("coding", "plugin"):
         receipt.append({
             "artifact": "board",
-            "state": "tasks/ seeds the kanban: /adjudant board, born automatically on the first task note",
+            "state": "tasks/ holds the cards; run /adjudant board to open a deck on them (opt-in, never auto-seeded)",
         })
     return receipt
 
@@ -781,20 +707,10 @@ def run_connect(
     # dashboard is never clobbered by an idempotent re-run.
     summary["steps"]["base_dashboards"] = provision_dashboards(proj_dir, slug)
 
-    # Step 6
-    decisions_n = count_non_index_files(proj_dir / "decisions")
-    sessions_n = count_non_index_files(proj_dir / "sessions")
-    last_session = newest_session_date(proj_dir / "sessions")
-    brief_path = proj_dir / "brief.md"
-    status = "active"
-    if brief_path.is_file():
-        fm, _ = parse_frontmatter(brief_path.read_text(errors="replace"))
-        s = fm.fields.get("status")
-        if isinstance(s, str) and s:
-            status = s
-    summary["steps"]["projects_index_row"] = upsert_projects_index_row(
-        vault_path, slug, project_type, status, decisions_n, sessions_n, last_session
-    )
+    # Step 6 wrote a row into projects/_index.md. That file is retired: Home
+    # groups every project by lifecycle folder and is generated whole, so a
+    # hand-upserted second list could only disagree with it. 28 rows, two
+    # duplicated, with malformed table pipes, is what it disagreed by.
 
     summary["receipt"] = build_receipt(summary)
     return summary
@@ -836,7 +752,7 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
         return 1
 
     # Create a brand-new vault at an explicit path when asked (guided setup):
-    # the coworker picked a location that does not hold a vault yet.
+    # the user picked a location that does not hold a vault yet.
     if args.create_vault and args.vault_path:
         new_vault = Path(args.vault_path).expanduser()
         if not new_vault.is_dir():
@@ -926,7 +842,6 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
           f"preserved={len(summary['steps']['vault_scaffold']['preserved'])}", file=sys.stderr)
     print(f"[connect] session_note: {summary['steps']['session_note']}", file=sys.stderr)
     print(f"[connect] gitignore: {summary['steps']['gitignore']}", file=sys.stderr)
-    print(f"[connect] projects_index_row: {summary['steps']['projects_index_row']}", file=sys.stderr)
 
     print(json.dumps(summary, indent=2, default=str))
     return 0

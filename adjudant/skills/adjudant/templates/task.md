@@ -1,20 +1,21 @@
 ---
 type: task
-# status enum: todo | doing | review | blocked | done | icebox
-status: todo
-# optional fields, one line each:
-#   category: board colour group (build, docs, infra, chore, ...)
-#   code:     short card id cross-linking specs, handoffs, commits
-#   related:  wikilinks or codes this task touches
-#   note:     one-line board annotation
-category: ""
-code: ""
-related: []
-note: ""
-tags:
-  - task
+created: {YYYY-MM-DD}
+updated: {YYYY-MM-DD}
+status: backlog                   # backlog | next | doing | review | done | icebox | dropped
+session:                          # optional
+spec:                             # optional
+category:                         # optional
+related:                          # optional
 ---
 
-## Task
+# {What needs doing}
+
+## Done when
+
+{The test that closes this card. One sentence, checkable by someone who was
+not there.}
 
 ## Notes
+
+{Anything the person picking this up needs.}

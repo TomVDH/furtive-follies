@@ -1,0 +1,6 @@
+{
+  "audience": "public",
+  "description_suffix": "",
+  "cost_warn_tokens": 10000,
+  "capabilities": []
+}

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """PostToolUse hook for adjudant.
 
-Three mechanical jobs on tool writes under {vault}/projects/{slug}/:
+Two mechanical jobs on tool writes under {vault}/projects/{slug}/:
 
-  0. On a task-note change (Write OR Edit under tasks/), nudge the board:
-     `board_bridge.py --ensure-only` in a capped subprocess, fire-and-forget.
-  1. Append a `- HH:MM · Decision|Added: [[link]]` entry to today's session log.
+  1. Append a `- HH:MM · Decision|Added: [[link]]` entry to today's session
+     log, creating that note when this is the first real write of the day
+     (v3: SessionStart no longer creates one on every open).
   2. Stamp `source_session: <uuid>` into the new file's frontmatter — ONLY
      when the breadcrumb opts in with `stamp_source_session: true` (accepted
      truthy spellings: true|1|yes|on, case-insensitive; absent means off).
@@ -13,15 +13,23 @@ Three mechanical jobs on tool writes under {vault}/projects/{slug}/:
      the per-file stamp is opt-in provenance, not a default. Session notes /
      _handoff / _index files are excluded by the stamping primitive.
 
-Jobs 1 and 2 fire only on Write (not Edit/MultiEdit, which typically modify
-existing files). All jobs are best-effort and fail-closed.
+Both jobs fire only on Write (not Edit/MultiEdit, which typically modify
+existing files). Both are best-effort and fail-closed.
+
+This hook spawns no subprocess. Until v3 a job 0 fired
+`board_bridge.py --ensure-only` on any Write OR Edit under `tasks/`, which
+scaffolded `board-data.json`, `board.html` and a lock file into a vault
+project that had never asked for a board — three unrequested files against
+six intentional writes. `board` is opt-in: the deck is born by running
+`/adjudant board`, and nothing else. Deleting the branch is what let the
+PostToolUse matcher narrow back to `Write`, so an Edit anywhere on the
+machine no longer wakes this hook for work it cannot do.
 """
 
 import json
 import os
-import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # Shared primitives live in <plugin>/scripts/. Deferred behind the breadcrumb
@@ -75,9 +83,11 @@ def _bootstrap() -> None:
         # succeeding (stdlib-free: this block runs when imports are already
         # failing).
         def find_project_dir(vault, slug):  # type: ignore
-            cands = [vault / "projects" / slug,
-                     vault / "projects" / "_fridge" / slug,
-                     vault / "projects" / "_archive" / slug]
+            cands = [vault / "projects" / z / slug
+                     for z in ("active", "paused", "finished", "archive")]
+            cands.append(vault / "projects" / slug)
+            cands += [vault / "projects" / z / slug
+                      for z in ("_fridge", "_archive")]
             for c in cands:
                 if (c / "brief.md").is_file():
                     return c
@@ -115,6 +125,54 @@ def read_breadcrumb(project_dir: Path) -> dict:
         k, v = line.split(sep, 1)
         info[k.strip()] = v.strip()
     return info
+
+
+_SESSION_NOTE = """---
+type: session
+created: %(today)s
+updated: %(today)s
+---
+
+> {One-line intent. Frozen after first write.}
+
+## Log
+
+"""
+
+
+def ensure_session_note(sessions_dir: Path, today: str) -> Path:
+    """Today's session note, created if this is the first real write.
+
+    v3 moved creation here from SessionStart: a note that exists only because
+    a session opened records nothing, and 29% of the vault's notes were exactly
+    that. Created with noclobber semantics so two async hooks racing on the
+    first write of the day cannot truncate each other.
+
+    The frontmatter is the `session` shape templates/session.md declares, which
+    since v3 is the schema itself — `type`, `created`, `updated`, and nothing
+    else. A note this hook writes must validate against the same derived
+    FIELD_SCHEMA the write gate applies, so the three pre-v3 fields (`date`,
+    `started`, `session_id`) and the bare `session` tag are gone with the
+    template that used to declare them. The intent placeholder stays: the
+    UserPromptSubmit nudge greps for it, and the template's own first line is
+    written at session end rather than at creation.
+    """
+    note = sessions_dir / f"{today}.md"
+    if note.exists():
+        return note
+    try:
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        fd = os.open(note, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        return note                      # the other hook won; append to theirs
+    except OSError:
+        return note                      # read-only vault: caller's append no-ops
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(_SESSION_NOTE % {"today": today})
+    except OSError:
+        pass
+    return note
 
 
 def main() -> int:
@@ -188,22 +246,7 @@ def main() -> int:
     if not parts:
         return 0
 
-    # --- Job 0: task-note change (Write OR Edit under tasks/) nudges the
-    # board. Capped subprocess (3s), output discarded, every failure mode
-    # (missing bridge, timeout, dead python3) swallowed: a board refresh must
-    # never block the hook or the log jobs below. ---
-    if tool_name in ("Write", "Edit") and parts[0] == "tasks":
-        bridge = Path(__file__).resolve().parents[2] / "scripts" / "board_bridge.py"
-        try:
-            subprocess.run(
-                ["python3", str(bridge), "--ensure-only",
-                 "--project-dir", str(project_dir)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                timeout=3, check=False)
-        except Exception:
-            pass
-
-    # Jobs 1 and 2 act only on NEW files (Write tool, not Edit/MultiEdit)
+    # Both jobs act only on NEW files (Write tool, not Edit/MultiEdit)
     if tool_name != "Write":
         return 0
 
@@ -220,27 +263,49 @@ def main() -> int:
                 "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md"))
         except OSError:
             candidates = []
-        # Real dates not after today only (finding 19): a future-dated note
-        # must never absorb appends; the digit glob admits impossible dates.
+        # Yesterday or today only. Two guards, two different bugs:
+        #
+        # A future-dated note must never absorb appends (finding 19) — the
+        # digit glob admits impossible dates.
+        #
+        # And the straddle has a FLOOR. This fallback exists for a session
+        # that starts 23:40 and ends 00:10; it is not a licence to append to
+        # whatever note happens to be newest. Before lazy creation this never
+        # showed, because SessionStart always made today's note first. With
+        # Task 6 the mask is gone, and an unbounded `<= today` let a vault
+        # whose newest session note was months old silently absorb the day's
+        # work into it. Found by an adversarial prover after plan 1 landed.
+        yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
         for cand in reversed(candidates):
             try:
                 datetime.strptime(cand.stem, "%Y-%m-%d")
             except ValueError:
                 continue
-            if cand.stem <= today:
+            if yesterday <= cand.stem <= today:
                 session_file = cand
                 break
 
-    # --- Job 1: append a session-log entry (if a session note exists) ---
-    if session_file.exists():
-        is_decision = parts[0] == "decisions"
-        label = "Decision" if is_decision else "Added"
-        link = f"[[projects/{slug}/{'/'.join(parts)}]]"
-        try:
-            with session_file.open("a") as f:
-                f.write(f"- {ts} · {label}: {link}\n")
-        except OSError:
-            pass  # log-write failure must not block job 2
+    # --- Job 1: append a session-log entry, creating the note if this is the
+    # first real write of the day ---
+    is_decision = parts[0] == "decisions"
+    label = "Decision" if is_decision else "Added"
+    try:
+        from _place import link as _link
+        entry = _link(f"{slug}/{'/'.join(parts)}")
+    except Exception:
+        # Degraded mode: _place is unimportable, or the path shape is one it
+        # refuses. Write the bare target rather than nothing — the hook must
+        # not fail, and a target with no brackets is visibly not a link.
+        entry = f"{slug}/{'/'.join(parts)}"
+    if not session_file.exists():
+        # No note for today and none to straddle into: this write is the first
+        # real work of the day, so the note is born here.
+        session_file = ensure_session_note(project_root / "sessions", today)
+    try:
+        with session_file.open("a") as f:
+            f.write(f"- {ts} · {label}: {entry}\n")
+    except OSError:
+        pass  # log-write failure must not block job 2
 
     # --- Job 2: stamp source_session on the new file, breadcrumb opt-in
     # (stamp_source_session: true). The stamping primitive itself decides

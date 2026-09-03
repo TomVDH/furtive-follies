@@ -4,52 +4,75 @@
   "verbs": [
     {
       "name": "connect",
+      "audience": "all",
+      "blurb": "onboards a project and asks where it lives",
       "description": "Link a project to its vault. Infers slug, type, and status, confirms one card of required fields, applies with a receipt. Idempotent.",
       "argumentHint": "(no args)",
       "reference": "reference/connect.md",
       "weight": "light"
     },
     {
-      "name": "sync",
-      "description": "Push project state to the vault: refresh the brief, mirror the handoff, update the project index row.",
-      "argumentHint": "(no args)",
-      "reference": "reference/sync.md",
-      "weight": "light"
-    },
-    {
-      "name": "check",
-      "description": "Read-only health report for the project and vault, including schema drift. [vault|repo|all] also audits repo structure. Never writes.",
-      "argumentHint": "[vault|repo|all]",
-      "reference": "reference/check.md",
+      "name": "status",
+      "audience": "all",
+      "blurb": "reports where you are, what is wrong, and what is stale",
+      "description": "Make derived state current (brief date, handoff, index row), then report in three bands: what is wrong now, what is going stale, and what is worth a look.",
+      "argumentHint": "[vault|repo|all] [--no-sync]",
+      "reference": "reference/status.md",
       "weight": "medium"
     },
     {
-      "name": "sitrep",
-      "description": "Plain-language orientation after a break: where you left off, what is done, where the vault is, and what to do next. Read-only.",
-      "argumentHint": "(no args)",
-      "reference": "reference/sitrep.md",
-      "weight": "medium"
-    },
-    {
-      "name": "tidy",
-      "description": "Routine surface sweep: indexes, tags, wikilink form, updated dates, off-schema frontmatter. Previews then applies. [vault|repo|all] adds repo symlinks.",
-      "argumentHint": "[vault|repo|all]",
-      "reference": "reference/tidy.md",
+      "name": "clean",
+      "audience": "all",
+      "blurb": "removes what the vault does not need",
+      "description": "Cleanup sweep: indexes, wikilink form, updated dates, off-schema frontmatter. Previews then applies, and never creates a vault file. --deep adds the structural pass. [vault|repo|all] adds repo symlinks.",
+      "argumentHint": "[vault|repo|all] [--deep] [--folder <path>]",
+      "reference": "reference/clean.md",
       "weight": "medium"
     },
     {
       "name": "dream",
-      "description": "Advisory content review: surfaces stale, contradictory, redundant, or orphaned notes as an ephemeral findings report you respond to. Read-only; enacts nothing on its own.",
-      "argumentHint": "(no args)",
+      "audience": "all",
+      "blurb": "reads the prose and reports what only judgement finds",
+      "description": "Semantic refresh, the deepest tier: surfaces stale, superseded, redundant, or orphaned content as scored candidates you judge before anything changes. --folder scopes the walk to one subtree.",
+      "argumentHint": "[--folder <path>]",
       "reference": "reference/dream.md",
       "weight": "heavy"
     },
     {
       "name": "board",
+      "audience": "all",
+      "blurb": "runs a self-hosted kanban",
       "description": "Scaffold a self-hosted kanban seeded from tasks/: drag to move, saved to disk. Re-seeding keeps your dragged cards. Use --project SLUG or --all.",
       "argumentHint": "[scaffold|serve|status] [--project SLUG|--all] [--from-tasks] [--force]",
       "reference": "reference/board.md",
       "weight": "light"
+    }
+  ],
+  "content_references": [
+    {
+      "path": "reference/content-bases.md",
+      "label": "`.base` files",
+      "audience": "all"
+    },
+    {
+      "path": "reference/content-markdown.md",
+      "label": "Obsidian-flavoured markdown (callouts, embeds, wikilinks)",
+      "audience": "all"
+    },
+    {
+      "path": "reference/content-clipper.md",
+      "label": "Web Clipper templates",
+      "audience": "all"
+    },
+    {
+      "path": "reference/content-cli.md",
+      "label": "Obsidian CLI",
+      "audience": "all"
+    },
+    {
+      "path": "reference/repo-standards.md",
+      "label": "code-repo conventions (the `status`/`clean` `[repo|all]` target)",
+      "audience": "all"
     }
   ]
 }

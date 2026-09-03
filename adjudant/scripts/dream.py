@@ -1,33 +1,37 @@
 #!/usr/bin/env python3
-"""Adjudant dream — semantic content/staleness comparator catalog (analysis only).
+"""Adjudant dream — semantic content/staleness comparator catalog (dream analysis phase).
 
 Scans an adjudant-managed vault project and emits a structured *content*
-catalog (JSON) for Claude to JUDGE. `dream.py` cannot decide semantics — it
-surfaces *candidates* (with file · line · excerpt) and leaves the judgment to
-Claude, which renders an advisory findings report. Read-only — never writes.
+catalog (JSON) for Claude to JUDGE. Where the deep pass decides
+structural facts ("this filename violates §4"), `dream.py` cannot decide
+semantics — it surfaces *candidates* (with file · line · excerpt) and
+leaves the judgment to Claude. Read-only — never writes.
 
 Catalog (the comparator catalog):
   - staleness_candidates   aged files whose content may be outdated
   - supersession_signals   same-topic decisions, older likely superseded
-  - contradiction_pairs    topically-overlapping files with change/negation cues
   - redundancy_clusters    near-duplicate notes/docs (token-set similarity)
   - stale_refs             refs that resolve but point to archived/old targets
   - orphan_questions       aged open-loop markers (TODO/OPEN/TBD/…) never closed
-  - orphan_threads         aged notes/docs with no inbound wikilinks
   - unacted_decisions      active decisions whose stated consequence shows no action
   - documentation_gaps     under-documentation (session w/o decision, stubs, brief gaps)
   - dangling_scopes        brief milestones/questions never touched in any session
+
+Every entry carries a `confidence` (0-1) and the catalog is a shortlist, not a
+census: the top CATALOG_CAP entries by confidence survive, and a finding a past
+report dismissed stays out until the file it names changes.
 
 CLI:
     python3 dream.py --project-dir PATH [--vault-dir PATH] [--out FILE]
                      [--today YYYY-MM-DD] [--stale-days N] [--include-legacy]
 
-This is the analysis phase for `/adjudant dream`, the advisory content review:
-  - tidy   = surface mechanical sweep    (tidy.py)
-  - dream  = content/knowledge review    (this scanner; read-only, advisory)
+This is the analysis phase for `/adjudant dream` (the third cleanup tier):
+  - clean        = surface mechanical sweep       (clean.py)
+  - clean --deep = structural drift catalog       (clean.py, read-only)
+  - dream   = content/knowledge/memory refresh    (this scanner)
 
-dream.py only surfaces candidates. Claude renders an advisory findings report
-and enacts nothing on its own. See skills/adjudant/reference/dream.md.
+See docs/superpowers/2026-05-26-adjudant-tidy-ramasse-log.design.md and
+skills/adjudant/reference/dream.md.
 """
 
 from __future__ import annotations
@@ -43,13 +47,14 @@ from typing import Any, Optional
 
 from _cost import cost_block, read_threshold, stat_walk
 from _vault_walk import (
-    BUCKET_A_TYPES,
     VaultFile,
     _wikilink_stem,
     build_vault_index,
     resolve_vault,
     resolve_wikilink,
     smart_project_dir, VaultUnresolvableError,
+    resolve_scope,
+    scope_rel,
     walk_project,
 )
 
@@ -57,7 +62,10 @@ from _vault_walk import (
 # File types whose prose dream reads (the content layer)
 CONTENT_TYPES: frozenset[str] = frozenset({"decision", "note", "session", "doc"})
 
-# Required brief body sections per project_type (mirrors templates/project-brief-*.md)
+# Required brief body sections per project_type, for pre-v3 briefs that still
+# carry project_type. The v3 brief is one file whose optional sections are
+# marked `<!-- when: ... -->`, and it declares no project_type, so a brief
+# written by v3 connect matches no key here and reports no section gap.
 REQUIRED_BRIEF_SECTIONS: dict[str, list[str]] = {
     "coding": ["INTRO", "TECHNICAL STACK", "CONSTRAINTS", "WORK NOTES", "MILESTONES"],
     "plugin": ["INTRO", "TECHNICAL STACK", "CONSTRAINTS", "WORK NOTES", "RELEASE NOTES"],
@@ -78,17 +86,6 @@ DEFAULT_ORPHAN_QUESTION_DAYS = 90
 
 DATE_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
 DATE_PREFIX_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})(?:-(.*))?$")
-
-# Lexical cue that one decision/note overturns an earlier position
-CHANGE_VERB_RE = re.compile(
-    r"\b("
-    r"no longer|instead of|switched from|switch from|changed from|change from|"
-    r"moved away from|move away from|deprecat\w*|supersed\w*|obsolet\w*|"
-    r"replaced? by|replaces|reverted?|abandon\w*|we will not|will no longer|"
-    r"rather than|overrid\w*"
-    r")\b",
-    re.IGNORECASE,
-)
 
 # Open-loop / unresolved-thread markers. `??` is its own alternate with no
 # delimiter/\b requirements: the old trailing \b (only matching before a word
@@ -112,6 +109,11 @@ _STOPWORDS: frozenset[str] = frozenset({
     "should", "could", "can", "not", "but", "all", "any", "our", "out", "via",
     "use", "using", "used", "new", "old", "see", "note", "notes", "doc", "docs",
     "decision", "decisions", "session", "sessions", "index", "project", "adjudant",
+    # Fillers that tie two unrelated filenames together. "per" alone made
+    # `knowledge-base-per-brand-theming` read as superseded by
+    # `per-brand-favicon-baked`.
+    "per", "off", "one", "two", "its", "own", "now", "way", "yet",
+    "per-brand", "non", "pre", "post", "sub", "top", "end",
 })
 
 
@@ -182,20 +184,6 @@ def _shared_wikilink_targets(a: VaultFile, b: VaultFile) -> list[str]:
     ta = {wl.target for wl in a.wikilinks if wl.target}
     tb = {wl.target for wl in b.wikilinks if wl.target}
     return sorted(ta & tb)
-
-
-def _cue_line(vf: VaultFile, pattern: re.Pattern) -> Optional[tuple[int, str]]:
-    """First body line matching pattern, skipping fenced code blocks."""
-    in_fenced = False
-    for lineno, line in enumerate(vf.body.split("\n"), start=1):
-        if line.lstrip().startswith("```"):
-            in_fenced = not in_fenced
-            continue
-        if in_fenced:
-            continue
-        if pattern.search(line):
-            return lineno, line.strip()[:160]
-    return None
 
 
 def _all_cue_lines(vf: VaultFile, pattern: re.Pattern) -> list[tuple[int, str]]:
@@ -311,29 +299,65 @@ def detect_staleness(
     return out
 
 
+
+# A link most decisions carry is background, and background ties nothing. On a
+# real 93-decision project, 46 of 61 supersession pairs shared no title token
+# at all and were held together only by `../brief`, which almost every decision
+# links. Ten of the twenty capped slots went to such pairs, at the top
+# confidence band. That is the failure of the contradiction detector this
+# redesign deleted, which "fired on any two files sharing vocabulary", moved
+# one field over.
+#
+# The threshold is a share of the corpus rather than a fixed count, so a small
+# project is not silenced: with four decisions nothing is background, and a
+# link two of them carry stays evidence.
+_BACKGROUND_LINK_SHARE = 0.25
+
+
+def _background_links(decisions: list) -> set:
+    """Link targets carried by so many decisions that sharing one says nothing."""
+    if len(decisions) < 8:
+        return set()
+    counts: dict = {}
+    for f in decisions:
+        for target in {wl.target for wl in f.wikilinks if wl.target}:
+            counts[target] = counts.get(target, 0) + 1
+    ceiling = max(2, int(len(decisions) * _BACKGROUND_LINK_SHARE))
+    return {t for t, c in counts.items() if c > ceiling}
+
 def detect_supersession_signals(files: list[VaultFile], today: _dt.date) -> list[dict]:
     """Same-topic decision pairs ordered by date — older likely superseded.
 
     Mechanical signal only: topical overlap (shared title tokens or shared
     wikilink targets) + date ordering + whether the older file already carries
-    a `superseded` marker. Claude confirms and writes the marker.
+    a `superseded_by` marker. Claude confirms and writes the marker.
     """
     decisions = [f for f in files if f.file_type == "decision" and _file_date(f)]
     toks = {id(f): _title_tokens(f) for f in decisions}
+    common = _background_links(decisions)
     out: list[dict] = []
     for i in range(len(decisions)):
         for j in range(i + 1, len(decisions)):
             a, b = decisions[i], decisions[j]
             shared_tokens = sorted(toks[id(a)] & toks[id(b)])
-            shared_links = _shared_wikilink_targets(a, b)
-            if len(shared_tokens) < 2 and not shared_links:
+            shared_links = [t for t in _shared_wikilink_targets(a, b)
+                            if t not in common]
+            # A shared link SUPPORTS a pair; it can no longer create one.
+            # Supersession means one decision replaces another on the same
+            # SUBJECT, and two decisions citing a third share a citation, not a
+            # subject. Measured on a real 92-decision project: five decisions
+            # linked one hub, which alone produced ten pairs, and 46 of 61
+            # pairs had no shared vocabulary at all. Frequency filtering could
+            # not save it, because the most-linked target appeared in only 5
+            # of 92 files: the corpus has no background link, just hubs.
+            if len(shared_tokens) < 2:
                 continue
             da, db = _file_date(a), _file_date(b)
             if da == db:
                 continue
             older, newer = (a, b) if da < db else (b, a)
             older_marked = (
-                "superseded" in older.frontmatter.fields
+                "superseded_by" in older.frontmatter.fields
                 or re.search(r"supersed(?:ed|es)\s+by", older.body, re.IGNORECASE) is not None
             )
             out.append({
@@ -357,44 +381,6 @@ def detect_supersession_signals(files: list[VaultFile], today: _dt.date) -> list
         if target is not None and target not in stems:
             out.append({"kind": "dangling-pointer",
                         "file": str(f.rel_path), "target": target})
-    return out
-
-
-def detect_contradiction_candidates(files: list[VaultFile], today: _dt.date) -> list[dict]:
-    """Topically-overlapping content pairs where a change/negation cue appears.
-
-    Emits "A line X may conflict with B line Y" candidates: a pair shares
-    topic (title tokens or wikilink target) and at least one side carries a
-    change-verb cue ("switched from", "no longer", "deprecated", …).
-    """
-    content = [f for f in files if f.file_type in ("decision", "note", "doc")]
-    toks = {id(f): _title_tokens(f) for f in content}
-    cues = {id(f): _cue_line(f, CHANGE_VERB_RE) for f in content}
-    out: list[dict] = []
-    for i in range(len(content)):
-        for j in range(i + 1, len(content)):
-            a, b = content[i], content[j]
-            shared_tokens = sorted(toks[id(a)] & toks[id(b)])
-            shared_links = _shared_wikilink_targets(a, b)
-            if len(shared_tokens) < 2 and not shared_links:
-                continue
-            ca, cb = cues[id(a)], cues[id(b)]
-            if not ca and not cb:
-                continue
-            out.append({
-                "a": {
-                    "file": str(a.rel_path),
-                    "line": ca[0] if ca else None,
-                    "excerpt": ca[1] if ca else _first_excerpt(a.body),
-                },
-                "b": {
-                    "file": str(b.rel_path),
-                    "line": cb[0] if cb else None,
-                    "excerpt": cb[1] if cb else _first_excerpt(b.body),
-                },
-                "shared_terms": shared_tokens,
-                "shared_links": shared_links,
-            })
     return out
 
 
@@ -464,7 +450,7 @@ def detect_stale_refs(
 ) -> list[dict]:
     """Refs that point to archived locations or to old dated targets.
 
-    Broken wikilinks stay ramasse's job — these refs RESOLVE (when a vault
+    Broken wikilinks stay the deep pass's job — these refs RESOLVE (when a vault
     index is available) but point somewhere stale.
     """
     out: list[dict] = []
@@ -488,7 +474,7 @@ def detect_stale_refs(
                 continue
             resolves = resolve_wikilink(target, vault_index) if vault_index else None
             if vault_index is not None and not resolves:
-                continue  # unresolved → ramasse territory, not dream
+                continue  # unresolved → the deep pass, not dream
             out.append({
                 "file": str(f.rel_path),
                 "line": line,
@@ -522,53 +508,26 @@ def detect_orphan_questions(
     return out
 
 
-def detect_orphan_threads(
-    files: list[VaultFile], today: _dt.date, *, stale_days: int = DEFAULT_STALE_DAYS
-) -> list[dict]:
-    """Aged notes/docs with zero inbound wikilinks (no file points to them)."""
-    # Inbound index: every wikilink target's basename + path forms
-    linked: set[str] = set()
-    file_by_id = {id(f): f for f in files}
-    for f in files:
-        for wl in f.wikilinks:
-            t = wl.target
-            if not t:
-                continue
-            base = t.replace("\\", "/").rstrip("/").split("/")[-1]
-            linked.add(t)
-            linked.add(base)
-
-    out: list[dict] = []
-    for f in files:
-        if f.file_type not in ("note", "doc"):
-            continue
-        if f.rel_path.name == "_index.md":
-            continue
-        stem = f.rel_path.name[:-3] if f.rel_path.name.endswith(".md") else f.rel_path.name
-        rel_no_ext = str(f.rel_path)[:-3] if str(f.rel_path).endswith(".md") else str(f.rel_path)
-        if stem in linked or rel_no_ext in linked or str(f.rel_path) in linked:
-            continue
-        age = _age_days(f, today)
-        if age is None or age <= stale_days:
-            continue
-        out.append({
-            "file": str(f.rel_path),
-            "type": f.file_type,
-            "age_days": age,
-            "inbound_links": 0,
-        })
-    out.sort(key=lambda x: x["age_days"], reverse=True)
-    return out
+# detect_orphan_threads was deleted in v3. It flagged an aged note that no
+# wikilink pointed at, and it decided "pointed at" by bare stem: `[[popular]]`
+# counted as an inbound link to notes/popular.md, and to every other
+# popular.md in the vault. Once links resolve by path that heuristic has no
+# honest form, and the question it answered is not one a note has. An orphan
+# is an Obsidian graph concept; an agent finds a note by its folder path.
 
 
 def detect_unacted_decisions(
     files: list[VaultFile], today: _dt.date, *, min_age_days: int = 30
 ) -> list[dict]:
-    """`status: active` decisions with a stated `## Consequence` but no evidence
-    of being acted on — i.e. no session references them, and they've aged.
+    """`status: active` decisions with a stated `## Consequence` that have aged
+    past the threshold, carrying the count of sessions that link to them.
 
     Revives the original /dream's "unacted decisions" check. Mechanical signal
-    only; Claude judges whether the consequence was actually implemented.
+    only; Claude judges whether the consequence was actually implemented. An
+    inbound session link damps the confidence score rather than excluding the
+    decision: adjudant asks you to link decisions from sessions, so treating
+    that link as proof of action silenced the audit on almost everything it
+    was built to read.
     """
     session_targets = _session_link_targets(files)
     out: list[dict] = []
@@ -584,16 +543,20 @@ def detect_unacted_decisions(
         age = _age_days(f, today)
         if age is not None and age < min_age_days:
             continue
-        stem = f.rel_path.name[:-3] if f.rel_path.name.endswith(".md") else f.rel_path.name
+        # A session link is weak evidence of action, not proof: adjudant tells
+        # you to link decisions from sessions, so this test excluded 47 of 55
+        # active decisions in the real vault — the only audit of them, defeated
+        # by adjudant's own convention. It now lowers the score instead.
+        stem = f.rel_path.stem
         rel_no_ext = str(f.rel_path)[:-3] if str(f.rel_path).endswith(".md") else str(f.rel_path)
-        if stem in session_targets or rel_no_ext in session_targets or str(f.rel_path) in session_targets:
-            continue  # a session points at it → likely acted on
+        refs = sum(1 for key in (stem, rel_no_ext, str(f.rel_path))
+                   if key in session_targets)
         out.append({
             "file": str(f.rel_path),
             "date": str(_file_date(f)),
             "age_days": age,
             "consequence_excerpt": conseq_lines[0][:160],
-            "inbound_session_refs": 0,
+            "inbound_session_refs": refs,
         })
     out.sort(key=lambda x: (x["age_days"] or 0), reverse=True)
     return out
@@ -694,6 +657,173 @@ def detect_dangling_scopes(files: list[VaultFile], today: _dt.date) -> list[dict
 
 
 # ============================================================
+# Scoring, the cap, and dismissals
+# ============================================================
+
+# A candidate's score is the detector's own confidence, damped by evidence
+# that the thing was already handled. The catalog is a shortlist a human
+# reads, not a census: the 2026-08-13 run produced 602 candidates and a
+# sampled review found zero real, which is what "deliberately generous"
+# bought. Twenty is a number someone will actually read.
+CATALOG_CAP = 20
+
+# Per-detector base confidence, from the one review with measured outcomes.
+_BASE_CONFIDENCE: dict[str, float] = {
+    "supersession_signals": 0.8,   # a real, checkable relationship
+    "stale_refs": 0.7,             # resolves but points at an archive
+    "orphan_questions": 0.6,       # an open marker with a date
+    "unacted_decisions": 0.5,      # judgement, but a real question
+    "staleness_candidates": 0.4,   # old is not the same as wrong
+    "redundancy_clusters": 0.3,    # a documentation convention reads as this
+    "documentation_gaps": 0.3,
+    "dangling_scopes": 0.3,
+}
+
+
+def _score(category: str, entry: dict) -> float:
+    base = _BASE_CONFIDENCE.get(category, 0.3)
+    if entry.get("inbound_session_refs"):
+        base -= 0.15 * min(entry["inbound_session_refs"], 2)
+    if entry.get("older_has_superseded_marker"):
+        base -= 0.5          # already marked: this is the convention working
+    return max(0.0, min(1.0, round(base, 2)))
+
+
+# Every category with candidates keeps at least this many slots, before the
+# rest of the cap is filled by score. Without it a low-scoring category is
+# silently starved to zero by a noisier one, and the report looks like that
+# category found nothing rather than like it was outranked.
+CATEGORY_FLOOR = 2
+
+
+def _cap(report: dict, cap: int = CATALOG_CAP) -> dict:
+    """Keep the highest-scoring `cap` candidates, without starving a category.
+
+    A pure global sort undid the session-link fix. `_score` damps a
+    session-linked unacted decision from 0.5 to 0.35, which ranks it below
+    every staleness candidate at 0.4, so on a real-shaped vault all 47 linked
+    decisions were cut before the cap was reached and the delivered report
+    contained none of them. The detector had stopped excluding them and the
+    cap excluded them instead: same outcome for the reader, by a different
+    route. Found by an adversarial prover; the repo's own test missed it by
+    asserting that the score drops rather than that the entry survives.
+
+    So: each non-empty category takes its best CATEGORY_FLOOR entries first,
+    then the remaining budget goes to whatever scores highest. Damping still
+    orders within a category, which is what it was for.
+
+    Non-list keys (`scope`, `meta`, `summary`) pass through untouched: the CLI
+    and the statusline read them.
+    """
+    out = {k: ([] if isinstance(v, list) else v) for k, v in report.items()}
+    ranked: dict[str, list] = {
+        cat: sorted(entries, key=lambda e: e.get("confidence", 0.0), reverse=True)
+        for cat, entries in report.items() if isinstance(entries, list) and entries
+    }
+    taken = 0
+    for cat, entries in ranked.items():
+        for entry in entries[:CATEGORY_FLOOR]:
+            if taken >= cap:
+                break
+            out[cat].append(entry)
+            taken += 1
+    rest = [(cat, e) for cat, entries in ranked.items()
+            for e in entries[CATEGORY_FLOOR:]]
+    rest.sort(key=lambda pair: pair[1].get("confidence", 0.0), reverse=True)
+    for cat, entry in rest:
+        if taken >= cap:
+            break
+        out[cat].append(entry)
+        taken += 1
+    return out
+
+
+_DISMISS_ROW_RE = re.compile(r"^\|\s*(?P<finding>[^|]+?)\s*\|[^|]*\|[^|]*\|\s*$")
+
+# Both spellings a dream report is written under. reference/dream.md mandates
+# `{YYYY-MM-DD}-dream.md`; the state contract records the statusline reading
+# either, and status.py already matches both.
+_DREAM_REPORT_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})(?:-dream)?\.md$")
+
+
+def read_dismissals(project_dir: Path) -> dict[str, _dt.date]:
+    """Findings a previous dream report dismissed: file → newest dismissal date.
+
+    Two consecutive reports in the real vault dismissed the same `_archive/`
+    naming finding in identical words. A dismissal that does not persist is an
+    invitation to waste the same hour again.
+
+    The date comes back with the key so a dismissal can expire: the report
+    judged the file as it stood that day, and a file edited since deserves
+    re-reading.
+    """
+    out: dict[str, _dt.date] = {}
+    dreams = project_dir / "dreams"
+    if not dreams.is_dir():
+        return out
+    for report in sorted(dreams.iterdir()):
+        if not report.is_file():
+            continue
+        m = _DREAM_REPORT_RE.match(report.name)
+        if not m:
+            continue
+        on = _parse_date(m.group(1))
+        if on is None:
+            continue
+        try:
+            text = report.read_text(errors="replace")
+        except OSError:
+            continue
+        if "## Dismissed" not in text:
+            continue
+        section = text.split("## Dismissed", 1)[1].split("\n## ", 1)[0]
+        for line in section.splitlines():
+            mrow = _DISMISS_ROW_RE.match(line.strip())
+            if not mrow:
+                continue
+            finding = mrow.group("finding")
+            if finding.startswith(("Finding", "---")):
+                continue
+            parts = finding.split()
+            if not parts:
+                continue
+            key = parts[0]
+            if out.get(key) is None or out[key] < on:
+                out[key] = on
+    return out
+
+
+def _apply_dismissals(catalog: dict[str, list[dict]], files: list[VaultFile],
+                      dismissals: dict[str, _dt.date]) -> int:
+    """Drop candidates a past report dismissed, unless the file changed since.
+
+    "Changed" reads the file's own declared date rather than its filesystem
+    mtime, the same precedence every other detector here uses: a vault synced
+    between machines rewrites mtimes it never edited.
+
+    Entries keyed on something other than a single `file` — redundancy
+    clusters and supersession pairs — carry no dismissal key and always pass.
+    """
+    if not dismissals:
+        return 0
+    dated = {str(f.rel_path): _file_date(f) for f in files}
+    dropped = 0
+    for entries in catalog.values():
+        kept = []
+        for e in entries:
+            key = e.get("file")
+            on = dismissals.get(key) if isinstance(key, str) else None
+            if on is not None:
+                changed = dated.get(key)
+                if changed is None or changed <= on:
+                    dropped += 1
+                    continue
+            kept.append(e)
+        entries[:] = kept
+    return dropped
+
+
+# ============================================================
 # Top-level scan
 # ============================================================
 
@@ -707,10 +837,21 @@ def run_dream(
     orphan_question_days: int = DEFAULT_ORPHAN_QUESTION_DAYS,
     unacted_min_age_days: int = 30,
     include_legacy: bool = False,
+    scope: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Run all content/staleness detectors. Returns the full JSON report."""
+    """Run all content/staleness detectors. Returns the full JSON report.
+
+    `scope` is a project-relative folder (`notes`, `notes/deep`): detectors
+    then see only that subtree. Filtered AFTER the walk rather than by walking
+    the subfolder directly, so every rel_path keeps its project-root form and
+    the folder-name logic in the detectors keeps working. The report carries
+    the scope so a narrowed run can never present itself as a full one.
+    """
     today = today or _dt.date.today()
     files = list(walk_project(project_dir, include_legacy=include_legacy))
+    if scope:
+        prefix = tuple(Path(scope).parts)
+        files = [f for f in files if f.rel_path.parts[:len(prefix)] == prefix]
     slug = _project_slug(files, project_dir)
     proj_type = _project_type(files)
 
@@ -720,29 +861,32 @@ def run_dream(
 
     staleness = detect_staleness(files, today, stale_days=stale_days)
     supersession = detect_supersession_signals(files, today)
-    contradiction = detect_contradiction_candidates(files, today)
     redundancy = detect_redundancy_clusters(files, today)
     stale_refs = detect_stale_refs(files, today, vault_index, stale_days=stale_days)
     orphan_questions = detect_orphan_questions(files, today, orphan_days=orphan_question_days)
-    orphan_threads = detect_orphan_threads(files, today, stale_days=stale_days)
     unacted = detect_unacted_decisions(files, today, min_age_days=unacted_min_age_days)
     doc_gaps = detect_documentation_gaps(files, today)
     dangling = detect_dangling_scopes(files, today)
 
-    candidate_total = (
-        len(staleness)
-        + len(supersession)
-        + len(contradiction)
-        + len(redundancy)
-        + len(stale_refs)
-        + len(orphan_questions)
-        + len(orphan_threads)
-        + len(unacted)
-        + len(doc_gaps)
-        + len(dangling)
-    )
+    catalog: dict[str, list[dict]] = {
+        "staleness_candidates": staleness,
+        "supersession_signals": supersession,
+        "redundancy_clusters": redundancy,
+        "stale_refs": stale_refs,
+        "orphan_questions": orphan_questions,
+        "unacted_decisions": unacted,
+        "documentation_gaps": doc_gaps,
+        "dangling_scopes": dangling,
+    }
+    for category, entries in catalog.items():
+        for entry in entries:
+            entry["confidence"] = _score(category, entry)
 
-    return {
+    dismissed = _apply_dismissals(catalog, files, read_dismissals(project_dir))
+    found_total = sum(len(v) for v in catalog.values()) + dismissed
+
+    report: dict[str, Any] = {
+        "scope": scope,
         "meta": {
             "project_dir": str(project_dir),
             "project_slug": slug,
@@ -757,30 +901,29 @@ def run_dream(
                 "unacted_min_age_days": unacted_min_age_days,
             },
         },
-        "summary": {
-            "candidates": candidate_total,
-            "staleness": len(staleness),
-            "supersession": len(supersession),
-            "contradiction": len(contradiction),
-            "redundancy_clusters": len(redundancy),
-            "stale_refs": len(stale_refs),
-            "orphan_questions": len(orphan_questions),
-            "orphan_threads": len(orphan_threads),
-            "unacted_decisions": len(unacted),
-            "documentation_gaps": len(doc_gaps),
-            "dangling_scopes": len(dangling),
-        },
-        "staleness_candidates": staleness,
-        "supersession_signals": supersession,
-        "contradiction_pairs": contradiction,
-        "redundancy_clusters": redundancy,
-        "stale_refs": stale_refs,
-        "orphan_questions": orphan_questions,
-        "orphan_threads": orphan_threads,
-        "unacted_decisions": unacted,
-        "documentation_gaps": doc_gaps,
-        "dangling_scopes": dangling,
+        "summary": {},
+        **catalog,
     }
+    report = _cap(report)
+
+    # The summary describes what the report holds, not what the walk saw, so a
+    # capped run can never present itself as a census. `candidates_found` and
+    # `dismissed` keep the difference visible.
+    report["summary"] = {
+        "candidates": sum(len(v) for v in report.values() if isinstance(v, list)),
+        "candidates_found": found_total,
+        "dismissed": dismissed,
+        "cap": CATALOG_CAP,
+        "staleness": len(report["staleness_candidates"]),
+        "supersession": len(report["supersession_signals"]),
+        "redundancy_clusters": len(report["redundancy_clusters"]),
+        "stale_refs": len(report["stale_refs"]),
+        "orphan_questions": len(report["orphan_questions"]),
+        "unacted_decisions": len(report["unacted_decisions"]),
+        "documentation_gaps": len(report["documentation_gaps"]),
+        "dangling_scopes": len(report["dangling_scopes"]),
+    }
+    return report
 
 
 def _project_slug(files: list[VaultFile], project_dir: Path) -> Optional[str]:
@@ -820,6 +963,8 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
         help=f"Staleness age threshold in days (default: {DEFAULT_STALE_DAYS})",
     )
     parser.add_argument("--include-legacy", action="store_true", help="Include _legacy/ in scan")
+    parser.add_argument("--folder", help="Scope the walk to one project subfolder "
+                        "(e.g. 'decisions'); the report header states the scope")
     parser.add_argument("--estimate-only", action="store_true",
                         help="Print only the cost block (stat-only walk) and exit")
     args = parser.parse_args(argv)
@@ -847,11 +992,24 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
             print(f"error: project-dir not found: {project_dir}", file=sys.stderr)
         return 1
 
+    scope: Optional[str] = None
+    scope_dir = project_dir
+    if args.folder:
+        try:
+            scope_dir = resolve_scope(project_dir, args.folder)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        scope = scope_rel(project_dir, scope_dir)
+
     code_root = Path(args.project_dir).expanduser().resolve()
-    files_n, n_bytes = stat_walk(project_dir)
+    # The estimate walks what the run will read: the scoped subtree when
+    # --folder is given. This is the flag's point — proceed on a slice when
+    # the full-vault estimate trips the cost gate.
+    files_n, n_bytes = stat_walk(scope_dir)
     cost = cost_block(files_n, n_bytes, read_threshold(code_root))
     if args.estimate_only:
-        print(json.dumps({"cost": cost}, indent=2))
+        print(json.dumps({"scope": scope, "cost": cost}, indent=2))
         return 0
 
     vault_dir: Optional[Path]
@@ -865,7 +1023,8 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
         print(f"warn: vault-dir not a directory: {vault_dir}", file=sys.stderr)
         vault_dir = None
 
-    report = run_dream(project_dir, vault_dir, today=today, stale_days=args.stale_days)
+    report = run_dream(project_dir, vault_dir, today=today, stale_days=args.stale_days,
+                       scope=scope)
     report["cost"] = cost
 
     payload = json.dumps(report, indent=2, default=str)
@@ -876,14 +1035,20 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
         print(payload)
 
     s = report["summary"]
+    shown = f"{s['candidates']} candidates"
+    if s["candidates_found"] > s["candidates"]:
+        shown = (f"{s['candidates']} of {s['candidates_found']} candidates"
+                 f" (top {s['cap']} by confidence)")
+    if s["dismissed"]:
+        shown += f", {s['dismissed']} dismissed earlier"
     print(
         f"[dream] {report['meta']['project_slug']}: "
         f"{report['meta']['files_scanned']} files, "
-        f"{s['candidates']} candidates "
+        f"{shown} "
         f"({s['staleness']} stale, {s['supersession']} supersede, "
-        f"{s['contradiction']} contra, {s['redundancy_clusters']} dup-clusters, "
+        f"{s['redundancy_clusters']} dup-clusters, "
         f"{s['stale_refs']} stale-refs, {s['orphan_questions']} open-loops, "
-        f"{s['orphan_threads']} orphans, {s['unacted_decisions']} unacted, "
+        f"{s['unacted_decisions']} unacted, "
         f"{s['documentation_gaps']} doc-gaps, {s['dangling_scopes']} dangling)",
         file=sys.stderr,
     )

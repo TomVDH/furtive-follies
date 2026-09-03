@@ -14,7 +14,9 @@ from pathlib import Path
 from board import (
     BACKUP_DIR_NAME,
     DECK_VERSION,
+    DEFAULT_COLUMNS,
     STATUS_TO_COLUMN,
+    column_for_status,
     _as_list,
     _first_heading,
     _status_line,
@@ -78,10 +80,34 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(_first_heading("intro\n# Title here\nmore"), "Title here")
         self.assertIsNone(_first_heading("no heading at all"))
 
-    def test_status_mapping(self):
-        self.assertEqual(STATUS_TO_COLUMN["in-progress"], "doing")
-        self.assertEqual(STATUS_TO_COLUMN["shipped"], "done")
-        self.assertEqual(STATUS_TO_COLUMN["deferred"], "icebox")
+    def test_the_board_vocabulary_is_the_template_vocabulary(self):
+        # The template file is the only declaration of a kind shape. board.py
+        # used to hand-declare 26 aliases beside it, which is the "declared
+        # twice always drifts" failure the redesign exists to remove: the hand
+        # list had grown five spellings of done and had never gained `dropped`.
+        from _template_schema import load_schema
+        declared = set(load_schema()["task"]["vocab"]["status"])
+        self.assertEqual(
+            set(STATUS_TO_COLUMN) - {"blocked"}, declared,
+            "the board reads the task template vocabulary, plus one alias")
+        self.assertEqual(STATUS_TO_COLUMN["blocked"], "review",
+                         "blocked is the single documented alias")
+
+    def test_every_status_has_its_own_column(self):
+        # Seven statuses, seven columns. `dropped` had no column at all, so a
+        # dropped card was displayed as backlog: planned work nobody planned.
+        from _template_schema import load_schema
+        declared = set(load_schema()["task"]["vocab"]["status"])
+        lanes = {c["id"] for c in DEFAULT_COLUMNS}
+        self.assertEqual(lanes, declared)
+
+    def test_an_off_vocabulary_status_is_not_filed_as_backlog(self):
+        # board.py:205 read `.get(status, "backlog")`. That is how `obsolete`
+        # became invisible work: it is named in the design doc as the reason
+        # off-vocabulary values are reported and never coerced.
+        self.assertNotEqual(column_for_status("obsolete"), "backlog")
+        self.assertNotEqual(column_for_status("wip"), "doing",
+                            "a retired alias is unknown now, not silently mapped")
 
 
 class TestCardsFromTasks(unittest.TestCase):
@@ -104,14 +130,6 @@ class TestCardsFromTasks(unittest.TestCase):
             self.assertEqual(c["related"], ["SPEC-012"])
             self.assertEqual(c["title"], "De-hardcode engine")
             self.assertEqual(c["notes"], "a note")
-
-    def test_category_falls_back_to_tag(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            _write(root / "tasks" / "x.md", "---\nstatus: todo\ntags:\n  - task\n  - infra\n---\n# X\n")
-            card = cards_from_tasks(root)[0]
-            self.assertEqual(card["category"], "infra")
-            self.assertEqual(card["column"], "backlog")  # unknown/todo -> backlog
 
     def test_no_tasks_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -158,7 +176,7 @@ class TestCardsFromTasks(unittest.TestCase):
             root = Path(tmp)
             _write(
                 root / "tasks" / "y.md",
-                '---\nnote: "see PR #42"\nstatus: todo\n---\n# Y\n',
+                '---\nnote: "see PR #42"\nstatus: backlog\n---\n# Y\n',
             )
             card = cards_from_tasks(root)[0]
             self.assertEqual(card["notes"], "see PR #42")
@@ -358,7 +376,7 @@ class TestMergeDeckPassThrough(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             proj = Path(tmp) / "proj"
             for n in (1, 2, 3):
-                _write(proj / "tasks" / f"t{n}.md", f"---\ncode: T-{n}\nstatus: todo\n---\n# Task {n}\n")
+                _write(proj / "tasks" / f"t{n}.md", f"---\ncode: T-{n}\nstatus: backlog\n---\n# Task {n}\n")
             _ensure(proj)
             data_path = proj / "board" / "board-data.json"
             deck = json.loads(data_path.read_text())
@@ -366,7 +384,7 @@ class TestMergeDeckPassThrough(unittest.TestCase):
             deck["cards"].append({"title": "renew the cert", "column": "next", "notes": "expires 2026-08-14"})
             data_path.write_text(json.dumps(deck, indent=2) + "\n")
 
-            _write(proj / "tasks" / "t4.md", "---\ncode: T-4\nstatus: todo\n---\n# Task 4\n")
+            _write(proj / "tasks" / "t4.md", "---\ncode: T-4\nstatus: backlog\n---\n# Task 4\n")
             self.assertEqual(_ensure(proj), "reseeded")
 
             after = json.loads(data_path.read_text())["cards"]
@@ -463,7 +481,12 @@ class TestBuildDeck(unittest.TestCase):
             deck = build_deck(Path(tmp), from_tasks=False, title="T")
             self.assertEqual(deck["title"], "T")
             self.assertEqual(deck["cards"], [])
-            self.assertEqual(len(deck["columns"]), 6)
+            # Derived, not hardcoded: the number of lanes follows the task
+            # template status vocabulary, and a literal here would be a
+            # second declaration of it.
+            from _template_schema import load_schema
+            self.assertEqual(len(deck["columns"]),
+                             len(load_schema()["task"]["vocab"]["status"]))
             self.assertIn("build", deck["categories"])
 
     def test_categories_derived_from_tasks(self):
@@ -630,6 +653,32 @@ class TestForceSafety(unittest.TestCase):
             self.assertEqual(len(names), BACKUP_KEEP, names)
             self.assertNotIn("board-data-20200100-000000.json", names)  # oldest pruned
 
+    def test_the_bak_dir_stays_inside_the_project(self):
+        # The decision, pinned. v3 moved every scratch tree out of the vault
+        # ($TMPDIR/adjudant/{key}/{kind}); the deck backup deliberately did not
+        # follow. It is not scratch: a deck holds cards hand-added straight to
+        # board-data.json and lane placement that exists nowhere else, it is
+        # only ever written by a destructive command the user typed
+        # (`--force`/`--data`, never the ambient reseed), and the vault is what
+        # syncs across machines while $TMPDIR does not — an undo record that
+        # evaporates before the mistake is noticed on the other machine is not
+        # an undo record. Reversing this means moving the doc with the code.
+        with tempfile.TemporaryDirectory() as tmp:
+            proj, dest = self._seeded_board(Path(tmp))
+            rc, _ = _scaffold(proj, dest, from_tasks=True, data=None,
+                              force=True, title=None, board_id="proj")
+            self.assertEqual(rc, 0)
+            baks = _backups(dest)
+            self.assertEqual(len(baks), 1)
+            self.assertEqual(baks[0].parent, dest / BACKUP_DIR_NAME)
+            self.assertTrue(baks[0].name.startswith("board-data-"))
+
+    def test_the_state_contract_names_this_exception(self):
+        contract = (Path(__file__).resolve().parent.parent / "skills" /
+                    "adjudant" / "reference" / "state-contract.md").read_text()
+        self.assertIn("board/.bak/", contract)
+        self.assertIn("backup_deck", contract)
+
     def test_non_object_deck_friendly_error(self):
         # Valid JSON that isn't an object (null/[]) must hit the same friendly
         # error path, not an AttributeError traceback.
@@ -768,7 +817,7 @@ class TestEnsureBoard(unittest.TestCase):
     def test_ensure_board_creates_on_first_task(self):
         with tempfile.TemporaryDirectory() as tmp:
             proj = Path(tmp) / "proj"
-            _write(proj / "tasks" / "t1.md", "---\ncode: T-1\nstatus: todo\n---\n# One\n")
+            _write(proj / "tasks" / "t1.md", "---\ncode: T-1\nstatus: backlog\n---\n# One\n")
             self.assertEqual(_ensure(proj), "created")
             deck = json.loads((proj / "board" / "board-data.json").read_text())
             self.assertEqual([c["id"] for c in deck["cards"]], ["T-1"])
@@ -777,7 +826,7 @@ class TestEnsureBoard(unittest.TestCase):
     def test_ensure_board_reseed_preserves_dragged_columns(self):
         with tempfile.TemporaryDirectory() as tmp:
             proj = Path(tmp) / "proj"
-            _write(proj / "tasks" / "t1.md", "---\ncode: T-1\nstatus: todo\n---\n# One\n")
+            _write(proj / "tasks" / "t1.md", "---\ncode: T-1\nstatus: backlog\n---\n# One\n")
             self.assertEqual(_ensure(proj), "created")
             data_path = proj / "board" / "board-data.json"
             deck = json.loads(data_path.read_text())
@@ -792,7 +841,7 @@ class TestEnsureBoard(unittest.TestCase):
     def test_ensure_board_idempotent_no_change(self):
         with tempfile.TemporaryDirectory() as tmp:
             proj = Path(tmp) / "proj"
-            _write(proj / "tasks" / "t1.md", "---\ncode: T-1\nstatus: todo\n---\n# One\n")
+            _write(proj / "tasks" / "t1.md", "---\ncode: T-1\nstatus: backlog\n---\n# One\n")
             self.assertEqual(_ensure(proj), "created")
             data_path = proj / "board" / "board-data.json"
             before = data_path.read_text()
@@ -806,7 +855,7 @@ class TestEnsureBoard(unittest.TestCase):
         from board import cli_main
         with tempfile.TemporaryDirectory() as tmp:
             proj = Path(tmp) / "proj"
-            _write(proj / "tasks" / "t1.md", "---\ncode: T-1\nstatus: todo\n---\n# One\n")
+            _write(proj / "tasks" / "t1.md", "---\ncode: T-1\nstatus: backlog\n---\n# One\n")
             out = io.StringIO()
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
                 rc = cli_main(["--ensure", "--project-dir", str(proj)])
@@ -840,14 +889,14 @@ class TestUndecodableTaskNote(unittest.TestCase):
     merge_deck's "never deleted" orphan rule iceboxes the mojibake card
     forever. Same trap sync and shelf already closed (5bd7164, 1934eac)."""
 
-    LATIN1 = "---\ncode: \"DÉP-1\"\nstatus: todo\n---\n# Déploiement\n".encode("latin-1")
+    LATIN1 = "---\ncode: \"DÉP-1\"\nstatus: backlog\n---\n# Déploiement\n".encode("latin-1")
 
     def test_latin1_task_note_is_skipped_with_a_named_warning(self):
         with tempfile.TemporaryDirectory() as tmp:
             proj = Path(tmp) / "proj"
             (proj / "tasks").mkdir(parents=True)
             (proj / "tasks" / "deploiement.md").write_bytes(self.LATIN1)
-            _write(proj / "tasks" / "ok.md", "---\ncode: T-1\nstatus: todo\n---\n# Fine\n")
+            _write(proj / "tasks" / "ok.md", "---\ncode: T-1\nstatus: backlog\n---\n# Fine\n")
             err = io.StringIO()
             with contextlib.redirect_stderr(err):
                 cards = cards_from_tasks(proj)
@@ -861,7 +910,7 @@ class TestUndecodableTaskNote(unittest.TestCase):
             proj = Path(tmp) / "proj"
             (proj / "tasks").mkdir(parents=True)
             (proj / "tasks" / "deploiement.md").write_bytes(self.LATIN1)
-            _write(proj / "tasks" / "ok.md", "---\ncode: T-1\nstatus: todo\n---\n# Fine\n")
+            _write(proj / "tasks" / "ok.md", "---\ncode: T-1\nstatus: backlog\n---\n# Fine\n")
             dest = proj / "board"
             rc, _ = _scaffold(proj, dest, from_tasks=True, data=None, force=False,
                               title=None, board_id="proj")
@@ -880,9 +929,9 @@ class TestUndecodableTaskNote(unittest.TestCase):
             (proj / "tasks").mkdir(parents=True)
             note = proj / "tasks" / "deploiement.md"
             note.write_bytes(self.LATIN1)
-            _write(proj / "tasks" / "ok.md", "---\ncode: T-1\nstatus: todo\n---\n# Fine\n")
+            _write(proj / "tasks" / "ok.md", "---\ncode: T-1\nstatus: backlog\n---\n# Fine\n")
             _ensure(proj)
-            note.write_text("---\ncode: \"DÉP-1\"\nstatus: todo\n---\n# Déploiement\n")
+            note.write_text("---\ncode: \"DÉP-1\"\nstatus: backlog\n---\n# Déploiement\n")
             _ensure(proj)
             cards = json.loads((proj / "board" / "board-data.json").read_text())["cards"]
             ids = [c["id"] for c in cards]
@@ -1019,7 +1068,7 @@ class TestScaffoldContainment(unittest.TestCase):
     def _proj(self, root: Path) -> Path:
         proj = root / "vault" / "projects" / "demo"
         _write(proj / "brief.md", "---\ntype: project\n---\n# demo\n")
-        _write(proj / "tasks" / "t1.md", "---\ncode: T-1\nstatus: todo\n---\n# One\n")
+        _write(proj / "tasks" / "t1.md", "---\ncode: T-1\nstatus: backlog\n---\n# One\n")
         return proj
 
     def test_default_dest_outside_the_project_is_refused(self):
@@ -1038,7 +1087,7 @@ class TestScaffoldContainment(unittest.TestCase):
             root = Path(tmp).resolve()
             (root / "vault" / "projects").mkdir(parents=True)
             rogue_proj = root / "scratchpad" / "outside"
-            _write(rogue_proj / "tasks" / "t1.md", "---\ncode: T-1\nstatus: todo\n---\n# One\n")
+            _write(rogue_proj / "tasks" / "t1.md", "---\ncode: T-1\nstatus: backlog\n---\n# One\n")
             rc, err = _scaffold(rogue_proj, rogue_proj / "board", from_tasks=True, data=None,
                                 force=False, title=None, board_id="outside",
                                 vault_root=root / "vault")
@@ -1079,9 +1128,11 @@ class TestConcurrentDeckWrites(unittest.TestCase):
     """Audit 2026-07-30 finding 5 (tier 4). scaffold_one reads the deck, merges,
     renders, then blind-writes: an unlocked read-modify-write ending in a
     truncating write_text. A prior audit MEASURED 35 torn or empty deck reads
-    in 20 seconds with two writers. The deck is written by the verb, by
-    `board_bridge --ensure-only` on every task-note Write/Edit, and by
-    SessionEnd, so concurrent writers are the normal case.
+    in 20 seconds with two writers. The deck is written by the verb and by
+    SessionEnd's `board_bridge --ensure-only` reseed, so concurrent writers are
+    the normal case. (A third writer, the PostToolUse nudge on every task-note
+    Write/Edit, went with the auto-seed it carried; the race it opened is the
+    same one, so this test still measures it.)
 
     Real processes, no sleeps: children spin on a barrier file so they are
     already warm and hit the window together."""
@@ -1112,7 +1163,7 @@ class TestConcurrentDeckWrites(unittest.TestCase):
         proj = tmp / "proj"
         for n in range(tasks):
             _write(proj / "tasks" / f"t{n:04d}.md",
-                   f"---\ncode: T-{n:04d}\nstatus: todo\n---\n# Task {n} "
+                   f"---\ncode: T-{n:04d}\nstatus: backlog\n---\n# Task {n} "
                    f"{'padding ' * 12}\n")
         return proj
 
@@ -1187,7 +1238,7 @@ class TestConcurrentDeckWrites(unittest.TestCase):
                                            capture_output=True, text=True).stdout.strip())
                 return real(deck)
 
-            _write(proj / "tasks" / "t9999.md", "---\ncode: T-9999\nstatus: todo\n---\n# Late\n")
+            _write(proj / "tasks" / "t9999.md", "---\ncode: T-9999\nstatus: backlog\n---\n# Late\n")
             with unittest.mock.patch.object(board, "render_template", spy):
                 rc, _ = _scaffold(proj, dest, from_tasks=True, data=None, force=False,
                                   title=None, board_id="proj")
@@ -1205,7 +1256,7 @@ class TestTemplateDriftReemit(unittest.TestCase):
     def _seeded(self, tmp: Path) -> Path:
         project = _make_project(tmp, "demo")
         _write(project / "tasks" / "t-01.md",
-               "---\ncode: T-01\nstatus: todo\n---\n\n# First task\n")
+               "---\ncode: T-01\nstatus: backlog\n---\n\n# First task\n")
         self.assertEqual(_ensure(project), "created")
         return project
 
@@ -1312,7 +1363,7 @@ class TestKanbanLifecycle(unittest.TestCase):
     def _seeded(self, tmp: Path, *, kanban: bool = False) -> Path:
         project = _make_project(tmp, "demo")
         _write(project / "tasks" / "t-01.md",
-               "---\ncode: T-01\nstatus: todo\n---\n\n# First task\n")
+               "---\ncode: T-01\nstatus: backlog\n---\n\n# First task\n")
         if kanban:
             rc, _ = _scaffold(project, project / "board", from_tasks=True,
                               data=None, force=False, title=None,
@@ -1401,7 +1452,7 @@ class TestKanbanLifecycle(unittest.TestCase):
             project = vault / "projects" / "demo"
             (project / "tasks").mkdir(parents=True)
             _write(project / "tasks" / "t-01.md",
-                   "---\ncode: T-01\nstatus: todo\n---\n\n# First\n")
+                   "---\ncode: T-01\nstatus: backlog\n---\n\n# First\n")
             _write(project / "brief.md",
                    "---\ntype: project\nproject_type: coding\n---\n# demo\n")
             rc, err = _scaffold(project, project / "board", from_tasks=True,
@@ -1769,15 +1820,29 @@ class TestDeckToTaskWriteBack(unittest.TestCase):
             self.assertEqual(board.sync_deck_to_tasks(project, deck), [])
             self.assertEqual(self._status_of(project), "blocked")
 
-    def test_input_alias_survives_when_lane_agrees(self):
-        # vault-standards: aliases are accepted on input and never rewritten.
+    def test_an_unknown_status_is_never_rewritten_on_disk(self):
+        # The aliases are retired, so `wip` is now off-vocabulary. What must
+        # NOT happen is a silent rewrite: truth.py reports the value and a
+        # person fixes it. A tool that quietly corrected the file would hide
+        # the very drift the report exists to surface.
         import board
         with tempfile.TemporaryDirectory() as tmp:
             project = self._project(Path(tmp), status="wip")
             _ensure(project)
             deck = json.loads((project / "board" / "board-data.json").read_text())
-            self.assertEqual(board.sync_deck_to_tasks(project, deck), [])
-            self.assertEqual(self._status_of(project), "wip")
+            board.sync_deck_to_tasks(project, deck)
+            self.assertEqual(self._status_of(project), "wip",
+                             "an off-vocabulary status stays exactly as written")
+
+    def test_the_unknown_status_reaches_the_card_verbatim(self):
+        # So the board can show what is actually written, rather than a lane
+        # name that was never in the file.
+        import board
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self._project(Path(tmp), status="obsolete")
+            cards = board.cards_from_tasks(project)
+            self.assertEqual(len(cards), 1)
+            self.assertEqual(cards[0]["taskStatus"], "obsolete")
 
     def test_no_divergence_leaves_the_file_byte_identical(self):
         import board
@@ -1861,7 +1926,7 @@ class TestDeckToTaskWriteBack(unittest.TestCase):
         # Regression guard on v1.0.0's actual fix: teaching the note to win
         # must not cost the board its own authority over a real drag.
         with tempfile.TemporaryDirectory() as tmp:
-            project = self._project(Path(tmp), status="todo")
+            project = self._project(Path(tmp), status="backlog")
             _ensure(project)
             self._drag(project, "done")
             _ensure(project)

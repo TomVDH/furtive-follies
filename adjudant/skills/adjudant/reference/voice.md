@@ -6,7 +6,7 @@ templates, reference docs. Loaded with every verb reference: small.
 ## Banned lexicon
 
 The machine-checkable list lives in `scripts/_voice.py` as `BANNED_LEXICON`,
-enforced by validators 24, 33, 34 and the vault write gate. It is not
+enforced by validators 23, 28, 29 and the vault write gate. It is not
 repeated here: a rule the build fails on does not need to be re-read every
 session. The principle it encodes: no filler superlatives, no throat-clearing,
 no self-congratulation. Write the sentence a competent colleague would write.
@@ -63,7 +63,7 @@ Request tokens, recognized on any verb:
 | `ELI12` | Granular steps plus the architectural layer |
 | `ELICTO` | Trench detail and big picture, no hand-holding |
 
-Defaults: `sitrep` ELI5, `check` ELI12, `dream` judging ELICTO;
+Defaults: `sitrep` ELI5, `check` ELI12, `dream` and `clean --deep` judging ELICTO;
 a request token overrides.
 
 ## Simplified Technical English (ASD-STE100)

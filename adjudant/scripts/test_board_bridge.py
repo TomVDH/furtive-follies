@@ -3,12 +3,11 @@
 The ledger hook is one script wired to both TaskCreated and TaskCompleted;
 it reads the event name from the payload's hook_event_name and appends one
 JSONL entry to $TMPDIR/adjudant-task-ledger-{session_id}.jsonl, never reading
-the file in-session. The bridge replays that ledger at session end: ids whose
-latest status is not completed become tasks/{kebab-subject}.md notes (deduped
-against existing slugs, schema-conformant per templates/task.md, status: todo,
-description in the ## Task section), then board.ensure_board runs. Regression
-focus: completed ids skipped, malformed lines skipped without crash, bridge
-triggers board birth, --ensure-only works without any ledger.
+the file in-session. Since v3 nothing replays that ledger into the vault: the
+statusline reads it and it dies with the TMPDIR. The bridge is now an
+ensure-board pass and nothing else. Regression focus: the ledger never
+manufactures task notes, --ensure-only births the board from notes that
+already exist, and the hook itself still logs cleanly.
 """
 
 import contextlib
@@ -22,7 +21,6 @@ import unittest
 from pathlib import Path
 
 import board_bridge
-from _vault_walk import parse_frontmatter
 
 SCRIPTS = Path(__file__).resolve().parent
 HOOK = SCRIPTS.parent / "hooks" / "scripts" / "task-ledger.py"
@@ -150,12 +148,9 @@ class _BridgeCase(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def _write_ledger(self, entries, *, raw_lines: tuple = ()) -> Path:
+    def _write_ledger(self, entries) -> Path:
         path = self.tmp / "ledger.jsonl"
-        text = "".join(json.dumps(e) + "\n" for e in entries)
-        for raw in raw_lines:
-            text += raw + "\n"
-        path.write_text(text)
+        path.write_text("".join(json.dumps(e) + "\n" for e in entries))
         return path
 
     def _main(self, argv) -> tuple[int, str]:
@@ -168,89 +163,32 @@ class _BridgeCase(unittest.TestCase):
         return json.loads((self.project / "board" / "board-data.json").read_text())
 
 
-class TestBridgeSurvivors(_BridgeCase):
+class TestLedgerNeverBecomesVaultNotes(_BridgeCase):
+    """v3: an unfinished harness todo is not a vault note. Every todo that
+    never emitted a completion event used to become a permanent markdown file
+    at session end, which is why tasks/ accumulated without limit."""
 
-    def test_survivor_bridged(self):
-        # A created-and-never-completed id survives the session and becomes a
-        # schema-conformant task note: status todo, description under ## Task.
-        ledger = self._write_ledger([
-            _entry("T-1", "Fix the widget", description="Make it stop rattling"),
-        ])
-        rc, _ = self._main(["--bridge", str(ledger), "--project-dir", str(self.project)])
-        self.assertEqual(rc, 0)
-        note = self.project / "tasks" / "fix-the-widget.md"
-        self.assertTrue(note.is_file())
-        fm, body = parse_frontmatter(note.read_text())
-        self.assertEqual(fm.fields.get("type"), "task")
-        self.assertEqual(fm.fields.get("status"), "todo")
-        # v0.16.0: membership is the path — no project: field on written notes
-        self.assertNotIn("project", fm.fields)
-        self.assertIn("task", fm.fields.get("tags") or [])
-        # The template's trailing guidance comments must not survive into a
-        # mechanically written note: the YAML parser keeps comments on
-        # quoted-value lines (`code: ""  # ...`), which would poison card ids.
-        self.assertNotIn("#", fm.raw)
-        task_section = body.split("## Task", 1)[1].split("## Notes", 1)[0]
-        self.assertIn("Make it stop rattling", task_section)
-
-    def test_completed_skipped(self):
-        # A TaskCompleted event for an id marks it completed: latest status
-        # wins, so the created entry earlier in the file does not resurrect it.
-        ledger = self._write_ledger([
-            _entry("T-1", "Fix the widget"),
-            _entry("T-1", "Fix the widget", status="completed"),
-            _entry("T-2", "Write the docs"),
-        ])
-        rc, _ = self._main(["--bridge", str(ledger), "--project-dir", str(self.project)])
-        self.assertEqual(rc, 0)
-        self.assertFalse((self.project / "tasks" / "fix-the-widget.md").exists())
-        self.assertTrue((self.project / "tasks" / "write-the-docs.md").is_file())
-
-    def test_slug_dedup(self):
-        # An existing task-note slug is never duplicated or clobbered: the
-        # note on disk is canonical, the ledger only fills gaps.
-        tasks = self.project / "tasks"
-        tasks.mkdir()
-        existing = tasks / "fix-the-widget.md"
-        existing.write_text("---\ntype: task\nstatus: doing\n---\n\n## Task\n\nhand-written\n")
-        before = existing.read_text()
-        ledger = self._write_ledger([
-            _entry("T-1", "Fix the widget", description="from the ledger"),
-        ])
-        rc, _ = self._main(["--bridge", str(ledger), "--project-dir", str(self.project)])
-        self.assertEqual(rc, 0)
-        self.assertEqual(existing.read_text(), before)
-        self.assertEqual(sorted(p.name for p in tasks.glob("*.md")),
-                         ["fix-the-widget.md"])
-
-    def test_bridge_triggers_board_creation(self):
-        # First survivor note is the board's birth signal: after the bridge,
-        # ensure_board has scaffolded the deck with the new card in it.
+    def test_bridge_flag_is_gone(self):
         ledger = self._write_ledger([_entry("T-1", "Fix the widget")])
-        rc, out = self._main(["--bridge", str(ledger), "--project-dir", str(self.project)])
-        self.assertEqual(rc, 0)
-        self.assertEqual(out.strip().splitlines()[-1], "created")
-        deck = self._deck()
-        self.assertIn("fix-the-widget", [c["id"] for c in deck["cards"]])
+        with self.assertRaises(SystemExit):
+            self._main(["--bridge", str(ledger), "--project-dir", str(self.project)])
 
-    def test_malformed_ledger_line_skipped(self):
-        # One garbage line must not take down the bridge or the lines
-        # around it.
-        ledger = self._write_ledger(
-            [_entry("T-1", "Fix the widget")],
-            raw_lines=("not json {", '"a bare string"', "[1, 2]"),
-        )
-        rc, _ = self._main(["--bridge", str(ledger), "--project-dir", str(self.project)])
+    def test_ensure_only_writes_no_task_notes(self):
+        (self.project / "tasks").mkdir(parents=True, exist_ok=True)
+        rc, _ = self._main(["--ensure-only", "--project-dir", str(self.project)])
         self.assertEqual(rc, 0)
-        self.assertTrue((self.project / "tasks" / "fix-the-widget.md").is_file())
+        self.assertEqual(list((self.project / "tasks").glob("*.md")), [])
 
-    def test_unsluggable_subject_skipped(self):
-        # A subject with no ascii alphanumerics kebabs to nothing: no
-        # phantom `.md` note, no crash.
-        ledger = self._write_ledger([_entry("T-1", "???")])
-        rc, _ = self._main(["--bridge", str(ledger), "--project-dir", str(self.project)])
+    def test_ensure_only_still_births_the_board_from_existing_tasks(self):
+        tasks = self.project / "tasks"
+        tasks.mkdir(parents=True)
+        (tasks / "real-card.md").write_text(
+            "---\ntype: task\nstatus: doing\ncreated: 2026-09-01\nupdated: 2026-09-01\n---\n\n# Real card\n")
+        rc, _ = self._main(["--ensure-only", "--project-dir", str(self.project)])
         self.assertEqual(rc, 0)
-        self.assertFalse((self.project / "tasks").exists())
+        self.assertTrue((self.project / "board" / "board-data.json").is_file())
+        ids = [c["id"] for c in self._deck()["cards"]]
+        self.assertIn("real-card", ids)
 
 
 class TestEnsureOnly(_BridgeCase):
@@ -269,15 +207,6 @@ class TestEnsureOnly(_BridgeCase):
         self.assertIn("one-task", [c["id"] for c in self._deck()["cards"]])
         self.assertEqual(sorted(p.name for p in tasks.glob("*.md")), ["one-task.md"])
 
-    def test_missing_ledger_is_benign(self):
-        # sessionend picks the flag, but a race (ledger cleaned between the
-        # check and the call) must degrade to ensure-only, never crash.
-        rc, out = self._main(["--bridge", str(self.tmp / "gone.jsonl"),
-                              "--project-dir", str(self.project)])
-        self.assertEqual(rc, 0)
-        self.assertEqual(out.strip().splitlines()[-1], "no-tasks")
-        self.assertFalse((self.project / "board").exists())
-
 
 class TestKebab(unittest.TestCase):
 
@@ -288,30 +217,6 @@ class TestKebab(unittest.TestCase):
 
     def test_kebab_bounded(self):
         self.assertLessEqual(len(board_bridge.kebab("word " * 60)), 80)
-
-
-class TestLedgerFalsyId(unittest.TestCase):
-    """Finding 31: `entry.get("id") or ""` dropped a falsy-but-real id of 0,
-    so that task silently never bridged."""
-
-    def test_numeric_zero_id_survives(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            ledger = Path(tmp) / "ledger.jsonl"
-            ledger.write_text(
-                json.dumps({"id": 0, "status": "created", "subject": "zeroth"})
-                + "\n"
-                + json.dumps({"id": "1", "status": "created", "subject": "first"})
-                + "\n")
-            entries = board_bridge.read_ledger(ledger)
-            self.assertIn("0", entries)
-            self.assertEqual(entries["0"]["subject"], "zeroth")
-            self.assertIn("1", entries)
-
-    def test_missing_id_still_skipped(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            ledger = Path(tmp) / "ledger.jsonl"
-            ledger.write_text(json.dumps({"status": "created"}) + "\n")
-            self.assertEqual(board_bridge.read_ledger(ledger), {})
 
 
 if __name__ == "__main__":

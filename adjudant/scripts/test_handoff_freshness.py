@@ -1,15 +1,20 @@
 """Tests for adjudant/scripts/_handoff_freshness.py.
 
 The shared freshness primitives used by both the PreCompact hook and the
-`/adjudant sync` verb.
+`/adjudant status` verb.
 """
 
+import sys
 import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
 
 import _handoff_freshness as pc
+
+# The hook lives outside scripts/; TestRememberProbe asserts it shares this
+# module's picker, so the file must import standalone, not only under discover.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "hooks" / "scripts"))
 
 NOW = datetime(2026, 6, 1, 14, 0)
 
@@ -198,10 +203,24 @@ class TestRenderHandoff(unittest.TestCase):
         self.assertIn("*Mirrored from `.remember/now.md` on 2026-06-01 09:30.*", out)
         self.assertTrue(out.endswith("---\n\nbody line\n"))
 
-    def test_template_carries_source_stem(self):
+    def test_template_is_the_v3_handoff_shape(self):
+        # v3: the block is derived from templates/handoff.md, which declares
+        # type/created/updated and nothing else. `source` and the `handoff`
+        # tag are gone with the inline copy that used to declare them, and
+        # `created` (a required field the copy omitted) is present.
         fm = pc.HANDOFF_FRONTMATTER_TEMPLATE.format(
             slug="p", today="2026-06-01", source_stem="remember")
-        self.assertIn("source: remember", fm)
+        self.assertEqual(fm, "---\ntype: handoff\ncreated: 2026-06-01\n"
+                             "updated: 2026-06-01\n---\n\n")
+
+    def test_template_matches_the_shipped_template(self):
+        # The point of the derivation: editing templates/handoff.md changes
+        # what the mirror writes, with no Python edit.
+        from _template_schema import FIELD_SCHEMA
+        fm = pc.HANDOFF_FRONTMATTER_TEMPLATE.format(
+            slug="p", today="2026-06-01", source_stem="remember")
+        keys = {ln.split(":", 1)[0] for ln in fm.splitlines() if ":" in ln}
+        self.assertEqual(keys, set(FIELD_SCHEMA["handoff"]["required"]))
 
     def test_rendered_handoff_has_no_em_dash(self):
         # voice.md: no em dashes in vault writes. The old hook heading had one.
@@ -328,6 +347,50 @@ class TestLatestSessionFutureBound(unittest.TestCase):
             (sessions / "2029-12-31.md").write_text("## Log\n")
             got = pc.latest_session_file(sessions, "2026-07-30")
             self.assertEqual(got, sessions / "2026-07-30.md")
+
+
+# ============================================================
+# remember probe + the one picker
+# ============================================================
+
+
+class TestRememberProbe(unittest.TestCase):
+
+    def test_absent_remember_is_reported_not_silent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "code"
+            project.mkdir()
+            st = pc.remember_status(project)
+            self.assertFalse(st["present"])
+            self.assertIsNone(st["source"])
+
+    def test_present_but_empty_is_distinguished(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "code"
+            (project / ".remember").mkdir(parents=True)
+            (project / ".remember" / "remember.md").write_text("")
+            st = pc.remember_status(project)
+            self.assertTrue(st["present"])
+            self.assertTrue(st["empty"])
+
+    def test_present_with_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "code"
+            (project / ".remember").mkdir(parents=True)
+            (project / ".remember" / "remember.md").write_text("## State\nwork\n")
+            st = pc.remember_status(project)
+            self.assertTrue(st["present"])
+            self.assertFalse(st["empty"])
+            self.assertTrue(st["source"].endswith("remember.md"))
+
+    def test_one_picker_only(self):
+        # The picker existed twice, in sync.py and precompact.py, and had
+        # already drifted. _handoff_freshness exists to stop exactly that.
+        # sync's half now lives in status, which absorbed the handoff mirror.
+        import precompact
+        import status
+        self.assertIs(precompact.find_remember_source, pc.find_remember_source)
+        self.assertIs(status.find_remember_source, pc.find_remember_source)
 
 
 if __name__ == "__main__":

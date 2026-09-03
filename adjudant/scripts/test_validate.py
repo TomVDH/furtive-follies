@@ -113,33 +113,6 @@ class TestVersionConsistency(_PatchedTree):
         self.assertTrue(any("version-consistency" in f for f in r.failures))
 
 
-class TestTidyBackupIntegrity(_PatchedTree):
-    """This is the validator the A1 fix repairs — it must now actually fail."""
-
-    def test_passes_with_legacy_file(self):
-        d = self.plugin / ".adjudant-tidy-backup" / "proj" / "notes"
-        d.mkdir(parents=True)
-        (d / "n.md.legacy").write_text("old\n")
-        r = Result()
-        validate.validate_tidy_backup_integrity(r)
-        self.assertEqual(r.failures, [])
-
-    def test_fails_when_files_but_no_legacy(self):
-        d = self.plugin / ".adjudant-tidy-backup" / "proj"
-        d.mkdir(parents=True)
-        (d / "note.md").write_text("not a backup\n")
-        r = Result()
-        validate.validate_tidy_backup_integrity(r)
-        self.assertTrue(any("tidy-backup-integrity" in f for f in r.failures),
-                        "expected tidy-backup-integrity to fail on a dir with no .legacy files")
-
-    def test_passes_on_empty_backup_dir(self):
-        (self.plugin / ".adjudant-tidy-backup" / "proj").mkdir(parents=True)
-        r = Result()
-        validate.validate_tidy_backup_integrity(r)
-        self.assertEqual(r.failures, [])
-
-
 class TestReferenceFilesExist(_PatchedTree):
 
     def test_passes_when_all_references_exist(self):
@@ -154,26 +127,84 @@ class TestReferenceFilesExist(_PatchedTree):
         self.assertTrue(any("reference-files-exist" in f for f in r.failures))
 
 
-class TestVerbSurfaceParity(_PatchedTree):
+class TestVerbSurfacesGenerated(unittest.TestCase):
+    """8. Runs against the REAL tree: the fixture in _build() has no markers,
+    and a validator that only ever sees a fixture proves nothing about what
+    ships."""
 
-    def test_passes_when_all_surfaces_know_all_verbs(self):
-        r = Result()
-        validate.validate_verb_surface_parity(r)
-        self.assertEqual(r.failures, [])
+    def _copy_of_the_real_tree(self, tmp: str) -> Path:
+        import shutil as _sh
+        real = Path(__file__).resolve().parent.parent
+        fake = Path(tmp) / "adjudant"
+        _sh.copytree(real, fake, symlinks=True,
+                     ignore=_sh.ignore_patterns("__pycache__", ".pytest_cache"))
+        return fake
 
-    def test_fails_when_readme_missing_a_verb(self):
-        (self.plugin / "README.md").write_text("# adjudant\n\nverbs: connect\n")  # no 'check'
-        r = Result()
-        validate.validate_verb_surface_parity(r)
-        self.assertTrue(any("README.md missing verbs" in f for f in r.failures))
+    def _run_against(self, fake: Path) -> Result:
+        orig = validate.ROOT
+        validate.ROOT = fake
+        try:
+            r = Result()
+            validate.validate_verb_surfaces_generated(r)
+        finally:
+            validate.ROOT = orig
+        return r
 
-    def test_fails_on_wrong_spelled_out_verb_count(self):
-        # The escape class this validator exists for: "nine verbs" surviving a
-        # verb addition. Fixture has 2 verbs; claim nine.
-        (self.plugin / "README.md").write_text("# adjudant\n\nnine verbs: connect, check\n")
+    def test_the_shipped_surfaces_are_current(self):
         r = Result()
-        validate.validate_verb_surface_parity(r)
-        self.assertTrue(any("says 'nine verbs' but metadata has 2" in f for f in r.failures))
+        validate.validate_verb_surfaces_generated(r)
+        self.assertIn("verb-surfaces-generated", r.passes, r.failures)
+
+    def test_a_stale_surface_fails(self):
+        import tempfile as _tf
+        with _tf.TemporaryDirectory() as tmp:
+            fake = self._copy_of_the_real_tree(tmp)
+            readme = fake / "README.md"
+            readme.write_text(readme.read_text().replace(
+                "| Verb | What it does |", "| Verb | What it once did |"))
+            r = self._run_against(fake)
+            self.assertTrue(any("verb-surfaces-generated" in f for f in r.failures))
+
+    def _shipped(self) -> tuple[int, str]:
+        """(count, word) for THIS build. The public build ships fewer verbs
+        than this one, and a test that spells either number out is a test that
+        only passes in the tree it was written in."""
+        import render_verb_surfaces as rvs
+        meta = rvs.load_metadata(validate.ROOT)
+        n = len(rvs.verbs_for(meta, validate._profile.audience()))
+        return n, rvs.NUMBER_WORDS[n]
+
+    def test_a_wrong_count_outside_every_region_still_fails(self):
+        # The escape class the old parity validator existed for, and the one
+        # generation cannot see: prose that names a verb count no marker
+        # covers. It used to edit the README's own opening sentence, which
+        # tied the test to whether that sentence still carried a count — it no
+        # longer does, because a hand-typed count beside a generated one is the
+        # second declaration this whole design removes. The count is written in
+        # here now, so the check holds however the shipped prose is worded.
+        import tempfile as _tf
+        with _tf.TemporaryDirectory() as tmp:
+            fake = self._copy_of_the_real_tree(tmp)
+            readme = fake / "README.md"
+            readme.write_text(readme.read_text()
+                              + "\nAdjudant ships with nine verbs.\n")
+            r = self._run_against(fake)
+            n, _ = self._shipped()
+            self.assertTrue(any(f"says 'nine verbs' but this build ships {n}" in f
+                                for f in r.failures), r.failures)
+
+    def test_a_correct_count_in_prose_is_accepted(self):
+        # The other half: the check is about the count being wrong, not about
+        # prose mentioning one.
+        import tempfile as _tf
+        with _tf.TemporaryDirectory() as tmp:
+            fake = self._copy_of_the_real_tree(tmp)
+            readme = fake / "README.md"
+            _, word = self._shipped()
+            readme.write_text(readme.read_text()
+                              + f"\nAdjudant ships with {word} verbs.\n")
+            r = self._run_against(fake)
+            self.assertIn("verb-surfaces-generated", r.passes, r.failures)
 
 
 class TestCommandMetadataCoherence(_PatchedTree):
@@ -191,21 +222,6 @@ class TestCommandMetadataCoherence(_PatchedTree):
         r = Result()
         validate.validate_command_metadata_coherence(r)
         self.assertTrue(any("command-metadata-coherence" in f for f in r.failures))
-
-
-class TestTemplatesTagSchema(_PatchedTree):
-
-    def test_passes_when_no_deprecated_tags(self):
-        (validate.TEMPLATES / "note.md").write_text("---\ntags:\n  - note\n---\n")
-        r = Result()
-        validate.validate_templates_tag_schema(r)
-        self.assertEqual(r.failures, [])
-
-    def test_fails_on_deprecated_ob_tag(self):
-        (validate.TEMPLATES / "note.md").write_text("---\ntags:\n  - ob/note\n---\n#ob/note\n")
-        r = Result()
-        validate.validate_templates_tag_schema(r)
-        self.assertTrue(any("templates-tag-schema" in f for f in r.failures))
 
 
 class TestClaudeMdImportsAgents(_PatchedTree):
@@ -228,25 +244,65 @@ class TestClaudeMdImportsAgents(_PatchedTree):
         self.assertTrue(any("claude-md-imports-agents" in f for f in r.failures))
 
 
-class TestTemplateCoverage(_PatchedTree):
+class TestTemplateSchemaLoads(_PatchedTree):
+    """The one validator that replaced the six.
 
-    def _provision_all(self):
-        for template in validate.FILE_TYPES_REQUIRING_TEMPLATE.values():
-            for t in (template if isinstance(template, list) else [template]):
-                (validate.TEMPLATES / t).write_text("---\n---\n")
+    It drives the real parser over whatever TEMPLATES points at, so a template
+    that stops parsing, or a kind that appears or disappears, fails the build
+    at the only place the schema is declared.
+    """
 
-    def test_passes_when_all_templates_present(self):
-        self._provision_all()
+    REAL = Path(__file__).resolve().parent.parent / "skills" / "adjudant" / "templates"
+
+    def _ship(self, skip=()):
+        for src in sorted(self.REAL.glob("*.md")):
+            if src.name in skip:
+                continue
+            (validate.TEMPLATES / src.name).write_text(src.read_text())
+
+    def test_passes_on_the_shipped_templates(self):
+        self._ship()
         r = Result()
-        validate.validate_template_coverage(r)
-        self.assertEqual(r.failures, [])
+        validate.validate_template_schema_loads(r)
+        self.assertEqual(r.failures, [], r.failures)
+        self.assertIn("template-schema-loads", r.passes)
 
-    def test_fails_when_one_missing(self):
-        self._provision_all()
-        (validate.TEMPLATES / "decision.md").unlink()
+    def test_fails_when_a_kind_disappears(self):
+        self._ship(skip=("decision.md",))
         r = Result()
-        validate.validate_template_coverage(r)
-        self.assertTrue(any("decision" in f for f in r.failures))
+        validate.validate_template_schema_loads(r)
+        self.assertTrue(any("'decision'" in f for f in r.failures), r.failures)
+
+    def test_fails_when_a_kind_appears(self):
+        self._ship()
+        (validate.TEMPLATES / "memory.md").write_text(
+            "---\ntype: memory\ncreated: 2026-09-01\nupdated: 2026-09-01\n---\n\nbody\n")
+        r = Result()
+        validate.validate_template_schema_loads(r)
+        self.assertTrue(any("'memory'" in f for f in r.failures), r.failures)
+
+    def test_fails_when_a_template_stops_parsing(self):
+        # Asserts the behaviour, not the wording. An unparseable template no
+        # longer raises out of load_schema (that took the whole schema down and
+        # silently disabled the write gate); it is skipped and recorded, and
+        # THIS is where being skipped gets said out loud.
+        self._ship()
+        (validate.TEMPLATES / "note.md").write_text("---\ntype:\n---\n\nbody\n")
+        r = Result()
+        validate.validate_template_schema_loads(r)
+        self.assertTrue(r.failures, "a broken template passed validation")
+        self.assertTrue(any("note.md" in f for f in r.failures),
+                        f"the failure did not name the broken file: {r.failures}")
+
+    def test_fails_when_a_stray_file_cannot_parse(self):
+        # The case that started this: a scratch file dropped into templates/
+        # used to disable enforcement everywhere. Now it costs only itself,
+        # and the validator still refuses to call the tree clean.
+        self._ship()
+        (validate.TEMPLATES / "zz-scratch.md").write_text("---\ntitle: s\n---\n\nx\n")
+        r = Result()
+        validate.validate_template_schema_loads(r)
+        self.assertTrue(any("zz-scratch.md" in f for f in r.failures), r.failures)
 
 
 class TestPluginVersionSet(_PatchedTree):
@@ -262,49 +318,6 @@ class TestPluginVersionSet(_PatchedTree):
         r = Result()
         validate.validate_plugin_version_set(r)
         self.assertTrue(any("plugin-version-set" in f for f in r.failures))
-
-
-class TestGitignoreValidators(_PatchedTree):
-
-    def test_tidy_dirs_negated_entry_fails(self):
-        (self.plugin / ".adjudant-tidy-preview").mkdir()
-        (self.plugin / ".gitignore").write_text("!.adjudant-tidy-preview/\n")
-        r = Result()
-        validate.validate_gitignore_includes_tidy_dirs(r)
-        self.assertTrue(any("gitignore-includes-tidy-dirs" in f for f in r.failures))
-
-    def test_tidy_dirs_pass_with_entry(self):
-        (self.plugin / ".adjudant-tidy-preview").mkdir()
-        (self.plugin / ".gitignore").write_text(".adjudant-tidy-preview/\n")
-        r = Result()
-        validate.validate_gitignore_includes_tidy_dirs(r)
-        self.assertEqual(r.failures, [])
-
-
-class TestTidyPreviewCoherence(_PatchedTree):
-
-    def test_passes_when_no_dir(self):
-        r = Result()
-        validate.validate_tidy_preview_coherence(r)
-        self.assertEqual(r.failures, [])
-
-    def test_fails_when_incomplete(self):
-        d = self.plugin / ".adjudant-tidy-preview"
-        d.mkdir()
-        (d / "summary.md").write_text("x")
-        r = Result()
-        validate.validate_tidy_preview_coherence(r)
-        self.assertTrue(any("tidy-preview-coherence" in f for f in r.failures))
-
-    def test_passes_when_complete(self):
-        d = self.plugin / ".adjudant-tidy-preview"
-        d.mkdir()
-        (d / "summary.md").write_text("x")
-        (d / "changes.json").write_text("{}")
-        (d / "files").mkdir()
-        r = Result()
-        validate.validate_tidy_preview_coherence(r)
-        self.assertEqual(r.failures, [])
 
 
 class TestSkillFrontmatterVersion(_PatchedTree):
@@ -504,15 +517,6 @@ class TestGitignoreIncludesRepoTidyDirs(_PatchedTree):
         self.assertTrue(any("gitignore-includes-repo-tidy-dirs" in f for f in r.failures))
 
 
-class TestStatusVocabulary(unittest.TestCase):
-
-    def test_validator_passes_on_repo(self):
-        r = validate.Result()
-        validate.validate_status_vocabulary(r)
-        self.assertEqual(r.failures, [], r.failures)
-        self.assertIn("status-vocabulary", r.passes)
-
-
 class TestVoiceLexicon(unittest.TestCase):
 
     def test_parse_voice_lists(self):
@@ -572,12 +576,6 @@ class TestVoiceLexicon(unittest.TestCase):
             finally:
                 for k, v in orig.items():
                     setattr(validate, k, v)
-
-
-class TestTaskTemplateRegistered(unittest.TestCase):
-
-    def test_task_type_registered(self):
-        self.assertEqual(validate.FILE_TYPES_REQUIRING_TEMPLATE.get("task"), "task.md")
 
 
 class TestBoardTemplateMarkersOnRepo(unittest.TestCase):
@@ -640,51 +638,6 @@ class TestBoardTemplateMarkers(_PatchedTree):
         self.assertTrue(any("empty catch" in f for f in r.failures), r.failures)
 
 
-class TestTaskStatusVocabularyOnRepo(unittest.TestCase):
-
-    def test_validator_passes_on_repo(self):
-        r = validate.Result()
-        validate.validate_task_status_vocabulary(r)
-        self.assertEqual(r.failures, [], r.failures)
-        self.assertIn("task-status-vocabulary", r.passes)
-
-
-class TestTaskStatusVocabulary(_PatchedTree):
-
-    @staticmethod
-    def _alias_table(exclude=()):
-        from board import STATUS_TO_COLUMN
-        by_col: dict = {}
-        for alias, col in STATUS_TO_COLUMN.items():
-            if alias in exclude:
-                continue
-            by_col.setdefault(col, []).append(alias)
-        rows = "\n".join(
-            "| " + ", ".join(f"`{a}`" for a in aliases) + f" | `{col}` |"
-            for col, aliases in by_col.items())
-        return "| Alias | Board column |\n|---|---|\n" + rows + "\n"
-
-    def test_passes_when_table_covers_all_aliases(self):
-        (validate.REFERENCE / "vault-standards.md").write_text(
-            "# Vault Standards\n\n" + self._alias_table())
-        r = Result()
-        validate.validate_task_status_vocabulary(r)
-        self.assertEqual(r.failures, [], r.failures)
-
-    def test_fails_when_alias_undocumented(self):
-        (validate.REFERENCE / "vault-standards.md").write_text(
-            "# Vault Standards\n\n" + self._alias_table(exclude=("wip",)))
-        r = Result()
-        validate.validate_task_status_vocabulary(r)
-        self.assertTrue(any("wip" in f for f in r.failures))
-
-    def test_fails_when_table_absent(self):
-        (validate.REFERENCE / "vault-standards.md").write_text("# Vault Standards\n")
-        r = Result()
-        validate.validate_task_status_vocabulary(r)
-        self.assertTrue(any("task-status-vocabulary" in f for f in r.failures))
-
-
 class TestHooksWiringOnRepo(unittest.TestCase):
 
     def test_validator_passes_on_repo(self):
@@ -738,111 +691,6 @@ class TestHooksWiring(_PatchedTree):
         r = Result()
         validate.validate_hooks_wiring(r)
         self.assertTrue(any("hooks-wiring" in f for f in r.failures))
-
-
-_DECISION_TEMPLATE_OK = """---
-type: decision
-status: active                # active | superseded | reversed | implemented | deferred
-date: {YYYY-MM-DD}
-tags:
-  - decision
-supersedes: ""                # optional: wikilink to previous decision being replaced
----
-
-## Decision
-"""
-
-_VS_DECISION_VOCAB = (
-    "# Vault Standards\n\n## 9. Decision status vocabulary\n\n"
-    "`active` | `superseded` | `reversed` | `implemented` | `deferred`\n")
-
-
-class TestDecisionStatusVocabularyOnRepo(unittest.TestCase):
-
-    def test_validator_passes_on_repo(self):
-        r = validate.Result()
-        validate.validate_decision_status_vocabulary(r)
-        self.assertEqual(r.failures, [], r.failures)
-        self.assertIn("decision-status-vocabulary", r.passes)
-
-
-class TestDecisionStatusVocabulary(_PatchedTree):
-
-    def _seed(self, template=_DECISION_TEMPLATE_OK, standards=_VS_DECISION_VOCAB):
-        (validate.TEMPLATES / "decision.md").write_text(template)
-        (validate.REFERENCE / "vault-standards.md").write_text(standards)
-
-    def test_passes_when_all_three_agree(self):
-        self._seed()
-        r = Result()
-        validate.validate_decision_status_vocabulary(r)
-        self.assertEqual(r.failures, [], r.failures)
-
-    def test_fails_on_tampered_enum_comment(self):
-        self._seed(template=_DECISION_TEMPLATE_OK.replace(" | deferred", ""))
-        r = Result()
-        validate.validate_decision_status_vocabulary(r)
-        self.assertTrue(any("decision-status-vocabulary" in f for f in r.failures))
-
-    def test_fails_when_standards_missing_value(self):
-        self._seed(standards=_VS_DECISION_VOCAB.replace("`deferred`", "`parked`"))
-        r = Result()
-        validate.validate_decision_status_vocabulary(r)
-        self.assertTrue(any("deferred" in f for f in r.failures))
-
-    def test_fails_on_off_vocabulary_default(self):
-        self._seed(template=_DECISION_TEMPLATE_OK.replace("status: active", "status: accepted"))
-        r = Result()
-        validate.validate_decision_status_vocabulary(r)
-        self.assertTrue(any("decision-status-vocabulary" in f for f in r.failures))
-
-
-class TestTemplateSchemaParityOnRepo(unittest.TestCase):
-
-    def test_validator_passes_on_repo(self):
-        r = validate.Result()
-        validate.validate_template_schema_parity(r)
-        self.assertEqual(r.failures, [], r.failures)
-        self.assertIn("template-schema-parity", r.passes)
-
-
-class TestTemplateSchemaParity(_PatchedTree):
-
-    def setUp(self):
-        super().setUp()
-        self._orig_registry = validate.FILE_TYPES_REQUIRING_TEMPLATE
-        validate.FILE_TYPES_REQUIRING_TEMPLATE = {"decision": "decision.md"}
-
-    def tearDown(self):
-        validate.FILE_TYPES_REQUIRING_TEMPLATE = self._orig_registry
-        super().tearDown()
-
-    def test_passes_on_conforming_template(self):
-        (validate.TEMPLATES / "decision.md").write_text(_DECISION_TEMPLATE_OK)
-        r = Result()
-        validate.validate_template_schema_parity(r)
-        self.assertEqual(r.failures, [], r.failures)
-
-    def test_fails_on_alien_key(self):
-        (validate.TEMPLATES / "decision.md").write_text(
-            _DECISION_TEMPLATE_OK.replace(
-                "type: decision\n",
-                'type: decision\nproject: "[[projects/x/brief|x]]"\n'))
-        r = Result()
-        validate.validate_template_schema_parity(r)
-        self.assertTrue(any("project" in f for f in r.failures))
-
-    def test_fails_on_missing_required_key(self):
-        (validate.TEMPLATES / "decision.md").write_text(
-            _DECISION_TEMPLATE_OK.replace("date: {YYYY-MM-DD}\n", ""))
-        r = Result()
-        validate.validate_template_schema_parity(r)
-        self.assertTrue(any("date" in f for f in r.failures))
-
-    def test_fails_when_template_missing(self):
-        r = Result()
-        validate.validate_template_schema_parity(r)
-        self.assertTrue(any("template-schema-parity" in f for f in r.failures))
 
 
 _ZONE_PY_OK = '''#!/usr/bin/env python3
@@ -989,6 +837,7 @@ class TestSkillSplit(unittest.TestCase):
         text = self.INTERNALS.read_text()
         self.assertIn("posttooluse-vault-log.py", text)   # hooks table
         self.assertIn("board_bridge.py", text)            # helper layer table
+        self.assertIn("build-profile.json", text)         # environment awareness
 
     def test_skill_sheds_the_background_tables(self):
         text = self.SKILL.read_text()
@@ -996,16 +845,29 @@ class TestSkillSplit(unittest.TestCase):
         self.assertNotIn("board_bridge.py", text)
 
     def test_skill_still_routes_and_points_at_internals(self):
+        # The verb list comes from this build's metadata, not from a tuple
+        # typed here: `draw` is full-only, so a hard-coded list makes this test
+        # fail in the public build for a reason that is not a defect.
+        import render_verb_surfaces as rvs
+        import _profile
         text = self.SKILL.read_text()
-        for verb in ("connect", "sync", "check", "sitrep", "tidy",
-                     "dream", "board"):
-            self.assertIn(f"`{verb}`", text)
+        meta = rvs.load_metadata(self.SKILL.parent.parent.parent)
+        shipped = rvs.verbs_for(meta, _profile.audience())
+        self.assertTrue(shipped, "this build ships no verbs at all")
+        for verb in shipped:
+            self.assertIn(f"`{verb['name']}`", text)
         self.assertIn("reference/internals.md", text)
 
     def test_skill_within_token_budget(self):
         # bytes // 4, the repo's own estimator. Target from the design spec.
         est = len(self.SKILL.read_text()) // 4
         self.assertLess(est, 2000, f"SKILL.md is ~{est} tok, budget 2000")
+
+    def test_advisor_contract_within_budget(self):
+        # Loads into every advisor-on session; same discipline as voice.md.
+        doc = self.INTERNALS.parent / "advisor.md"
+        est = len(doc.read_text()) // 4
+        self.assertLess(est, 900, f"advisor.md is ~{est} tok, budget 900")
 
 
 class TestDocTrim(unittest.TestCase):
@@ -1019,17 +881,12 @@ class TestDocTrim(unittest.TestCase):
         # the rewrite; three drafts measured a floor of 2446 with every
         # hand-authoring answer still present. Lower means deleting unenforced
         # guidance, or splitting the file and breaking the section citations in
-        # ramasse_scan.py, _vault_walk.py and board_bridge.py.
+        # clean.py, _vault_walk.py and board_bridge.py.
         self.assertLess(est, 2500, f"vault-standards.md is ~{est} tok, budget 2500")
 
     def test_voice_within_budget(self):
         est = len((self.REF / "voice.md").read_text()) // 4
         self.assertLess(est, 780, f"voice.md is ~{est} tok, budget 780")
-
-    def test_vault_standards_names_its_enforcers(self):
-        text = (self.REF / "vault-standards.md").read_text()
-        for enforcer in ("FIELD_SCHEMA", "tidy", "validate.py"):
-            self.assertIn(enforcer, text)
 
     def test_voice_keeps_the_judgement_content(self):
         text = (self.REF / "voice.md").read_text()
@@ -1071,6 +928,172 @@ class TestModuleDocstringRoster(unittest.TestCase):
                          "the roster must be numbered 1..N with no gaps")
         self.assertEqual([name for _, name in listed], self._called(),
                          "roster names and order must match main()'s calls")
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+class TestAdvisorWiring(unittest.TestCase):
+    """30. advisor-wiring - the opt-in advisor's three surfaces stay wired:
+    the contract doc exists, the SessionStart banner names it, and the toggle
+    still stamps AGENTS.md. Any one of them silently dropping out leaves a
+    mode that claims to watch and does not."""
+
+    def test_passes_on_the_real_tree(self):
+        r = validate.Result()
+        validate.validate_advisor_wiring(r)
+        self.assertIn("advisor-wiring", r.passes)
+
+    def test_fails_when_the_banner_is_stripped(self):
+        import tempfile as _tf
+        real_hook = (Path(__file__).resolve().parent.parent
+                     / "hooks" / "scripts" / "session-start.sh")
+        with _tf.TemporaryDirectory() as tmp:
+            fake_root = Path(tmp)
+            (fake_root / "hooks" / "scripts").mkdir(parents=True)
+            stripped = "\n".join(l for l in real_hook.read_text().splitlines()
+                                  if "Advisor" not in l and "advisor" not in l)
+            (fake_root / "hooks" / "scripts" / "session-start.sh").write_text(stripped)
+            ref = fake_root / "skills" / "adjudant" / "reference"
+            ref.mkdir(parents=True)
+            (ref / "advisor.md").write_text("# Advisor\n")
+            (fake_root / "scripts").mkdir()
+            (fake_root / "scripts" / "status.py").write_text(
+                'AGENTS_MARKER_PREFIX = "**Adjudant advisor: on**"\n')
+            orig = validate.ROOT
+            validate.ROOT = fake_root
+            try:
+                r = validate.Result()
+                validate.validate_advisor_wiring(r)
+            finally:
+                validate.ROOT = orig
+            self.assertTrue(any("advisor-wiring" in f for f in r.failures))
+
+
+class TestPlaceZoneParity(unittest.TestCase):
+    """24. place-zone-parity - _place duplicates the four lifecycle folder
+    names so a degraded hook can import it without _vault_walk. The outcome
+    that matters is that a drifted copy fails the build, not that the happy
+    path prints a tick."""
+
+    def test_passes_on_the_real_tree(self):
+        r = validate.Result()
+        validate.validate_place_zone_parity(r)
+        self.assertIn("place-zone-parity", r.passes)
+        self.assertEqual(r.failures, [])
+
+    def test_fails_when_the_two_lists_drift(self):
+        import _place
+        orig = _place._LIFECYCLE_FOLDERS
+        _place._LIFECYCLE_FOLDERS = frozenset({"active", "paused", "shelved"})
+        try:
+            r = validate.Result()
+            validate.validate_place_zone_parity(r)
+        finally:
+            _place._LIFECYCLE_FOLDERS = orig
+        self.assertTrue(any("place-zone-parity" in f for f in r.failures))
+        self.assertNotIn("place-zone-parity", r.passes,
+                         "a drifted list reported a pass alongside the fail")
+
+
+class TestParityValidatorsRemoved(unittest.TestCase):
+    """The six validators that existed only to compare two declarations.
+
+    Each one asked whether a Python constant, a template and a prose section
+    agreed. The template is the only declaration now, so the question has no
+    second half to ask about. One validator replaces all six: the templates
+    parse into exactly the fifteen kinds.
+    """
+
+    def test_the_six_are_gone(self):
+        src = Path(validate.__file__).read_text()
+        for name in ("template-coverage", "status-vocabulary",
+                     "task-status-vocabulary", "decision-status-vocabulary",
+                     "template-schema-parity", "freshness-vocabulary"):
+            self.assertNotIn(name, src,
+                             f"{name} survived; it checks a second declaration "
+                             "that no longer exists")
+
+    def test_the_replacement_exists(self):
+        src = Path(validate.__file__).read_text()
+        self.assertIn("template-schema-loads", src)
+
+    def test_declared_count_matches_reality(self):
+        src = Path(validate.__file__).read_text()
+        declared = int(re.search(r"(\d+) validators total", src).group(1))
+        listed = len(re.findall(r"^\s*\d+\. [a-z-]+", src, re.M))
+        self.assertEqual(declared, listed)
+
+
+class TestPortIsSunset(unittest.TestCase):
+
+    def test_no_port_source_survives(self):
+        scripts = Path(validate.__file__).parent
+        for name in ("port.py", "test_port.py"):
+            self.assertFalse((scripts / name).exists(), f"{name} survived")
+
+    def test_no_port_verb_registered(self):
+        meta = json.loads((Path(validate.__file__).parent / "command-metadata.json").read_text())
+        self.assertNotIn("port", [v["name"] for v in meta["verbs"]])
+
+    def test_port_validators_are_gone(self):
+        src = Path(validate.__file__).read_text()
+        for name in ("port-preview-coherence", "port-backup-integrity",
+                     "gitignore-includes-port-dirs"):
+            self.assertNotIn(name, src, f"{name} validates a deleted verb")
+
+
+class TestShelfIsSunset(unittest.TestCase):
+
+    def test_no_shelf_source_survives(self):
+        scripts = Path(validate.__file__).parent
+        for name in ("shelf.py", "test_shelf.py"):
+            self.assertFalse((scripts / name).exists(), f"{name} survived")
+
+    def test_no_vault_wide_link_rewrite_remains(self):
+        # Roughly fifty lines of shelf.py whose only job was repairing the
+        # decision to put the lifecycle folder in every link. Plan 4 takes the
+        # folder out of the links, so the repair has nothing left to repair.
+        # The identifiers are the plan keys the rewrite was built and applied
+        # through, not the name the plan guessed at.
+        scripts = Path(validate.__file__).parent
+        for py in scripts.glob("*.py"):
+            if py.name.startswith("test_"):
+                continue
+            src = py.read_text()
+            for marker in ("old_link_prefix", "new_link_prefix", "link_rewrites"):
+                self.assertNotIn(marker, src,
+                                 f"{py.name} still rewrites links vault-wide")
+
+
+class TestStandardsStructureParity(unittest.TestCase):
+    """The standards doc restated every rule in prose, and prose drifts. It
+    now links to templates instead, and this holds the one thing it still has
+    to state itself: the folder layout."""
+
+    def test_the_standards_doc_names_every_folder(self):
+        from _place import KIND_FOLDER
+        from _vault_walk import PROJECT_ZONES
+        text = (Path(__file__).resolve().parent.parent / "skills" / "adjudant"
+                / "reference" / "vault-standards.md").read_text()
+        for folder in sorted(set(KIND_FOLDER.values()) - {""}):
+            self.assertIn(f"{folder}/", text, f"vault-standards omits {folder}/")
+        for zone in PROJECT_ZONES:
+            self.assertIn(f"{zone}/", text, f"vault-standards omits {zone}/")
+
+    def test_the_standards_doc_does_not_restate_a_template(self):
+        text = (Path(__file__).resolve().parent.parent / "skills" / "adjudant"
+                / "reference" / "vault-standards.md").read_text()
+        self.assertNotIn("required:", text,
+                         "a field table here is a second declaration; link to "
+                         "the template instead")
+
+    def test_the_markdown_doc_states_one_rule_per_element(self):
+        text = (Path(__file__).resolve().parent.parent / "skills" / "adjudant"
+                / "reference" / "content-markdown.md").read_text()
+        for element in ("Headings", "Lists", "Emphasis", "Code", "Tables",
+                        "Callouts", "Links", "Mermaid", "Emoji", "Register"):
+            self.assertIn(f"## {element}", text, f"no rule for {element}")
 
 
 if __name__ == "__main__":

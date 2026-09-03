@@ -11,7 +11,7 @@ puts the frontmatter back.
 
 The flattening PRESERVED the value, so this is a mechanical re-nest, not a
 reconstruct-from-content. It only holds while `name:`/`description:` are still
-on the file — run it before applying any tidy preview computed under 1.0.0.
+on the file — run it before applying any clean preview computed under 1.0.0.
 
     python3 renest_memory.py preview <dir>    # read-only, lists candidates
     python3 renest_memory.py apply   <dir>    # backs up, then rewrites

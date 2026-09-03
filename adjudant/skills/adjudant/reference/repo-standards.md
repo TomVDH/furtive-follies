@@ -22,7 +22,7 @@ Design/plan docs live under `docs/superpowers/`. A doc with no completion marker
 (`status: done`, `status: complete`, `status: shipped`, or a ✅ near the top)
 that is older than the staleness threshold (default 30 days by mtime) is flagged
 as a stale plan. The fix is to mark it complete or archive it — an archival move
-is deliberate structural work, out of scope for this tool, not a `tidy` fix.
+is deliberate structural work (`clean --deep` reports it), not a mechanical fix.
 
 ## Marketplace layer (marketplace.json present)
 
@@ -44,7 +44,7 @@ and `<plugin>/.gemini/skills/<name>` each resolve to `../../skills/<name>`. A
 plugin is *harness-adopted* when its canonical skill dir exists and at least one
 of the three symlinks is present. `tidy repo` repairs a missing or dangling
 symlink on an adopted plugin; it never creates a harness for a plugin that has
-none (auto-adoption is deferred, out of scope for this tool). A plugin with no `skills/` dir
+none (auto-adoption is deferred structural work). A plugin with no `skills/` dir
 needs no harness and is not flagged.
 
 ### Registration
@@ -59,5 +59,5 @@ unregistered plugin or a dangling `source` path is drift.
 - **No content/prose cleanup** — that is the vault's `dream` tier, vault-only.
 - **No regex drift-defense** (whitespace, secrets, deprecated tags) — hookify
   owns that.
-- **No auto-adoption or archival in `tidy`** — structural moves are deferred,
-  out of scope for this tool.
+- **No auto-adoption or archival in `clean`** — structural moves are deferred
+  work that `clean --deep` reports and a human decides.

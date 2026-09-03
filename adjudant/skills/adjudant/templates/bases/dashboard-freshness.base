@@ -5,15 +5,14 @@ filters:
     - file.inFolder("projects/{slug}/references")
 views:
   - type: table
-    name: Truth lifetime
+    name: Longest unverified
     sort:
-      - property: valid_until
+      - property: verified
         direction: ASC
     order:
       - file.name
-      - freshness
-      - certainty
-      - valid_from
-      - valid_until
-      - validity_context
+      - type
+      - verified
+      - verified_by
+      - updated
       - superseded_by

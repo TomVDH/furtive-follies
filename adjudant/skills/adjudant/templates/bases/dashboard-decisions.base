@@ -14,5 +14,5 @@ views:
     order:
       - file.name
       - status
-      - date
+      - created
       - superseded_by

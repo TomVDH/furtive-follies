@@ -1,16 +1,19 @@
 """Tests for hooks/scripts/postcompact.py, the PostCompact hook.
 
-Regression focus: the hook must gate on a real compaction summary (empty or
-missing payload writes nothing), collapse multi-line summaries to a single
-clipped gist line, honor the same resolve/midnight-fallback discipline as
-posttooluse-vault-log.py, and fail closed on a stale breadcrumb instead of
-materializing a phantom vault path.
+Since v3 the hook writes nothing: it drains stdin and returns 0. It used to
+append `- HH:MM · compacted: {gist}` to the session log, where the gist was
+the harness summary clipped at 160 chars, so the vault filled with sentence
+fragments of raw model reasoning.
+
+Regression focus is therefore one claim, asserted from every angle the old
+writer could have reached the disk from: no payload, breadcrumb or slug makes
+this hook touch a file. The fail-closed and traversal cases are kept for the
+day someone gives it a write path again.
 """
 
 import io
 import json
 import os
-import re
 import sys
 import tempfile
 import unittest
@@ -69,6 +72,22 @@ class _HookHarness(_EnvHygiene):
             del os.environ["CLAUDE_PROJECT_DIR"]
 
 
+class TestNoCompactionMarkers(_HookHarness):
+
+    def test_compaction_appends_nothing(self):
+        # 34 files in the real vault carry truncated model reasoning from this
+        # hook ("· compacted: <analysis> Let me chronologically work through…").
+        # A compaction is not project work.
+        with tempfile.TemporaryDirectory() as tmp:
+            project, note = self._fixture(Path(tmp))
+            note.write_text(
+                "---\ntype: session\n---\n\n## Log\n\n- 09:00 · a.md written\n")
+            before = note.read_text()
+            rc = self._run_main(project, {"summary": "a long compaction summary"})
+            self.assertEqual(rc, 0)
+            self.assertEqual(note.read_text(), before)
+
+
 class TestSummaryGate(_HookHarness):
 
     def test_empty_summary_no_write(self):
@@ -82,61 +101,6 @@ class TestSummaryGate(_HookHarness):
                 self.assertEqual(rc, 0)
                 self.assertEqual(session_file.read_text(), before,
                                  f"no-signal payload {payload!r} must write nothing")
-
-    def test_appends_gist_line(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            project, session_file = self._fixture(Path(tmp))
-            before = session_file.read_text()
-            rc = self._run_main(
-                project, {"compaction_summary": "Wired the board reseed path"})
-            self.assertEqual(rc, 0)
-            text = session_file.read_text()
-            self.assertTrue(text.startswith(before), "existing log must be preserved")
-            added = text[len(before):]
-            self.assertRegex(
-                added,
-                r"^- \d\d:\d\d · compacted: Wired the board reseed path\n$",
-                "exactly one gist line must be appended")
-
-    def test_fallback_keys_tried_in_order(self):
-        # Probe-verified key first, then the documented fallbacks. Each key
-        # must work alone; compaction_summary must win when several coexist.
-        for key in ("compaction_summary", "summary", "compact_summary", "message"):
-            with tempfile.TemporaryDirectory() as tmp:
-                project, session_file = self._fixture(Path(tmp))
-                rc = self._run_main(project, {key: f"via {key}"})
-                self.assertEqual(rc, 0)
-                self.assertIn(f"compacted: via {key}", session_file.read_text(),
-                              f"payload key {key!r} must be honored")
-        with tempfile.TemporaryDirectory() as tmp:
-            project, session_file = self._fixture(Path(tmp))
-            self._run_main(project, {"summary": "loser", "compaction_summary": "winner"})
-            text = session_file.read_text()
-            self.assertIn("compacted: winner", text)
-            self.assertNotIn("loser", text)
-
-
-class TestGistShape(_HookHarness):
-
-    def test_gist_single_line(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            project, session_file = self._fixture(Path(tmp))
-            before = session_file.read_text()
-            self._run_main(project, {
-                "compaction_summary": "fixed parser\nadded tests\n\nshipped  docs\n"})
-            added = session_file.read_text()[len(before):]
-            self.assertIn("compacted: fixed parser added tests shipped docs\n", added)
-            self.assertEqual(added.count("\n"), 1,
-                             "multi-line summary must collapse to one log line")
-
-    def test_gist_clipped_to_160_chars(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            project, session_file = self._fixture(Path(tmp))
-            self._run_main(project, {"compaction_summary": "x" * 400})
-            match = re.search(r"compacted: (x+)", session_file.read_text())
-            self.assertIsNotNone(match)
-            self.assertEqual(len(match.group(1)), 160)
-
 
 class TestFailClosed(_HookHarness):
 
@@ -174,70 +138,9 @@ class TestFailClosed(_HookHarness):
             self.assertEqual(session_file.read_text(), before)
 
 
-class TestMidnightStraddle(_HookHarness):
-
-    def test_gist_lands_in_latest_note(self):
-        # No note for today (session started before midnight): the gist must
-        # land in the latest existing daily note, never a lookalike decoy.
-        with tempfile.TemporaryDirectory() as tmp:
-            project = Path(tmp) / "code"
-            vault = Path(tmp) / "vault"
-            sessions = vault / "projects" / "demo" / "sessions"
-            sessions.mkdir(parents=True)
-            latest = sessions / "2020-01-02.md"
-            latest.write_text("## Log\n")
-            (sessions / "2020-01-01.md").write_text("## Log\n")
-            decoy = sessions / "abcd-ef-gh.md"  # 4-2-2 shape, not a date
-            decoy.write_text("## Not a session\n")
-            self._breadcrumb(project, str(vault))
-            rc = self._run_main(project, {"compaction_summary": "straddled midnight"})
-            self.assertEqual(rc, 0)
-            self.assertIn("compacted: straddled midnight", latest.read_text())
-            self.assertNotIn("compacted", decoy.read_text())  # digit glob, not ?
-
-    def test_gist_skips_future_dated_note(self):
-        # Finding 19: an unbounded latest-glob let a future-dated note
-        # (clock skew, restored backup) absorb every straddle append.
-        with tempfile.TemporaryDirectory() as tmp:
-            project = Path(tmp) / "code"
-            vault = Path(tmp) / "vault"
-            sessions = vault / "projects" / "demo" / "sessions"
-            sessions.mkdir(parents=True)
-            latest_real = sessions / "2020-01-02.md"
-            latest_real.write_text("## Log\n")
-            future = sessions / "2029-12-31.md"
-            future.write_text("## Log\n")
-            self._breadcrumb(project, str(vault))
-            rc = self._run_main(project, {"compaction_summary": "straddled midnight"})
-            self.assertEqual(rc, 0)
-            self.assertIn("compacted: straddled midnight", latest_real.read_text())
-            self.assertNotIn("compacted", future.read_text())
-
-
 class TestZoneAwareness(_HookHarness):
     """Audit 2026-07-27: hooks hardcoded projects/<slug> while shelf moves
     projects to _fridge/ and _archive/."""
-
-    def test_gist_lands_in_shelved_project(self):
-        for zone in ("_fridge", "_archive"):
-            with self.subTest(zone=zone):
-                with tempfile.TemporaryDirectory() as tmp:
-                    root = Path(tmp)
-                    project = root / "code"
-                    vault = root / "vault"
-                    sessions = vault / "projects" / zone / "demo" / "sessions"
-                    sessions.mkdir(parents=True)
-                    (sessions.parent / "brief.md").write_text(
-                        "---\ntype: project\nslug: demo\n---\n\n# Demo\n")
-                    today = datetime.now().strftime("%Y-%m-%d")
-                    note = sessions / f"{today}.md"
-                    note.write_text("## Log\n")
-                    self._breadcrumb(project, str(vault))
-                    rc = self._run_main(
-                        project, {"compaction_summary": "did the thing"})
-                    self.assertEqual(rc, 0)
-                    self.assertIn("compacted: did the thing", note.read_text())
-                    self.assertFalse((vault / "projects" / "demo").exists())
 
     def test_unknown_project_is_noop(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -256,10 +159,10 @@ class TestSlugGuard(_HookHarness):
     slug. The hook must refuse it before joining it into a path.
 
     Each fixture MATERIALIZES the directory the bad slug resolves to, with the
-    shape find_project_dir accepts (brief.md plus a dated session note), so the
-    zone lookup succeeds and everything downstream of the slug guard is live.
-    The guard is then the only thing between the hook and an append to a file
-    outside the vault.
+    shape find_project_dir accepts (brief.md plus a dated session note), so a
+    hook that ever regains a write path lands there and these tests catch it.
+    The live control that used to prove the fixture resolves went with the
+    write itself: there is no longer any input that makes this hook append.
     """
 
     def _decoy(self, tmp: Path, slug: str) -> tuple[Path, Path]:
@@ -305,17 +208,6 @@ class TestSlugGuard(_HookHarness):
                     rc = self._run_main(project, {"compaction_summary": "nope"})
                     self.assertEqual(rc, 0)
                     self.assertEqual(note.read_text(), "## Log\n")
-
-    def test_decoy_fixture_is_live_for_a_safe_slug(self):
-        # Control: the same fixture with a kebab-case slug DOES get appended
-        # to. Without it, a decoy that silently failed to resolve would make
-        # the two tests above pass for the wrong reason all over again.
-        with tempfile.TemporaryDirectory() as tmp:
-            project, note = self._decoy(Path(tmp), "decoy-project")
-            rc = self._run_main(project, {"compaction_summary": "landed gist"})
-            self.assertEqual(rc, 0)
-            self.assertIn("compacted: landed gist", note.read_text())
-
 
 if __name__ == "__main__":
     unittest.main()

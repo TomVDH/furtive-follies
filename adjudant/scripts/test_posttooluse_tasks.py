@@ -1,23 +1,33 @@
-"""Tests for the tasks/ branch of hooks/scripts/posttooluse-vault-log.py.
+"""Tests for the tasks/ path of hooks/scripts/posttooluse-vault-log.py.
 
-A task-note change (Write OR Edit under {vault}/projects/{slug}/tasks/)
-must nudge the board: invoke `board_bridge.py --ensure-only` in a capped
-subprocess (3s), fire-and-forget, failures swallowed. The pre-existing
-session-log job keeps its explicit Write-only guard: Edit payloads never
-append a log entry, and a Write under tasks/ still logs exactly as before.
+A task-note change must NOT nudge the board. Until v3 a job 0 in this hook
+fired `board_bridge.py --ensure-only` on any Write OR Edit under
+{vault}/projects/{slug}/tasks/, and `ensure_board` then scaffolded
+board-data.json, board.html and a lock file — three files nobody asked for,
+against six intentional writes. `board` is opt-in: a deck is born by running
+`/adjudant board`, and by nothing else.
 
-board_bridge.py is built in a parallel lane, so the subprocess call is
-mocked here; the assertions pin the argv contract instead (python3, path
-ending board_bridge.py, --ensure-only, --project-dir value).
+So this file now pins the absence. Three tests here used to assert the branch
+fired and were deleted with it: TestTasksBranchFires.{test_write_under_tasks
+_triggers_ensure, test_edit_under_tasks_triggers_ensure} and
+TestTasksBranchGates.test_session_log_ignores_edit's `run.assert_called_once()`
+half, along with the whole TestFailuresSwallowed class, which existed only to
+prove the removed subprocess call was swallowed on OSError and on timeout.
+
+What survives is the real contract: a Write under tasks/ still gets its
+session-log line, an Edit still gets nothing at all, and the hook spawns no
+subprocess from any path. The mock patches subprocess.run at module level, not
+through the hook's own namespace, so the assertion holds even if a future
+branch re-imports subprocess under another name.
 """
 
 import importlib.util
 import io
 import json
 import os
-import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -49,7 +59,11 @@ class _TasksHookCase(unittest.TestCase):
         self.project_root = self.vault / "projects" / "demo"
         (self.project_root / "sessions").mkdir(parents=True)
         (self.project_root / "tasks").mkdir()
-        self.session_note = self.project_root / "sessions" / "2020-01-02.md"
+        # Yesterday, not a fixed 2020 date: the midnight-straddle fallback
+        # now has a floor, so a note from years ago is deliberately no
+        # longer eligible to absorb today's log lines.
+        _y = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        self.session_note = self.project_root / "sessions" / f"{_y}.md"
         self.session_note.write_text("## Log\n")
         (self.project / ".claude").mkdir(parents=True)
         (self.project / ".claude" / "adjudant").write_text(
@@ -86,88 +100,96 @@ class _TasksHookCase(unittest.TestCase):
 
     def _run_mocked(self, payload):
         """Drive main() with subprocess.run mocked out; return (rc, mock)."""
-        with mock.patch.object(vault_log.subprocess, "run") as run:
+        with mock.patch("subprocess.run") as run:
             rc = self._run(payload)
         return rc, run
 
-    def _assert_ensure_argv(self, run) -> None:
-        run.assert_called_once()
-        argv = run.call_args[0][0]
-        self.assertEqual(argv[0], "python3")
-        self.assertTrue(str(argv[1]).endswith("board_bridge.py"),
-                        f"argv[1] must be the bridge path, got {argv[1]!r}")
-        self.assertIn("--ensure-only", argv)
-        i = argv.index("--project-dir")
-        self.assertEqual(argv[i + 1], str(self.project))
-        self.assertEqual(run.call_args.kwargs.get("timeout"), 3)
 
+class TestTasksBranchIsGone(_TasksHookCase):
 
-class TestTasksBranchFires(_TasksHookCase):
-
-    def test_write_under_tasks_triggers_ensure(self):
+    def test_write_under_tasks_spawns_nothing(self):
         task_note = self.project_root / "tasks" / "refactor-auth.md"
         rc, run = self._run_mocked(self._payload(task_note, tool_name="Write"))
         self.assertEqual(rc, 0)
-        self._assert_ensure_argv(run)
+        run.assert_not_called()
 
-    def test_edit_under_tasks_triggers_ensure(self):
+    def test_edit_under_tasks_spawns_nothing(self):
         task_note = self.project_root / "tasks" / "refactor-auth.md"
         rc, run = self._run_mocked(self._payload(task_note, tool_name="Edit"))
         self.assertEqual(rc, 0)
-        self._assert_ensure_argv(run)
+        run.assert_not_called()
+
+    def test_write_under_tasks_seeds_no_board(self):
+        # The end the argv contract was a proxy for: no board files appear.
+        task_note = self.project_root / "tasks" / "refactor-auth.md"
+        task_note.write_text(
+            "---\ntype: task\ncreated: 2026-09-01\nupdated: 2026-09-01\n"
+            "status: backlog\n---\n\n# Refactor auth\n")
+        self.assertEqual(self._run(self._payload(task_note, tool_name="Write")), 0)
+        board = self.project_root / "board"
+        self.assertFalse(board.exists(),
+                         f"a task write scaffolded a board: "
+                         f"{sorted(p.name for p in board.rglob('*'))}")
+
+    def test_the_hook_imports_no_subprocess(self):
+        # A branch that shells out cannot come back unnoticed. Checked on the
+        # loaded module, not on the prose: the docstring names the deleted
+        # call so the reason it went stays readable.
+        self.assertFalse(hasattr(vault_log, "subprocess"),
+                         "the hook imported subprocess again")
+        imports = [ln.strip() for ln in HOOK.read_text().splitlines()
+                   if ln.strip().startswith(("import ", "from "))]
+        self.assertEqual(
+            [ln for ln in imports if "subprocess" in ln], [],
+            "the hook imported subprocess again")
+
+
+class TestTasksStillLogged(_TasksHookCase):
 
     def test_write_under_tasks_still_session_logged(self):
-        # The pre-existing session-log job must keep firing on Write: the
-        # tasks branch is additive, not a replacement.
+        # Deleting job 0 must not cost job 1: a task note is still a real
+        # write and still earns its session-log line.
         task_note = self.project_root / "tasks" / "refactor-auth.md"
-        rc, run = self._run_mocked(self._payload(task_note, tool_name="Write"))
+        rc, _ = self._run_mocked(self._payload(task_note, tool_name="Write"))
         self.assertEqual(rc, 0)
         self.assertRegex(self.session_note.read_text(),
-                         r"- \d{2}:\d{2} · Added: \[\[projects/demo/tasks/refactor-auth\.md\]\]")
+                         r"- \d{2}:\d{2} · Added: \[\[demo/tasks/refactor-auth\]\]")
 
+    def test_session_log_ignores_edit(self):
+        # The session-log job stays Write-only.
+        task_note = self.project_root / "tasks" / "refactor-auth.md"
+        rc, run = self._run_mocked(self._payload(task_note, tool_name="Edit"))
+        self.assertEqual(rc, 0)
+        run.assert_not_called()
+        self.assertEqual(self.session_note.read_text(), "## Log\n")
 
-class TestTasksBranchGates(_TasksHookCase):
-
-    def test_edit_elsewhere_no_ensure(self):
+    def test_edit_elsewhere_writes_nothing(self):
         note = self.project_root / "notes" / "scratch.md"
         rc, run = self._run_mocked(self._payload(note, tool_name="Edit"))
         self.assertEqual(rc, 0)
         run.assert_not_called()
+        self.assertEqual(self.session_note.read_text(), "## Log\n")
 
-    def test_edit_outside_vault_no_ensure(self):
+    def test_edit_outside_vault_writes_nothing(self):
         rc, run = self._run_mocked(
             self._payload(self.project / "src" / "main.py", tool_name="Edit"))
         self.assertEqual(rc, 0)
         run.assert_not_called()
-
-    def test_session_log_ignores_edit(self):
-        # Edit under tasks/ fires the ensure branch and nothing else: the
-        # session-log job stays Write-only.
-        task_note = self.project_root / "tasks" / "refactor-auth.md"
-        rc, run = self._run_mocked(self._payload(task_note, tool_name="Edit"))
-        self.assertEqual(rc, 0)
-        run.assert_called_once()
         self.assertEqual(self.session_note.read_text(), "## Log\n")
 
 
-class TestFailuresSwallowed(_TasksHookCase):
+class TestHookWiring(_TasksHookCase):
 
-    def test_subprocess_failure_never_blocks(self):
-        task_note = self.project_root / "tasks" / "refactor-auth.md"
-        with mock.patch.object(vault_log.subprocess, "run",
-                               side_effect=OSError("bridge missing")):
-            rc = self._run(self._payload(task_note, tool_name="Write"))
-        self.assertEqual(rc, 0)
-        # Job 1 must still run after a swallowed job-0 failure.
-        self.assertIn("· Added:", self.session_note.read_text())
-
-    def test_timeout_never_blocks(self):
-        task_note = self.project_root / "tasks" / "refactor-auth.md"
-        with mock.patch.object(
-                vault_log.subprocess, "run",
-                side_effect=subprocess.TimeoutExpired(cmd="board_bridge", timeout=3)):
-            rc = self._run(self._payload(task_note, tool_name="Edit"))
-        self.assertEqual(rc, 0)
+    def test_matcher_is_write_only(self):
+        # The matcher was widened to Write|Edit for job 0 alone. With job 0
+        # gone, an Edit anywhere on the machine would wake this hook to do
+        # nothing, so it narrows back.
+        hooks = json.loads((HOOK.parents[1] / "hooks.json").read_text())
+        entries = [e for e in hooks["hooks"]["PostToolUse"]
+                   if any("posttooluse-vault-log.py" in h.get("command", "")
+                          for h in e.get("hooks", []))]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["matcher"], "Write")
 
 
 if __name__ == "__main__":

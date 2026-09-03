@@ -1,14 +1,13 @@
 ---
 type: session
-date: {YYYY-MM-DD}
-started: {HH:MM}
-session_id: []
-tags:
-  - session
+created: {YYYY-MM-DD}
+updated: {YYYY-MM-DD}
 ---
 
-> {One-line intent. Frozen after first write.}
+{One line, written at session end, saying what this session did.}
 
 ## Log
 
-- {HH:MM} · session started
+- {HH:MM} · [[{slug}/notes/{note}|{note}]] written
+- {HH:MM} · decided: {the decision in one sentence}
+- {HH:MM} · commit: {subject}

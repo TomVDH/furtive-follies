@@ -1,27 +1,35 @@
 #!/usr/bin/env python3
-"""PreCompact hook for adjudant.
+"""PreCompact / SessionEnd hook for adjudant.
 
 MECHANICAL ONLY — no model calls. Must finish well inside the 5s hook budget.
-Two lanes, both cheap on-disk reads:
+One lane, cheap on-disk reads: mirror `.remember/remember.md` (or `now.md`) →
+vault `_handoff.md`, with a freshness header (traffic light · age · NEXT ·
+stale flag).
 
-  1. Append an enriched pause tombstone to today's vault session log:
-       `- HH:MM · paused (compaction) · next: <NEXT line>`
-  2. Mirror `.remember/remember.md` (or `now.md`) → vault `_handoff.md`, with a
-     freshness header (traffic light · age · NEXT · stale flag).
+Since v3 that lane runs only under `--sync-only`, the flag SessionEnd already
+passes. A PreCompact invocation drains stdin and returns: the handoff is
+written once per session, not once per compaction. A session that compacted
+three times rewrote the file three times and again at session end, each pass
+clobbering the last, so `_handoff.md` recorded the last compaction rather than
+the session. The tradeoff is that a session dying before SessionEnd leaves the
+previous handoff in place — its own STALE flag says so, which is the honest
+signal a fresh mirror of a rotated-empty buffer never gave.
 
-SessionEnd reuses this with `--sync-only` (no pause marker).
+Until v3 the hook also appended a `paused (compaction)` tombstone to the
+session log. That marker, with started, resumed and ended, produced 164 lines
+followed by nothing.
 
-Freshness logic is shared with `/adjudant sync` via `scripts/_handoff_freshness.py`
-(single source of truth). The import is best-effort: if it ever fails, the hook
-still does its mechanical work — it just omits the freshness header. All vault
-I/O fails closed: an offline iCloud vault must never crash the compaction.
+Freshness logic and the `.remember/` source picker are shared with
+`/adjudant status` via `scripts/_handoff_freshness.py` (single source of truth).
+The import is best-effort: if it ever fails, the hook still does its mechanical
+work — it just omits the freshness header. All vault I/O fails closed: an
+offline iCloud vault must never crash the compaction.
 """
 
 import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 # Shared primitives live in <plugin>/scripts/. Bootstrap that onto the path
 # (fixed plugin layout), then import each module under its own guard: a broken
@@ -36,24 +44,35 @@ try:
     from _handoff_freshness import (
         HANDOFF_FRONTMATTER_TEMPLATE,
         compute_freshness,
+        find_remember_source,
         freshness_header,
         latest_session_file,
-        parse_next_line,
         preserved_frontmatter,
         render_handoff,
     )
 except Exception:  # pragma: no cover - degrade: mechanical work without freshness
+    # The v3 `handoff` shape, kept in step with templates/handoff.md by
+    # test_precompact. This is the ONE surviving inline copy and it exists for
+    # a different reason than the ones v3 deleted: it runs only when the
+    # shared module itself failed to import, when there is no renderer to ask.
     HANDOFF_FRONTMATTER_TEMPLATE = (
         "---\n"
         "type: handoff\n"
+        "created: {today}\n"
         "updated: {today}\n"
-        "source: {source_stem}\n"
-        "tags:\n"
-        "  - handoff\n"
         "---\n\n"
     )
 
-    def parse_next_line(_text):  # type: ignore
+    # A real picker, not a no-op: the whole point of degrading is that the
+    # mechanical mirror still runs. Stdlib-free, like the guards below.
+    def find_remember_source(project_dir):  # type: ignore
+        for name in ("remember.md", "now.md"):
+            candidate = project_dir / ".remember" / name
+            try:
+                if candidate.is_file():
+                    return candidate
+            except OSError:
+                continue
         return None
 
     def compute_freshness(*_a, **_k):  # type: ignore
@@ -135,22 +154,6 @@ def read_breadcrumb(project_dir: Path) -> dict:
     return info
 
 
-def find_remember_source(project_dir: Path) -> Optional[Path]:
-    """Locate the best `.remember/` file to mirror.
-
-    Priority:
-      1. `.remember/remember.md` (canonical per sync runbook)
-      2. `.remember/now.md` (newer convention on some machines)
-    """
-    canonical = project_dir / ".remember" / "remember.md"
-    if canonical.is_file():
-        return canonical
-    now_file = project_dir / ".remember" / "now.md"
-    if now_file.is_file():
-        return now_file
-    return None
-
-
 def sync_handoff(project_dir: Path, project_root: Path, slug: str, today: str, ts: str, now: datetime) -> None:
     """Mirror the remember source → `_handoff.md` with a freshness header.
 
@@ -185,26 +188,6 @@ def sync_handoff(project_dir: Path, project_root: Path, slug: str, today: str, t
         return
 
 
-def append_pause_marker(project_dir: Path, session_file: Path, ts: str) -> None:
-    """Append the enriched `paused (compaction)` tombstone. Fails closed."""
-    next_line = None
-    source = find_remember_source(project_dir)
-    if source is not None:
-        try:
-            next_line = parse_next_line(source.read_text(errors="replace"))
-        except OSError:
-            next_line = None
-    marker = f"- {ts} · paused (compaction)"
-    if next_line:
-        marker += f" · next: {next_line}"
-    try:
-        if session_file.exists():
-            with session_file.open("a") as f:
-                f.write(marker + "\n")
-    except Exception:  # hook must never crash compaction, whatever the cause
-        return
-
-
 def main() -> int:
     # Drain stdin before anything can exit (finding 22): the PreCompact
     # payload is unbounded and an unread payload EPIPEs the harness writer
@@ -217,6 +200,16 @@ def main() -> int:
             sys.stdin.buffer.read()
     except (OSError, ValueError, AttributeError):
         pass
+
+    # SessionEnd asks for the write; compaction does not. A session that
+    # compacted three times rewrote `_handoff.md` three times and once more at
+    # session end, each pass clobbering the last, so the file recorded the last
+    # compaction rather than the session. Tradeoff: a session that dies before
+    # SessionEnd leaves the previous handoff in place — its own STALE flag
+    # says so, which is the honest signal a fresh mirror of a stale buffer
+    # never gave.
+    if "--sync-only" not in sys.argv[1:]:
+        return 0
 
     project_dir_str = os.environ.get("CLAUDE_PROJECT_DIR")
     if not project_dir_str:
@@ -257,20 +250,12 @@ def main() -> int:
     today = now.strftime("%Y-%m-%d")
     ts = now.strftime("%H:%M")
 
-    # SessionEnd reuses this script with --sync-only: skip the pause marker
-    # (the session ended; it did not pause for compaction).
-    sync_only = "--sync-only" in sys.argv[1:]
-
     # Zone-aware: shelf moves projects to _fridge/ and _archive/ without
     # touching the breadcrumb. Hardcoding projects/<slug> rewrote a phantom
     # _handoff.md in the active zone on EVERY compaction (write_text clobbers).
     project_root = find_project_dir(vault, slug)
     if project_root is None:
         return 0  # project exists in no zone: never materialize it
-
-    if not sync_only:
-        session_file = latest_session_file(project_root / "sessions", today)
-        append_pause_marker(project_dir, session_file, ts)
 
     sync_handoff(project_dir, project_root, slug, today, ts, now)
     return 0

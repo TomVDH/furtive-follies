@@ -1,18 +1,20 @@
 ---
 type: source
-title: "{Title of source}"
-author: "{Author name}"
-url: "{https://...}"
-medium: article              # book | paper | article | course | talk | other
-year: {YYYY}
-tags:
-  - source
+created: {YYYY-MM-DD}
+updated: {YYYY-MM-DD}
+verified: {YYYY-MM-DD}
+verified_by: read                 # tested | read | docs
+source:                           # optional
 ---
 
 # {Title}
 
-## Key Points
+{Author}, {year}. {url}
 
-## Notes
+## Key points
 
-## Relevance
+{What this says that matters here.}
+
+## Why it matters
+
+{Why it is in this vault rather than a bookmark.}

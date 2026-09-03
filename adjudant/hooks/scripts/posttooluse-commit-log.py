@@ -7,10 +7,12 @@ filter added in hooks.json is defense in depth, never a dependency. Then:
 
   1. Append `- HH:MM · commit: {subject}` to today's session log.
   2. On `release(<plugin>): vX.Y.Z` subjects, scaffold
-     `projects/{slug}/releases/v{version}.md` from templates/release.md
-     (frontmatter + title + commit body), never overwriting an existing note.
-  3. Upsert one `- [[v{version}|v{version} ({plugin})]]` row into
-     `releases/_index.md`, created in tidy's canonical shape when absent.
+     `projects/{slug}/releases/v{version}.md` through `_render` from
+     templates/release.md (the commit body becomes `## Changes`), never
+     overwriting an existing note. The inlined fallback frontmatter is gone:
+     it declared `date` and a `release` tag, neither of which is a v3 field,
+     so a missing template used to produce a note the schema gate rejects.
+     A missing template now writes nothing at all.
 
 Fail open on the hook itself, fail closed on a bad vault; the index row is
 written only after the release note verifiably exists.
@@ -33,6 +35,12 @@ except Exception:  # pragma: no cover - defensive
     pass
 
 try:
+    from _render import render
+    _RENDERER = True
+except Exception:  # pragma: no cover - degrade: no stub rather than a wrong one
+    _RENDERER = False
+
+try:
     from _vault_walk import find_project_dir, is_safe_slug, resolve_vault
     _RESOLVER = True
 except Exception:  # pragma: no cover - degrade: breadcrumb vault_path only
@@ -44,9 +52,11 @@ except Exception:  # pragma: no cover - degrade: breadcrumb vault_path only
     # Both guards must survive a failed import (stdlib-free: this block runs
     # when imports are already failing).
     def find_project_dir(vault, slug):  # type: ignore
-        cands = [vault / "projects" / slug,
-                 vault / "projects" / "_fridge" / slug,
-                 vault / "projects" / "_archive" / slug]
+        cands = [vault / "projects" / z / slug
+                 for z in ("active", "paused", "finished", "archive")]
+        cands.append(vault / "projects" / slug)
+        cands += [vault / "projects" / z / slug
+                  for z in ("_fridge", "_archive")]
         for c in cands:
             if (c / "brief.md").is_file():
                 return c
@@ -61,8 +71,6 @@ except Exception:  # pragma: no cover - degrade: breadcrumb vault_path only
         return slug[0] != "-" and all(
             c in "abcdefghijklmnopqrstuvwxyz0123456789-" for c in slug)
 
-
-TEMPLATE = Path(__file__).resolve().parents[2] / "skills" / "adjudant" / "templates" / "release.md"
 
 # Leading `cd ... && ` segments (repeatable); [^&] keeps each strip inside
 # its own segment even for quoted paths with spaces.
@@ -245,67 +253,31 @@ def split_subject_body(message: str) -> tuple:
     return subject, "\n".join(rest).rstrip()
 
 
-def _release_frontmatter(slug: str, version: str, today: str) -> str:
-    """Frontmatter from templates/release.md, placeholders filled. Falls back
-    to an inlined equivalent when the template is unreadable or has grown a
-    placeholder this hook does not know."""
-    try:
-        m = re.match(r"^---\n(.*?\n)---\n", TEMPLATE.read_text(), re.S)
-        if m:
-            fm = (m.group(1)
-                  .replace("{slug}", slug)
-                  .replace("{X.Y.Z}", version)
-                  .replace("{YYYY-MM-DD}", today))
-            if "{" not in fm:
-                return f"---\n{fm}---\n"
-    except OSError:
-        pass
-    return (
-        "---\n"
-        "type: release\n"
-        f"version: {version}\n"
-        f"date: {today}\n"
-        "tags:\n"
-        "  - release\n"
-        "---\n"
-    )
+def _release_note(plugin: str, version: str, body: str, today: str) -> str:
+    """The release stub, rendered from templates/release.md.
 
+    The plugin's name moved out of the heading and into the opening line. The
+    template declares that heading as `# v{X.Y.Z}` and a version span is not
+    the place to carry a second value; the note still says which plugin
+    released, and the `releases/_index.md` row still names it too.
 
-def _release_note(slug: str, plugin: str, version: str, body: str, today: str) -> str:
-    text = _release_frontmatter(slug, version, today)
-    text += f"\n# v{version} ({plugin})\n"
-    if body:
-        text += f"\n{body}\n"
-    return text
+    The commit body becomes the `## Changes` list. Raises when the template is
+    missing, which the caller turns into "no stub written": the old inlined
+    fallback wrote `date` and a `release` tag, fields v3 does not have, so the
+    quiet substitute produced a note the schema gate rejects.
+    """
+    fill = {
+        "X.Y.Z": version,
+        "One paragraph: what this release is, and the window it was built in.":
+            f"{plugin} v{version}, released {today}.",
+    }
+    changes = re.sub(r"^-\s+", "", body.strip(), count=1)
+    if changes:
+        fill["one line per change"] = changes
+    return render("release",
+                  {"created": today, "updated": today, "version": version},
+                  fill)
 
-
-def _upsert_index(releases: Path, slug: str, plugin: str, version: str, today: str) -> None:
-    """One `- [[vX.Y.Z|vX.Y.Z (plugin)]]` row, deduped; new index files take
-    tidy's canonical shape so the next tidy pass has nothing to churn."""
-    index = releases / "_index.md"
-    row = f"- [[v{version}|v{version} ({plugin})]]"
-    try:
-        if index.exists():
-            text = index.read_text()
-            if f"[[v{version}|" in text or f"[[v{version}]]" in text:
-                return
-            if not text.endswith("\n"):
-                text += "\n"
-            index.write_text(text + row + "\n")
-        else:
-            index.write_text(
-                "---\n"
-                "type: index\n"
-                f"updated: {today}\n"
-                "tags:\n"
-                "  - index\n"
-                "---\n\n"
-                "# Releases\n\n"
-                "## Entries\n\n"
-                + row + "\n"
-            )
-    except OSError:
-        pass  # index upsert is best-effort; the note itself already exists
 
 
 def main() -> int:
@@ -411,11 +383,14 @@ def main() -> int:
         return 0
     note = releases / f"v{version}.md"
     if not note.exists():
+        if not _RENDERER:
+            return 0  # no renderer, no stub: never a plausible substitute
         try:
-            note.write_text(_release_note(slug, plugin, version, body, today))
-        except OSError:
+            note.write_text(_release_note(plugin, version, body, today))
+        except Exception:
+            # A missing or unparseable template raises. Writing nothing is the
+            # correct outcome; the hook must not surface as a tool failure.
             return 0  # never index a note that failed to write
-    _upsert_index(releases, slug, plugin, version, today)
     return 0
 
 

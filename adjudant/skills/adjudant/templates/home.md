@@ -1,28 +1,29 @@
 ---
-type: vault-home
+type: index
+created: {YYYY-MM-DD}
 updated: {YYYY-MM-DD}
 ---
 
 # Vault
 
-Persistent knowledge base. Project briefs, decisions, session history: all interlinked and queryable.
+{Generated. Every project, grouped by lifecycle folder, newest activity first.}
 
-## Active Projects
+## Active
 
-*No projects yet. Run `/adjudant connect` to scaffold your first project.*
+| Project | Last worked |
+|---|---|
 
-## Recent Decisions
+## Paused
 
-*Decisions will appear here as projects progress.*
+| Project | Last worked |
+|---|---|
 
-## Recent Sessions
+## Finished
 
-*Session summaries will be logged here at wrap-up.*
+| Project | Finished |
+|---|---|
 
-## Archived Projects
+## Archive
 
-*No archived projects.*
-
-## Quick Links
-
-- [[projects/_index|All Projects]]
+| Project | Last worked |
+|---|---|

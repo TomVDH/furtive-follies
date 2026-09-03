@@ -3,7 +3,7 @@
 
 Validates the PROPOSED frontmatter of a Write landing under the resolved
 vault project, using the same FIELD_SCHEMA detector that `check` reports and
-`tidy` feature 5 repairs. Catching drift at write time is what lets
+`clean` feature 4 repairs. Catching drift at write time is what lets
 vault-standards.md stop restating enforceable detail.
 
   - BLOCK (exit 2) on missing required fields or a type/node_type conflict.
@@ -11,18 +11,19 @@ vault-standards.md stop restating enforceable detail.
     it corrects in the same turn.
   - ALLOW SILENTLY on unknown fields. This used to print a warning, but a
     PreToolUse hook's stderr only reaches anyone on a NON-ZERO exit, so the
-    warning was written to nobody. `check` reports unknown fields and `tidy`
+    warning was written to nobody. `check` reports unknown fields and `clean`
     strips them, which is where the correction belongs.
   - FAIL OPEN (exit 0) on anything infrastructural. A write must never be
     blocked because a hook had a bad day.
 
 Write-only: an Edit payload carries old_string/new_string, not the resulting
 file, so the outcome cannot be judged without simulating the edit. Edits keep
-tidy as their backstop.
+clean as their backstop.
 """
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -36,6 +37,7 @@ except Exception:  # pragma: no cover - defensive
 try:
     from _vault_walk import (find_project_dir, is_safe_slug, resolve_vault,
                              schema_drift_for_text)
+    from _template_schema import FIELD_SCHEMA, schema_errors
     _READY = True
 except Exception:  # pragma: no cover - degrade: gate disabled, never blocks
     _READY = False
@@ -49,11 +51,11 @@ except Exception:  # pragma: no cover - degrade: voice check disabled
     _voice = None
 
 # The gate exists to catch model drift in hand-authored notes. These four are
-# not that vector. brief.md is written by connect and port, _index.md by
-# connect and tidy's index rebuilder, _handoff.md by sync and precompact.
+# not that vector. brief.md is written by connect, _index.md by
+# connect and clean's index rebuilder, _handoff.md by sync and precompact.
 # _iteration.md is the optional index of an iteration folder whose sibling
 # build artefacts carry no frontmatter at all. All four have full FIELD_SCHEMA
-# entries, so check still reports them and tidy still repairs them after the
+# entries, so check still reports them and clean still repairs them after the
 # fact; only the write-time block is waived.
 _SKIP_NAMES = ("_handoff.md", "_index.md", "_iteration.md", "brief.md")
 
@@ -80,7 +82,7 @@ def _voice_verdict(content: str, rel) -> int:
     """Block a vault write carrying a conversational tic, else allow.
 
     Surface 2 of the voice contract (reference/voice.md). A note lives for
-    years and nothing sweeps its prose afterwards: tidy repairs frontmatter and
+    years and nothing sweeps its prose afterwards: clean repairs frontmatter and
     structure, never sentences. This hook is the last point where the text can
     still be fixed in the turn that wrote it.
 
@@ -106,6 +108,51 @@ def _voice_verdict(content: str, rel) -> int:
     return 2
 
 
+
+_TYPE_RE = re.compile(r"^type:[ \t]*([A-Za-z0-9_-]+)", re.M)
+
+
+def _declared_type(content: str) -> str:
+    """The `type:` value in a proposed file's frontmatter, or ''.
+
+    Deliberately independent of the schema: it must still work when the
+    schema is the thing that is broken.
+    """
+    if not content.startswith("---"):
+        return ""
+    head = content[:2000]
+    m = _TYPE_RE.search(head)
+    return m.group(1) if m else ""
+
+
+def _targets_the_vault(raw: str) -> bool:
+    """Is this Write aimed inside the linked vault? Import-free by necessity.
+
+    Only reached when the normal imports have already failed, so it parses the
+    breadcrumb by hand rather than calling resolve_vault. Answers False on any
+    doubt: refusing a write outside the vault would be worse than missing one
+    inside it.
+    """
+    try:
+        payload = json.loads(raw)
+        target = ((payload.get("tool_input") or {}).get("file_path")
+                  or (payload.get("tool_input") or {}).get("path") or "")
+        project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or ""
+        if not target or not project_dir:
+            return False
+        crumb = Path(project_dir) / ".claude" / "adjudant"
+        for line in crumb.read_text().splitlines():
+            if line.startswith("vault_path:"):
+                # Resolve BOTH sides. On macOS a temp path resolves /var to
+                # /private/var, so comparing a resolved target against an
+                # unresolved breadcrumb never matches.
+                vault = Path(line.split(":", 1)[1].strip()).expanduser().resolve()
+                return vault in Path(target).resolve().parents
+    except Exception:
+        return False
+    return False
+
+
 def main() -> int:
     # Read stdin FIRST: exiting before consuming it EPIPEs the harness writer
     # on multi-MB Write payloads.
@@ -114,6 +161,26 @@ def main() -> int:
     except Exception:
         return 0
     if not _READY:
+        # The degrade exists so a broken or mid-sync module cannot wedge every
+        # Write in the editor. But it must not cover a MISSING SCHEMA: with
+        # templates/ gone (a half-synced plugin, or an evicted iCloud path)
+        # the gate used to run "successfully" while enforcing nothing at all.
+        # Distinguish the two with a filesystem check that needs no import,
+        # since the imports are exactly what is broken here.
+        try:
+            templates = (Path(__file__).resolve().parents[2]
+                         / "skills" / "adjudant" / "templates")
+            if not templates.is_dir() or not any(templates.glob("*.md")):
+                if _targets_the_vault(raw):
+                    print("adjudant schema gate: the templates directory is "
+                          f"missing or empty at {templates}, so there is no "
+                          "schema to judge this write against. Restore the "
+                          "plugin files, or unlink the project. Refusing "
+                          "rather than letting an unjudged write look clean.",
+                          file=sys.stderr)
+                    return 2
+        except Exception:
+            pass
         return 0
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
     if not project_dir:
@@ -146,7 +213,7 @@ def main() -> int:
         return 0
     # `_legacy/` is non-conformant by design and every other component exempts
     # it: walk_project drops it from the walk unless include_legacy is passed,
-    # and _cost and shelf add it to their own skip sets. Matching walk_project,
+    # and _cost adds it to its own skip set. Matching walk_project,
     # the exemption applies at any depth, not just at the project root.
     if (not rel.parts or rel.name in _SKIP_NAMES
             or rel.parts[0] == "sessions" or "_legacy" in rel.parts):
@@ -158,6 +225,26 @@ def main() -> int:
         drift = None
 
     if not drift:
+        # A kind absent from the schema produces no drift, so an unparseable
+        # template would silently stop enforcing exactly the kind it defines.
+        # Refuse instead: if the rule for this kind cannot be read, the write
+        # cannot be judged, and an unjudged write must not pass as a clean one.
+        # (A stray file no longer costs the whole schema; this closes the
+        # remaining hole, where the broken file IS the kind being written.)
+        try:
+            declared = _declared_type(content)
+            broken = schema_errors() if declared and declared not in FIELD_SCHEMA else []
+        except Exception:
+            broken = []
+        if broken:
+            print(f"adjudant schema gate: {rel} declares `type: {declared}`, "
+                  "but that kind is missing from the schema because a template "
+                  "did not parse:", file=sys.stderr)
+            for e in broken:
+                print(f"  - {e}", file=sys.stderr)
+            print("  Fix the template, then write again. The gate refuses "
+                  "rather than let an unjudged write look clean.", file=sys.stderr)
+            return 2
         return _voice_verdict(content, rel)
 
     ftype = drift.get("type")
@@ -166,11 +253,6 @@ def main() -> int:
         hard.append(f"missing required field(s): {', '.join(drift['missing_required'])}")
     if drift.get("type_conflict"):
         hard.append("both `type:` and `node_type:` are set; keep `type:` only")
-    # Epistemic declarations (v0.22.0) have zero legacy values, so a
-    # malformed one is pure model drift - block, unlike status values whose
-    # historical synonyms tidy migrates after the fact.
-    for e in drift.get("epistemic_invalid", []):
-        hard.append(f"`{e['field']}: {e['value']}` - {e['reason']}")
     if hard:
         print(f"adjudant schema gate: {rel} (type: {ftype}) "
               f"does not match the vault schema.", file=sys.stderr)
@@ -179,7 +261,7 @@ def main() -> int:
         print("  Fix the frontmatter and write again. "
               "See reference/vault-standards.md.", file=sys.stderr)
         return 2
-    # Everything else in `drift` (unknown fields, status values) is tidy's and
+    # Everything else in `drift` (unknown fields, status values) is clean's and
     # check's territory. Saying so here would go to /dev/null on an exit 0.
     return _voice_verdict(content, rel)
 

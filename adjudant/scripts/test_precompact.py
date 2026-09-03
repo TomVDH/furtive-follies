@@ -1,5 +1,14 @@
 """Tests for hooks/scripts/precompact.py — the PreCompact/SessionEnd hook.
 
+Since v3 the hook has one lane, and it runs only under `--sync-only`: mirror
+the remember source into `_handoff.md`. A bare PreCompact invocation drains
+stdin and returns, so the handoff is written once per session rather than once
+per compaction. The `paused (compaction)` tombstone the hook also appended is
+gone, so a compaction leaves the session note exactly as the work left it.
+
+Every test that exercises the write path therefore passes `--sync-only`; a
+bare run would sail past the resolver and prove nothing about the guards.
+
 Regression focus: the hook must fail closed on a stale/cross-machine breadcrumb
 instead of materializing a phantom vault directory chain via mkdir(parents=True);
 resolution must use the same resolve_vault chain as the verbs; and a broken or
@@ -53,9 +62,12 @@ class TestFailClosedOnStaleVault(_EnvHygiene):
             (project / ".remember" / "remember.md").write_text("NEXT: something\n")
 
             os.environ["CLAUDE_PROJECT_DIR"] = str(project)
+            argv_before = sys.argv
+            sys.argv = ["precompact.py", "--sync-only"]
             try:
                 rc = precompact.main()
             finally:
+                sys.argv = argv_before
                 del os.environ["CLAUDE_PROJECT_DIR"]
 
             self.assertEqual(rc, 0)  # hook never blocks
@@ -145,37 +157,6 @@ class TestFailClosedOnStaleVault(_EnvHygiene):
             self.assertTrue(handoff.is_file(), "handoff mirror must be written for a real vault")
             self.assertIn("NEXT: keep going", handoff.read_text())
 
-    def test_midnight_straddle_pause_marker_lands_in_latest_note(self):
-        # No note for today (session started before midnight): the pause
-        # tombstone must land in the latest existing daily note.
-        with tempfile.TemporaryDirectory() as tmp:
-            project = Path(tmp) / "code"
-            vault = Path(tmp) / "vault"
-            sessions = vault / "projects" / "demo" / "sessions"
-            sessions.mkdir(parents=True)
-            latest = sessions / "2020-01-02.md"
-            latest.write_text("## Log\n")
-            (sessions / "2020-01-01.md").write_text("## Log\n")
-            decoy = sessions / "abcd-ef-gh.md"  # 4-2-2 shape, not a date
-            decoy.write_text("## Not a session\n")
-            self._breadcrumb(project, str(vault))
-            (project / ".remember").mkdir()
-            (project / ".remember" / "remember.md").write_text("NEXT: resume x\n")
-
-            os.environ["CLAUDE_PROJECT_DIR"] = str(project)
-            argv_before = sys.argv
-            sys.argv = ["precompact.py"]
-            try:
-                rc = precompact.main()
-            finally:
-                sys.argv = argv_before
-                del os.environ["CLAUDE_PROJECT_DIR"]
-
-            self.assertEqual(rc, 0)
-            self.assertIn("paused (compaction)", latest.read_text())
-            self.assertNotIn("paused", decoy.read_text())  # digit glob, not ?
-
-
 class TestEmptySourceGuard(_EnvHygiene):
     """A blank .remember source must never wipe a populated handoff. The
     remember plugin rotates now.md to empty at session start; every quick
@@ -230,36 +211,57 @@ class TestEmptySourceGuard(_EnvHygiene):
             self.assertIn("fresh state", handoff.read_text())
 
 
-class TestPauseMarkerVoice(_EnvHygiene):
+class TestWrittenOnce(_EnvHygiene):
+    """The handoff is written by SessionEnd (`--sync-only`), and nowhere else.
 
-    def test_pause_tombstone_uses_middle_dot_next_separator(self):
-        # voice.md bans em dashes in vault writes; the tombstone carried one.
+    A session that compacted three times rewrote `_handoff.md` three times and
+    once more at session end, each pass clobbering the last. Compaction now
+    drains stdin and returns; the flag SessionEnd already passed is what asks
+    for the write.
+    """
+
+    def _fixture(self, tmp: Path) -> tuple[Path, Path]:
+        project = tmp / "code"
+        vault = tmp / "vault"
+        (vault / "projects" / "demo").mkdir(parents=True)
+        (project / ".claude").mkdir(parents=True)
+        (project / ".claude" / "adjudant").write_text(
+            f"vault_path: {vault}\nvault_name: vault\nslug: demo\nmode: project\n")
+        (project / ".remember").mkdir()
+        (project / ".remember" / "remember.md").write_text("body\n\nNEXT: carry on\n")
+        return project, vault / "projects" / "demo" / "_handoff.md"
+
+    def _run(self, project: Path, *args: str) -> int:
+        os.environ["CLAUDE_PROJECT_DIR"] = str(project)
+        argv_before = sys.argv
+        sys.argv = ["precompact.py", *args]
+        try:
+            return precompact.main()
+        finally:
+            sys.argv = argv_before
+            del os.environ["CLAUDE_PROJECT_DIR"]
+
+    def test_compaction_writes_no_handoff(self):
         with tempfile.TemporaryDirectory() as tmp:
-            project = Path(tmp) / "code"
-            vault = Path(tmp) / "vault"
-            sessions = vault / "projects" / "demo" / "sessions"
-            sessions.mkdir(parents=True)
-            note = sessions / "2026-06-01.md"
-            note.write_text("## Log\n")
-            (project / ".claude").mkdir(parents=True)
-            (project / ".claude" / "adjudant").write_text(
-                f"vault_path: {vault}\nvault_name: vault\nslug: demo\nmode: project\n")
-            (project / ".remember").mkdir()
-            (project / ".remember" / "remember.md").write_text("NEXT: ship it\n")
+            project, handoff = self._fixture(Path(tmp))
+            self.assertEqual(self._run(project), 0)
+            self.assertFalse(handoff.exists(),
+                             "compaction must not write the handoff")
 
-            os.environ["CLAUDE_PROJECT_DIR"] = str(project)
-            argv_before = sys.argv
-            sys.argv = ["precompact.py"]
-            try:
-                rc = precompact.main()
-            finally:
-                sys.argv = argv_before
-                del os.environ["CLAUDE_PROJECT_DIR"]
+    def test_compaction_leaves_an_existing_handoff_byte_identical(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project, handoff = self._fixture(Path(tmp))
+            handoff.write_text("---\ntype: handoff\nupdated: 2026-05-01\n---\n\n"
+                               "# Handoff: demo\n\nearlier state\nNEXT: keep this\n")
+            before = handoff.read_text()
+            self.assertEqual(self._run(project), 0)
+            self.assertEqual(handoff.read_text(), before)
 
-            self.assertEqual(rc, 0)
-            text = note.read_text()
-            self.assertIn("paused (compaction) · next: ship it", text)
-            self.assertNotIn("—", text)
+    def test_sync_only_still_writes_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project, handoff = self._fixture(Path(tmp))
+            self.assertEqual(self._run(project, "--sync-only"), 0)
+            self.assertIn("NEXT: carry on", handoff.read_text())
 
 
 class TestZoneAwareness(_EnvHygiene):
@@ -297,15 +299,15 @@ class TestZoneAwareness(_EnvHygiene):
             sys.argv = argv_before
             del os.environ["CLAUDE_PROJECT_DIR"]
 
-    def test_pause_marker_and_handoff_land_in_the_shelved_project(self):
+    def test_handoff_lands_in_the_shelved_project(self):
         for zone in ("_fridge", "_archive"):
             with self.subTest(zone=zone):
                 with tempfile.TemporaryDirectory() as tmp:
                     root = Path(tmp)
                     project, proot, note = self._shelved(root, zone)
-                    self.assertEqual(self._run(project), 0)
-                    self.assertIn("paused (compaction) · next: thaw it",
-                                  note.read_text())
+                    self.assertEqual(self._run(project, "--sync-only"), 0)
+                    self.assertEqual(note.read_text(), "## Log\n",
+                                     "v3: the hook appends no marker")
                     handoff = proot / "_handoff.md"
                     self.assertTrue(handoff.is_file(),
                                     "the handoff must mirror into the shelved project")
@@ -319,7 +321,7 @@ class TestZoneAwareness(_EnvHygiene):
             project, proot, note = self._shelved(root, "_fridge")
             self.assertEqual(self._run(project, "--sync-only"), 0)
             self.assertTrue((proot / "_handoff.md").is_file())
-            self.assertNotIn("paused", note.read_text())  # SessionEnd, not a pause
+            self.assertNotIn("paused", note.read_text())  # v3: no marker, either mode
             self.assertFalse((root / "vault" / "projects" / "demo").exists())
 
     def test_unknown_project_is_noop(self):
@@ -328,7 +330,7 @@ class TestZoneAwareness(_EnvHygiene):
             root = Path(tmp)
             project, proot, note = self._shelved(root, "_fridge")
             shutil.rmtree(proot)
-            self.assertEqual(self._run(project), 0)
+            self.assertEqual(self._run(project, "--sync-only"), 0)
             self.assertFalse((root / "vault" / "projects" / "demo").exists())
             self.assertFalse((root / "vault" / "projects" / "_fridge" / "demo").exists())
 
@@ -394,7 +396,7 @@ class TestSlugGuard(_EnvHygiene):
             outside = root / "escaped"
             self.assertTrue((outside / "_handoff.md").is_file(),
                             "fixture must plant a file OUTSIDE the vault")
-            self.assertEqual(self._run(project), 0)
+            self.assertEqual(self._run(project, "--sync-only"), 0)
             self.assertEqual((outside / "_handoff.md").read_text(), self.PRECIOUS,
                              "a traversal slug must never overwrite a file "
                              "outside the vault")
@@ -407,7 +409,7 @@ class TestSlugGuard(_EnvHygiene):
             with self.subTest(slug=bad):
                 with tempfile.TemporaryDirectory() as tmp:
                     project, decoy = self._decoy(Path(tmp), bad)
-                    self.assertEqual(self._run(project), 0)
+                    self.assertEqual(self._run(project, "--sync-only"), 0)
                     self.assertEqual((decoy / "_handoff.md").read_text(),
                                      self.PRECIOUS)
 
@@ -417,13 +419,10 @@ class TestSlugGuard(_EnvHygiene):
         # two tests above pass for the wrong reason all over again.
         with tempfile.TemporaryDirectory() as tmp:
             project, decoy = self._decoy(Path(tmp), "decoy-project")
-            self.assertEqual(self._run(project), 0)
+            self.assertEqual(self._run(project, "--sync-only"), 0)
             text = (decoy / "_handoff.md").read_text()
             self.assertIn("NEXT: overwrite something", text)
             self.assertNotIn("someone else's work", text)
-            self.assertIn("paused (compaction)",
-                          (decoy / "sessions" /
-                           f"{datetime.now():%Y-%m-%d}.md").read_text())
 
 
 class TestImportDegradation(_EnvHygiene):
@@ -436,6 +435,14 @@ class TestImportDegradation(_EnvHygiene):
         (plugin / "hooks" / "scripts").mkdir(parents=True)
         (plugin / "scripts").mkdir(parents=True)
         shutil.copy2(HOOK, plugin / "hooks" / "scripts" / "precompact.py")
+        # The real plugin layout, because _handoff_freshness derives the
+        # handoff frontmatter from templates/handoff.md through _render since
+        # v3. A tree without the templates is not a plugin, and testing
+        # degradation against one would only prove the fixture is incomplete.
+        for mod in ("_render.py", "_template_schema.py"):
+            shutil.copy2(SCRIPTS / mod, plugin / "scripts")
+        shutil.copytree(SCRIPTS.parent / "skills" / "adjudant" / "templates",
+                        plugin / "skills" / "adjudant" / "templates")
         if break_freshness:
             (plugin / "scripts" / "_handoff_freshness.py").write_text("def (broken syntax\n")
         else:

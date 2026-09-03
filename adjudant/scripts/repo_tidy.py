@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Adjudant repo_tidy — safe two-phase repo repair (symlink repair only).
 
-Mirrors tidy.py: `preview` writes .adjudant-repo-tidy-preview/, `apply` backs
-the live state up to .adjudant-repo-tidy-backup/{ts}/*.legacy then repairs.
+Mirrors tidy.py: `preview` writes the scratch preview dir, `apply` backs the
+live state up to scratch as {ts}/*.legacy then repairs. Since v3 both live at
+$TMPDIR/adjudant/{repo}/repo-tidy-{preview,backup} (see _scratch.py) rather
+than inside the repo being repaired, and backups keep the newest BACKUP_KEEP.
 Only repairs harness symlinks on ALREADY-ADOPTED plugins — never auto-adopts
 a harness where none exists (that is ramasse-tier, deferred). Stdlib only.
 
@@ -19,10 +21,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from _scratch import BACKUP_KEEP, prune_backups, scratch_dir
 from repo_walk import plugin_symlink_status, walk_plugins
-
-PREVIEW_DIR_NAME = ".adjudant-repo-tidy-preview"
-BACKUP_DIR_NAME = ".adjudant-repo-tidy-backup"
 
 
 def detect_repairs(root: Path) -> list[dict[str, Any]]:
@@ -53,7 +53,8 @@ def detect_repairs(root: Path) -> list[dict[str, Any]]:
 
 
 def write_preview(root: Path, repairs: list[dict[str, Any]]) -> Path:
-    preview = root / PREVIEW_DIR_NAME
+    preview = scratch_dir(root, "repo-tidy-preview")
+    preview.parent.mkdir(parents=True, exist_ok=True)
     if preview.exists():
         shutil.rmtree(preview)
     (preview / "files").mkdir(parents=True)
@@ -70,13 +71,14 @@ def write_preview(root: Path, repairs: list[dict[str, Any]]) -> Path:
 
 
 def apply_preview(root: Path) -> Path:
-    preview = root / PREVIEW_DIR_NAME
+    preview = scratch_dir(root, "repo-tidy-preview")
     if not preview.is_dir():
         raise FileNotFoundError(f"no preview at {preview} — run preview first")
     changes = json.loads((preview / "changes.json").read_text())
     repairs = changes.get("repairs", [])
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup_dir = root / BACKUP_DIR_NAME / timestamp
+    backup_parent = scratch_dir(root, "repo-tidy-backup")
+    backup_dir = backup_parent / timestamp
     backup_dir.mkdir(parents=True, exist_ok=True)
     skipped: list[str] = []
     for r in repairs:
@@ -119,6 +121,7 @@ def apply_preview(root: Path) -> Path:
             "These link paths were left alone (a real directory, or the "
             "content could not be preserved):\n\n" + "\n".join(skipped) + "\n")
     shutil.rmtree(preview)
+    prune_backups(backup_parent, BACKUP_KEEP)
     return backup_dir
 
 

@@ -124,8 +124,13 @@ class TestVerbWeights(unittest.TestCase):
             self.assertIn(w, VALID_WEIGHTS, f"{verb} has invalid weight {w!r}")
 
     def test_locked_heavy_set(self):
+        # ramasse was the second heavy verb. It is `clean --deep` now, and a
+        # weight is per verb, not per invocation: clean is medium and its deep
+        # pass carries the pre-flight, exactly as `check all` does for check.
         weights = verb_weights()
-        self.assertEqual(weights["dream"], "heavy")
+        self.assertEqual({v for v, w in weights.items() if w == "heavy"},
+                         {"dream"})
+        self.assertEqual(weights["clean"], "medium")
         self.assertEqual(weights["connect"], "light")
 
 

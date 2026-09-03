@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Adjudant vault-walk primitives.
 
-Shared module for dream/check/tidy. Stdlib-only. The walk itself is read-only;
+Shared module for dream/check/clean. Stdlib-only. The walk itself is read-only;
 the durable-write primitives at the bottom are the module's only write path,
 and they only ever touch the file a caller hands them.
 
@@ -14,21 +14,20 @@ Public API:
     extract_inline_tags(body) -> list[str]
     extract_markdown_md_links(body) -> list[(text, path, line)]
     walk_project(root) -> Iterator[VaultFile]
-    build_vault_index(vault_root) -> set[str]
+    build_vault_index(vault_root) -> set[str]   # path forms only, no bare stems
     resolve_wikilink(target, index) -> bool
     parse_breadcrumb(project_root) -> Optional[dict]
     resolve_vault(project_root, env_vault=None) -> Optional[Path]
     is_safe_slug(slug) -> bool
     safe_project_root(vault, slug) -> Optional[Path]
-    is_bucket_d_tag(tag, project_slug=None) -> bool
     schema_drift_for_file(vf, aliases=None) -> Optional[dict]
     schema_drift_for_text(text, rel_path, aliases=None) -> Optional[dict]
     schema_drift(files, aliases=None) -> dict
+    is_unowned(rel_path) -> bool                # UNOWNED_FOLDERS: never graded
 
-Schema constants (single source of truth, imported by dream + tidy):
-    BUCKET_A_TYPES, BUCKET_B_MIGRATIONS, BUCKET_D_TAG_PREFIXES,
-    BUCKET_D_TAG_EXACT, VAGUE_TOPICAL_TAGS, CREW_NAMES,
-    PROJECT_TYPE_DEFAULT_FOLDERS, AUTO_CREATED_FOLDERS, INDEX_EXEMPT_FOLDERS
+Note schema, re-exported from _template_schema (the templates ARE the schema;
+nothing here declares a second copy):
+    FIELD_SCHEMA, STATUS_VALUES_FOR_TYPE, HEADINGS_FOR_TYPE
 
 CLI smoke-test mode (read-only, the module never writes):
     python3 _vault_walk.py --project-dir PATH [--vault-dir PATH] [--json]
@@ -51,9 +50,17 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
+# The schema is parsed out of the shipped templates rather than declared
+# here; see the DERIVED block further down for what that replaced.
+from _template_schema import (
+    FIELD_SCHEMA,
+    HEADINGS_FOR_TYPE,
+    STATUS_VALUES_FOR_TYPE,
+)
+
 
 # ============================================================
-# Frontmatter parsing — minimal YAML (stdlib only, mirrors port.py regex approach)
+# Frontmatter parsing — minimal YAML (stdlib only, regex-based)
 # ============================================================
 
 
@@ -328,9 +335,6 @@ class VaultFile:
 DEFAULT_SKIP: tuple[str, ...] = (
     ".git", "node_modules", "__pycache__", ".obsidian", ".trash",
     # adjudant's own scratch dirs — never scan a pending preview/backup
-    ".adjudant-tidy-preview", ".adjudant-tidy-backup",
-    ".adjudant-port-preview", ".adjudant-port-backup",
-    ".adjudant-shelf-preview", ".adjudant-shelf-backup",
     # a project's junk drawer is not content (finding 31). `_archive` is
     # deliberately NOT here: it names a project ZONE (projects/_archive/) the
     # walkers must still see; remise's `archived-context/` covers the
@@ -339,6 +343,31 @@ DEFAULT_SKIP: tuple[str, ...] = (
     "scratch", "archived-context",
     ".adjudant-remise-preview", ".adjudant-remise-backup",
 )
+
+
+def resolve_scope(project_dir: Path, folder: str) -> Path:
+    """Resolve an operator-supplied `--folder` to a contained project subdir.
+
+    The scope flag is the one narrowing the parked-work ruling blessed:
+    deliberate operator scoping, nothing inferred. But a flag that takes a path
+    takes a path that can climb, so it meets the same containment bar as every
+    other operator-supplied path in the plugin. Raises ValueError with a
+    plain sentence; callers print it and stop.
+    """
+    root = project_dir.resolve()
+    target = (root / folder).resolve()
+    if not target.is_relative_to(root) or target == root:
+        raise ValueError(
+            f"--folder {folder!r} resolves outside the project (or to its "
+            f"root); give a subfolder like 'decisions' or 'notes'")
+    if not target.is_dir():
+        raise ValueError(f"--folder {folder!r}: no such folder under {root.name}/")
+    return target
+
+
+def scope_rel(project_dir: Path, scope_dir: Path) -> str:
+    """The scope as the project-relative string reports carry (`notes/deep`)."""
+    return scope_dir.resolve().relative_to(project_dir.resolve()).as_posix()
 
 
 def walk_project(
@@ -390,50 +419,56 @@ def walk_project(
 
 
 def build_vault_index(vault_root: Path) -> set[str]:
-    """All resolvable wikilink target forms across the vault.
+    """Every resolvable wikilink target form across the vault.
 
-    Includes:
-      - relative path with extension
-      - relative path without extension
-      - bare basename (Obsidian default match if unique)
+    Per file, exactly two or four forms:
+      - the vault-relative path, with and without its extension
+      - for a file under `projects/{zone}/{slug}/`, the same two with the
+        `projects/{zone}/` prefix stripped, which is the form adjudant writes
+
+    The bare basename is NOT indexed. Obsidian's default resolution matches
+    `[[brief]]` against any `brief.md` in the vault; with 27 projects that is
+    27 files answering to one name, and adjudant reported every one of those
+    links as healthy while a reader following it landed somewhere arbitrary.
+    A link that does not say which project it means is a broken link with a
+    good disguise.
+
     Spans .md, .canvas, .base.
     """
     index: set[str] = set()
+    zones = set(PROJECT_ZONES) | (set(LEGACY_ZONES) - {""})
     for ext in ("md", "canvas", "base"):
         for f in vault_root.rglob(f"*.{ext}"):
             try:
                 rel = f.relative_to(vault_root)
             except ValueError:
                 continue
-            s = str(rel)
-            index.add(s)
-            index.add(s[: -(len(ext) + 1)])  # strip `.ext`
-            index.add(f.stem)
-            index.add(f.name)
+            forms = [rel.as_posix()]
+            parts = rel.parts
+            # projects/{zone}/{slug}/... -> {slug}/...
+            if len(parts) > 3 and parts[0] == "projects" and parts[1] in zones:
+                forms.append("/".join(parts[2:]))
+            # projects/{slug}/... (pre-v3, no lifecycle folder) -> {slug}/...
+            elif len(parts) > 2 and parts[0] == "projects":
+                forms.append("/".join(parts[1:]))
+            for s in forms:
+                index.add(s)
+                index.add(s[: -(len(ext) + 1)])  # strip `.ext`
     return index
 
 
 def resolve_wikilink(target: str, index: set[str]) -> bool:
     """True if target resolves in the vault index.
 
-    Tries (in order): exact path, path+.md, basename, basename+.md.
-    The basename fallback matches Obsidian's default resolution: `[[foo]]`
-    resolves to any `foo.md` anywhere in the vault.
+    Tries the target as written, then with `.md` appended. There is no
+    basename fallback: see build_vault_index.
     """
     if not target:
         return False
-    if target in index:
-        return True
-    if (target + ".md") in index:
-        return True
-    # Basename fallback (Obsidian default resolution)
-    base = target.replace("\\", "/").rstrip("/").split("/")[-1]
-    if base != target:
-        if base in index:
-            return True
-        if (base + ".md") in index:
-            return True
-    return False
+    cleaned = target.replace("\\", "/").strip().strip("/")
+    if not cleaned:
+        return False
+    return cleaned in index or (cleaned + ".md") in index
 
 
 def is_checkable_wikilink(wl: Wikilink) -> bool:
@@ -455,7 +490,7 @@ def is_checkable_wikilink(wl: Wikilink) -> bool:
 
 
 # ============================================================
-# Breadcrumb + vault resolution (port.py patterns)
+# Breadcrumb + vault resolution
 # ============================================================
 
 
@@ -478,18 +513,34 @@ def parse_breadcrumb(project_root: Path) -> Optional[dict]:
     return out
 
 
+# The `type:` values a root `Home.md` may carry to mark a vault. `vault-home`
+# is what every vault built before v3 declares; `index` is what templates/home.md
+# declares now that the fifteen kinds have no `vault-home` among them. Both are
+# accepted, and the marker is only ever read from parsed frontmatter on a file
+# literally named Home.md.
+VAULT_HOME_TYPES: frozenset[str] = frozenset({"vault-home", "index"})
+
+
+def _is_vault_home(path: Path) -> bool:
+    """True when `path` is a Home.md whose frontmatter marks a vault root."""
+    try:
+        fm, _body = parse_frontmatter(path.read_text(errors="replace"))
+    except OSError:
+        return False
+    return str(fm.fields.get("type", "")).strip() in VAULT_HOME_TYPES
+
+
 def _looks_like_vault(path: Path) -> bool:
     """A directory qualifies as a vault only with a vault marker: Obsidian's
     `.obsidian/` config dir, adjudant's `projects/` shape, or a frontmatter
-    `Home.md` of type vault-home. `is_dir()` alone let any stale same-named
-    directory capture every write on the fallback machine."""
+    `Home.md` carrying one of VAULT_HOME_TYPES. `is_dir()` alone let any stale
+    same-named directory capture every write on the fallback machine."""
     try:
         if (path / ".obsidian").is_dir() or (path / "projects").is_dir():
             return True
         home = path / "Home.md"
         if home.is_file():
-            fm, _body = parse_frontmatter(home.read_text(errors="replace"))
-            return str(fm.fields.get("type", "")).strip() == "vault-home"
+            return _is_vault_home(home)
     except OSError:
         return False
     return False
@@ -555,19 +606,6 @@ def _vault_search_roots(home: Optional[Path] = None) -> list[Path]:
     return roots
 
 
-def _candidate_vault_paths(vault_name: str) -> list[Path]:
-    """Locations where an Obsidian vault named `vault_name` might live, across
-    macOS, Windows, and Linux/WSL. Cross-machine portability fallback used when
-    an absolute `vault_path` in the breadcrumb does not resolve on this machine.
-    For each search root the vault may sit directly under it or under an
-    `Obsidian/` subfolder."""
-    out: list[Path] = []
-    for root in _vault_search_roots():
-        out.append(root / vault_name)
-        out.append(root / "Obsidian" / vault_name)
-    return out
-
-
 def _describe_vault_root(root: Path, home: Path, is_local: bool) -> str:
     """Human label for a vault-root option in the guided 'no vault yet' setup."""
     if root == home:
@@ -616,16 +654,34 @@ def suggest_vault_roots() -> list[dict]:
     return out
 
 
+def _candidate_vault_paths(vault_name: str) -> list[Path]:
+    """Locations where an Obsidian vault named `vault_name` might live, across
+    macOS, Windows, and Linux/WSL. Cross-machine portability fallback used when
+    an absolute `vault_path` in the breadcrumb does not resolve on this machine.
+    For each search root the vault may sit directly under it or under an
+    `Obsidian/` subfolder."""
+    out: list[Path] = []
+    for root in _vault_search_roots():
+        out.append(root / vault_name)
+        out.append(root / "Obsidian" / vault_name)
+    return out
+
+
 def resolve_vault(
     project_root: Path,
     env_vault: Optional[str] = None,
 ) -> Optional[Path]:
-    """5-step resolution:
+    """4-step resolution:
       1. env var override (OB_VAULT or passed env_vault)
       2. .claude/adjudant breadcrumb `vault_path` field (absolute, current machine)
       3. .claude/adjudant breadcrumb `vault_name` field → standard locations
          under THIS machine's $HOME (cross-machine portability)
       4. walk up parents for `Home.md` with `type: vault-home`
+
+    A retired `.claude/obsidian-bridge` breadcrumb is NOT a resolution step.
+    Its only migration partner was `port`, sunset in v3, so honouring it meant
+    working from a stale path with no way to migrate off it and nothing said.
+    `status` reports its presence instead: see project.legacy_breadcrumb.
     """
     # 1. Env var override (explicit param wins; OB_VAULT read when not passed).
     # Non-absolute values are rejected, not resolved: an override that means a
@@ -660,13 +716,8 @@ def resolve_vault(
     cur = project_root.resolve()
     while cur != cur.parent:
         home = cur / "Home.md"
-        if home.is_file():
-            try:
-                fm, _body = parse_frontmatter(home.read_text(errors="replace"))
-                if str(fm.fields.get("type", "")).strip() == "vault-home":
-                    return cur
-            except OSError:
-                pass
+        if home.is_file() and _is_vault_home(home):
+            return cur
         cur = cur.parent
     return None
 
@@ -688,7 +739,7 @@ def resolve_project_from_cwd(cwd: Optional[Path] = None) -> Optional[ProjectCont
     """Read `.claude/adjudant` at cwd (or given dir), resolve the vault,
     return a `ProjectContext`. None if no breadcrumb or vault unresolvable.
 
-    Used by check/tidy/ramasse_scan/sync to auto-follow the breadcrumb
+    Used by check/clean/sync to auto-follow the breadcrumb
     when invoked from the code-side project root.
 
     Raises VaultUnresolvableError when the breadcrumb's slug is not a safe
@@ -740,7 +791,7 @@ class VaultUnresolvableError(RuntimeError):
     """A `.claude/adjudant` breadcrumb exists but the vault cannot be resolved.
 
     Raised instead of falling back to the code repo as the scan dir — that
-    fallback would let write-path verbs (tidy apply) rewrite the repository.
+    fallback would let write-path verbs (clean apply) rewrite the repository.
     """
 
 
@@ -822,7 +873,7 @@ def smart_project_dir(project_dir_arg: str) -> tuple[Path, Optional[Path]]:
             f"Fix the breadcrumb or re-run /adjudant connect."
         )
     # Treat as vault project path directly — but never accept something that
-    # is plainly a CODE repo. Write verbs (tidy apply, board scaffold) would
+    # is plainly a CODE repo. Write verbs (clean apply, board scaffold) would
     # rewrite source files, the hazard VaultUnresolvableError exists to stop.
     if _looks_like_code_repo(arg_path):
         raise VaultUnresolvableError(
@@ -834,212 +885,88 @@ def smart_project_dir(project_dir_arg: str) -> tuple[Path, Optional[Path]]:
 
 
 # ============================================================
-# Schema constants — single source of truth (imported by dream + tidy)
+# Folder constants — retired
 # ============================================================
+# The tag buckets used to live here: four constants, two classifiers and a
+# normaliser, maintaining a tag on every file that restated the file's own
+# `type:`. A tag that repeats a field carries no information, and the nested
+# form the buckets existed to police was never enforced anywhere. Stripping a
+# `tags:` block is now an ordinary unknown-field strip through FIELD_SCHEMA.
 
 
-BUCKET_A_TYPES: frozenset[str] = frozenset({
-    "decision", "session", "note", "doc", "project", "handoff",
-    "index", "iteration", "release", "source", "dream-report", "task",
-    "memory",
-})
-BUCKET_A_TYPES_PLUS_HOME: frozenset[str] = BUCKET_A_TYPES | {"vault-home"}
-
-# Bucket B — custom file-type tag migrations (source tag -> canonical file-type).
-# Empty by default: populate this map only if you are migrating a vault that used
-# custom `prefix/type` tags into adjudant's file-type taxonomy.
-BUCKET_B_MIGRATIONS: dict[str, str] = {}
-
-# Bucket D — deprecated tag prefixes to drop entirely.
-BUCKET_D_TAG_PREFIXES: tuple[str, ...] = ("ob/",)
-
-# Generic vague topical tags that carry no filing value — dropped by tidy.
-# These are common English catch-alls, not project- or person-specific.
-VAGUE_TOPICAL_TAGS: frozenset[str] = frozenset({
-    "architecture", "architecture-lockin", "architecture-source",
-    "frontend", "backend", "cms", "moc", "toolbox", "scheduler",
-})
-
-# Crew/persona name tags to drop (empty by default — populate with any
-# people/persona aliases your vault should never carry as tags).
-CREW_NAMES: frozenset[str] = frozenset()
-
-# Project-type tag form is forbidden — it lives in frontmatter `project_type:`
-PROJECT_TYPE_TAGS: frozenset[str] = frozenset({
-    "type/coding", "type/knowledge", "type/plugin", "type/tinkerage",
-})
-
-BUCKET_D_TAG_EXACT: frozenset[str] = VAGUE_TOPICAL_TAGS | CREW_NAMES | PROJECT_TYPE_TAGS
-
-# Per-project_type folder defaults (must align with vault-standards.md §5)
-PROJECT_TYPE_DEFAULT_FOLDERS: dict[str, dict[str, list[str]]] = {
-    "coding": {
-        "with_index": ["decisions", "notes", "tasks", "references"],
-        "no_index": ["sessions", "images"],
-    },
-    "plugin": {
-        "with_index": ["decisions", "notes", "tasks", "references", "releases"],
-        "no_index": ["sessions", "images"],
-    },
-    "knowledge": {
-        "with_index": ["notes", "sources", "references"],
-        "no_index": ["sessions"],
-    },
-    "tinkerage": {
-        "with_index": [],
-        "no_index": ["sessions"],
-    },
-}
-
-AUTO_CREATED_FOLDERS: frozenset[str] = frozenset({"dreams", "canvases", "bases", "board"})
-INDEX_EXEMPT_FOLDERS: frozenset[str] = frozenset({
-    "sessions", "images", "assets", "previews", "iterations", "_archive", "templates",
-})
+# PROJECT_TYPE_DEFAULT_FOLDERS and AUTO_CREATED_FOLDERS
+# were deleted in v3. Folder layout is now one table, KIND_FOLDER in
+# _place.py, and a folder is created by the write that puts something in it.
+# The three constants existed to answer "which folders does a coding project
+# get" and "which of them skip an index" — questions that only had answers
+# because connect scaffolded folders nobody had asked for.
+#
+# The second question still has one live asker: clean's index-gap report, for
+# as long as per-folder indexes exist at all. Its list moved into clean.py,
+# next to the only code that reads it, rather than staying a shared constant
+# with one consumer.
 
 
 # ============================================================
 # Project status lifecycle + zones (locked 2026-07-16)
 # ============================================================
 
-PROJECT_STATUS_VALUES: tuple[str, ...] = ("active", "stale", "fridge", "done", "dead", "seed")
-ZONE_FOR_STATUS: dict[str, str] = {
-    "active": "", "stale": "", "seed": "",
-    "fridge": "_fridge", "done": "_archive", "dead": "_archive",
+# The lifecycle is the FOLDER, and there are four of them. Before v3 the live
+# zone was the absence of a folder (`projects/{slug}`), which is why every
+# consumer carried an `if zone else` branch and why the constant's first
+# element was the empty string. A named folder costs one path segment and
+# removes that branch everywhere.
+PROJECT_ZONES: tuple[str, ...] = ("active", "paused", "finished", "archive")
+
+# The pre-v3 shapes, still on disk until triage runs. Read-side only: nothing
+# writes these, and find_project_dir searches them after the named four so a
+# migrated project always wins over an abandoned twin.
+LEGACY_ZONES: tuple[str, ...] = ("", "_fridge", "_archive")
+LEGACY_ZONE_ALIAS: dict[str, str] = {
+    "": "active", "_fridge": "paused", "_archive": "archive",
 }
-PROJECT_ZONES: tuple[str, ...] = ("", "_fridge", "_archive")
+
+# The retired six-value project status, kept only to READ a pre-v3 brief and
+# suggest a destination folder during triage. v3 briefs carry no `status:`
+# field at all: a fourth hand-written answer to "where is this project" is a
+# fourth thing that can disagree with the other three. The vocabulary is
+# ZONE_FOR_STATUS's keys, not a second tuple — a schema-drift guard test
+# (test_no_hand_written_field_schema_remains) forbids a standalone
+# PROJECT_STATUS_VALUES constant from coming back.
+ZONE_FOR_STATUS: dict[str, str] = {
+    "active": "active", "stale": "active", "seed": "active",
+    "fridge": "paused", "done": "finished", "dead": "archive",
+}
 DEFAULT_STALE_DAYS = 30
 FRIDGE_NUDGE_DAYS = 180
 
 
+def zone_dir(vault: Path, zone: str) -> Path:
+    """`{vault}/projects/{zone}`. A legacy zone of "" collapses to projects/."""
+    base = vault / "projects"
+    return (base / zone) if zone else base
+
+
 # ============================================================
-# Note-level frontmatter schema (locked 2026-07-27)
+# Note-level schema — DERIVED, not declared (v3)
 # ============================================================
-
-DECISION_STATUS_VALUES: tuple[str, ...] = (
-    "active", "superseded", "reversed", "implemented", "deferred")
-TASK_STATUS_VALUES: tuple[str, ...] = (
-    "todo", "next", "doing", "review", "blocked", "done", "icebox")
-ITERATION_STATUS_VALUES: tuple[str, ...] = (
-    "drafting", "on-shelf", "picked", "parked", "rejected", "superseded")
-
-# Types whose `status:` value is an enum. Everything else has no status field.
-STATUS_VALUES_FOR_TYPE: dict[str, tuple[str, ...]] = {
-    "decision": DECISION_STATUS_VALUES,
-    "task": TASK_STATUS_VALUES,
-    "project": PROJECT_STATUS_VALUES,
-    "iteration": ITERATION_STATUS_VALUES,
-}
-
-# Per Bucket-A type: required keys must be present; required | optional is the
-# full legal key set — any other key is an unknown field (drift). `project` is
-# deliberately absent everywhere: membership is the path. `source_session` is
-# optional wherever the stamp hook could historically write it, so old stamps
-# never read as drift.
-# Descriptive fields legal on every content type (not on system shapes:
-# session, handoff, vault-home). Widened 2026-07-27 so tidy never strips
-# real-world metadata users actually write. `cssclasses` joined 2026-07-29:
-# vault-standards.md section 2 documents it as an Obsidian CSS class that
-# "tag normalization leaves alone", but it was absent from every
-# FIELD_SCHEMA optional set, so tidy feature 5 (the schema strip) flagged it
-# as unknown and stripped it out from under the human who set it. `project`
-# and `index` also get it directly below, since a brief or an index is
-# equally a rendered note a human may style.
-_CONTENT_OPTIONAL: frozenset[str] = frozenset({
-    "related", "title", "name", "description", "cssclasses",
-})
-
-# Epistemic freshness (v0.22.0, locked 2026-07-31): per-fact truth-lifetime
-# metadata, legal ONLY on the four content types (decision, note, doc,
-# source) — never on system shapes. Every stored fact is timeless, dated, or
-# a pointer; declared signals outrank heuristics in every tier.
-FRESHNESS_VALUES: tuple[str, ...] = ("timeless", "dated", "pointer")
-_EPISTEMIC_OPTIONAL: frozenset[str] = frozenset({
-    "freshness", "certainty", "validity_context", "valid_from", "valid_until",
-})
-
-# MEMORY.md heading starter set (remise promotion targets). Unknown headings
-# are legal - the escape hatch - but these four are what the analysis pass
-# reaches for first, and validator 36 holds them to template + reference.
-MEMORY_HEADINGS: tuple[str, ...] = (
-    "Decisions that held", "Preferences", "Gotchas", "Domain facts",
-)
-
-FIELD_SCHEMA: dict[str, dict[str, frozenset[str]]] = {
-    "decision": {
-        "required": frozenset({"type", "status", "date", "tags"}),
-        "optional": frozenset({"supersedes", "superseded_by",
-                               "implemented_verified", "source_session"})
-                    | _CONTENT_OPTIONAL | _EPISTEMIC_OPTIONAL,
-    },
-    "session": {
-        "required": frozenset({"type", "date", "started", "session_id", "tags"}),
-        "optional": frozenset(),
-    },
-    "note": {
-        "required": frozenset({"type", "created", "updated", "tags"}),
-        "optional": frozenset({"superseded_by", "source_session"})
-                    | _CONTENT_OPTIONAL | _EPISTEMIC_OPTIONAL,
-    },
-    "doc": {
-        "required": frozenset({"type", "title", "updated", "tags"}),
-        "optional": frozenset({"superseded_by", "source_session"})
-                    | (_CONTENT_OPTIONAL - {"title"}) | _EPISTEMIC_OPTIONAL,
-    },
-    "handoff": {
-        # session_id and future custom keys are legal here: the sync mirror
-        # (_handoff_freshness.preserved_frontmatter) contractually preserves
-        # them, so tidy must not stage them for stripping.
-        "required": frozenset({"type", "updated", "source", "tags"}),
-        "optional": frozenset({"created", "session_id"}),
-    },
-    "task": {
-        # `id` is card identity: board.py reads it (cards_from_tasks) and a
-        # reseed re-keys the card to the file stem if it disappears, losing
-        # the user's dragged column. Never strippable.
-        "required": frozenset({"type", "status", "tags"}),
-        "optional": frozenset({"category", "code", "id", "note", "source_session"})
-                    | _CONTENT_OPTIONAL,
-    },
-    "release": {
-        "required": frozenset({"type", "version", "date", "tags"}),
-        "optional": frozenset({"source_session"}) | _CONTENT_OPTIONAL,
-    },
-    "source": {
-        "required": frozenset({"type", "title", "tags"}),
-        "optional": frozenset({"author", "url", "medium", "year", "source_session"})
-                    | (_CONTENT_OPTIONAL - {"title"}) | _EPISTEMIC_OPTIONAL,
-    },
-    "iteration": {
-        "required": frozenset({"type", "identifier", "status", "date", "tags"}),
-        "optional": frozenset({"track", "register", "supersedes", "builds_on",
-                               "artefacts", "source_session"}) | _CONTENT_OPTIONAL,
-    },
-    "dream-report": {
-        "required": frozenset({"type", "date", "tags"}),
-        "optional": frozenset({"source_session"}) | _CONTENT_OPTIONAL,
-    },
-    "project": {
-        "required": frozenset({"type", "project_type", "slug", "aliases",
-                               "status", "created", "updated", "tags"}),
-        "optional": frozenset({"repo", "stack", "marketplace", "extra_folders",
-                               "relations", "codename", "cssclasses"}),
-    },
-    "memory": {
-        # Per-project perma-memory (remise promotion target). Timeless by
-        # construction: epistemic fields are deliberately absent - declaring
-        # freshness on the file that never stales would be a contradiction.
-        "required": frozenset({"type", "updated", "tags"}),
-        "optional": frozenset({"source_session"}) | _CONTENT_OPTIONAL,
-    },
-    "index": {
-        "required": frozenset({"type", "tags"}),
-        "optional": frozenset({"updated", "cssclasses"}),
-    },
-    "vault-home": {
-        "required": frozenset({"type", "updated"}),
-        "optional": frozenset(),
-    },
-}
+# The templates are the schema. Editing a template changes what check accepts;
+# there is no constant here to fall out of step with it. FIELD_SCHEMA,
+# STATUS_VALUES_FOR_TYPE and HEADINGS_FOR_TYPE are imported at the top of this
+# module from _template_schema, which parses skills/adjudant/templates/ at
+# import time. See templates/README.md for the comment convention a template
+# uses to say which of its fields are required.
+#
+# Gone with the constants: the epistemic block (freshness / certainty /
+# validity_context / valid_from / valid_until), five optional fields serving
+# two read-only reporters, whose malformed values were the strictest thing the
+# write gate blocked on. The `memory`, `iteration`, `dream-report` and
+# `vault-home` kinds went with their templates in the tasks before this one.
+#
+# The project lifecycle vocabulary is now read off ZONE_FOR_STATUS above: the
+# brief carries no `status:` field, so a project's state is the zone folder,
+# and the map from state to folder is the only place the six words need to be
+# written down.
 
 # ============================================================
 #  Durable writes: atomicity + advisory locking
@@ -1205,49 +1132,10 @@ def safe_project_root(vault: Path, slug: str) -> Optional[Path]:
 
 
 # Wild historical decision-status values that are plain synonyms of active.
-# tidy migrates these after preview; anything else off-enum is reported only.
+# clean migrates these after preview; anything else off-enum is reported only.
 DECISION_STATUS_ALIASES: dict[str, str] = {
     "accepted": "active", "locked": "active", "current": "active",
 }
-
-
-def _validate_epistemic(fields: dict) -> list[dict]:
-    """Malformed epistemic declarations, as [{field, value, reason}].
-
-    Presence is legal (the optional sets say where); this checks SHAPE:
-    freshness in enum, certainty an integer 1-5, valid_from/valid_until real
-    calendar dates, and the window not inverted. Semantics (expiry, dangling
-    supersession) live in freshness_report — drift is for what the write
-    gate should refuse."""
-    bad: list[dict] = []
-    if "freshness" in fields:
-        v = fields["freshness"]
-        if not (isinstance(v, str) and v.strip() in FRESHNESS_VALUES):
-            bad.append({"field": "freshness", "value": v,
-                        "reason": f"must be one of {', '.join(FRESHNESS_VALUES)}"})
-    if "certainty" in fields:
-        v = fields["certainty"]
-        ok = isinstance(v, str) and v.strip().isdigit() and 1 <= int(v.strip()) <= 5
-        if not ok:
-            bad.append({"field": "certainty", "value": v,
-                        "reason": "must be an integer 1-5"})
-    window: dict[str, str] = {}
-    for key in ("valid_from", "valid_until"):
-        if key not in fields:
-            continue
-        v = fields[key]
-        try:
-            if not isinstance(v, str):
-                raise ValueError
-            datetime.strptime(v.strip(), "%Y-%m-%d")
-            window[key] = v.strip()
-        except ValueError:
-            bad.append({"field": key, "value": v,
-                        "reason": "must be a real YYYY-MM-DD date"})
-    if len(window) == 2 and window["valid_from"] > window["valid_until"]:
-        bad.append({"field": "valid_until", "value": window["valid_until"],
-                    "reason": "valid_from is after valid_until"})
-    return bad
 
 
 def obsidian_cli_path() -> Optional[str]:
@@ -1267,46 +1155,6 @@ def _wikilink_stem(value: Any) -> Optional[str]:
     s = s.split("|", 1)[0].strip()
     stem = s.rsplit("/", 1)[-1].strip()
     return stem or None
-
-
-def freshness_report(files: list["VaultFile"], today: date) -> dict[str, Any]:
-    """Read-only truth-lifetime semantics over VALID epistemic declarations.
-
-    Shape problems are schema drift (the gate refuses them); this reports
-    what valid declarations MEAN today: expired validity windows, dangling
-    supersession pointers, dated facts with no clock attached, and adoption
-    counts. Content types only.
-    """
-    expired: list[dict] = []
-    dangling: list[dict] = []
-    unbounded: list[dict] = []
-    counts: dict[str, int] = {k: 0 for k in sorted(_EPISTEMIC_OPTIONAL)}
-    stems = {vf.path.stem for vf in files}
-    today_s = today.strftime("%Y-%m-%d")
-    for vf in files:
-        fields = vf.frontmatter.fields
-        if fields.get("type") not in ("decision", "note", "doc", "source"):
-            continue
-        if _validate_epistemic(fields):
-            continue  # malformed declarations are drift's finding, not semantics'
-        for k in counts:
-            if k in fields:
-                counts[k] += 1
-        vu = fields.get("valid_until")
-        if isinstance(vu, str) and vu.strip() and vu.strip() < today_s:
-            days = (today - datetime.strptime(vu.strip(), "%Y-%m-%d").date()).days
-            expired.append({"file": str(vf.rel_path),
-                            "valid_until": vu.strip(), "days_expired": days})
-        if fields.get("superseded_by") is not None:
-            target = _wikilink_stem(fields.get("superseded_by"))
-            if target is not None and target not in stems:
-                dangling.append({"file": str(vf.rel_path), "target": target})
-        fr = fields.get("freshness")
-        if (isinstance(fr, str) and fr.strip() == "dated"
-                and not fields.get("valid_from") and not fields.get("valid_until")):
-            unbounded.append({"file": str(vf.rel_path)})
-    return {"expired": expired, "dangling_supersession": dangling,
-            "dated_unbounded": unbounded, "counts": counts}
 
 
 def _schema_drift_core(fields: dict, has_block: bool, parse_error: Optional[str],
@@ -1342,10 +1190,6 @@ def _schema_drift_core(fields: dict, has_block: bool, parse_error: Optional[str]
             out["status_invalid"] = {"value": status, "normalizable": False}
     if "node_type" in keys and "type" in keys:
         out["type_conflict"] = True
-    if ftype in ("decision", "note", "doc", "source"):
-        epistemic = _validate_epistemic(fields)
-        if epistemic:
-            out["epistemic_invalid"] = epistemic
     if not out:
         return None
     out["file"] = rel
@@ -1358,7 +1202,7 @@ def schema_drift_for_text(text: str, rel_path: str,
     """Schema drift for PROPOSED content that is not on disk yet.
 
     Used by the PreToolUse write gate so a note is judged before it lands,
-    against the same FIELD_SCHEMA that check reports and tidy repairs.
+    against the same FIELD_SCHEMA that check reports and clean repairs.
     """
     fm, _ = parse_frontmatter(text)
     ftype = fm.fields.get("type")
@@ -1371,7 +1215,7 @@ def schema_drift_for_file(vf: "VaultFile", aliases: Optional[set] = None) -> Opt
     """Schema drift for one file per FIELD_SCHEMA, or None when clean.
 
     Only files with a parsed frontmatter block and a canonical type are
-    checked; everything else is ramasse territory (detect_frontmatter_drift,
+    checked; everything else is the deep pass's territory (detect_frontmatter_drift,
     detect_type_drift) and returns None here. `aliases` is the task-status
     alias set (board.STATUS_TO_COLUMN keys) used to mark task values as
     normalizable; decision values normalize via DECISION_STATUS_ALIASES.
@@ -1381,12 +1225,37 @@ def schema_drift_for_file(vf: "VaultFile", aliases: Optional[set] = None) -> Opt
                               vf.file_type, str(vf.rel_path), aliases)
 
 
+# Folders whose file format another tool owns. Adjudant reads them, walks past
+# them, and never grades them. `memory/` holds Claude Code auto-memory notes,
+# whose shape is name / description / metadata.type; Obsidian's Properties
+# editor flattens the nested key to a top-level `type:`, and adjudant then read
+# the file as whatever that claimed. Grading it produced 69 of check's 99
+# failures, none of them actionable.
+#
+# `MEMORY.md` at the project root is NOT in here: that file is adjudant's own
+# perma-memory and stays graded.
+UNOWNED_FOLDERS: frozenset[str] = frozenset({"memory"})
+
+
+def is_unowned(rel_path) -> bool:
+    """True when a project-relative path sits under a folder we do not own."""
+    parts = Path(rel_path).parts
+    return bool(parts) and parts[0] in UNOWNED_FOLDERS
+
+
 def schema_drift(files: list["VaultFile"], aliases: Optional[set] = None) -> dict[str, Any]:
-    """Aggregate schema drift across walked files: counts + capped samples."""
+    """Aggregate schema drift across walked files: counts + capped samples.
+
+    Files under UNOWNED_FOLDERS are counted as exempt and never graded.
+    """
     flagged: list[dict] = []
     checked = 0
     unchecked = 0
+    exempt = 0
     for vf in files:
+        if is_unowned(vf.rel_path):
+            exempt += 1
+            continue
         fm = vf.frontmatter
         if not fm.has_block or fm.parse_error or vf.file_type not in FIELD_SCHEMA:
             unchecked += 1
@@ -1398,13 +1267,16 @@ def schema_drift(files: list["VaultFile"], aliases: Optional[set] = None) -> dic
     return {
         "checked": checked,
         "unchecked": unchecked,
+        "exempt": exempt,
         "flagged": len(flagged),
+        # No unknown_fields tally. With five field names an unknown one is a
+        # typo or a real need, and neither is news across a whole vault. The
+        # per-file check stays: schema_drift_for_text still refuses one on a
+        # proposed write, and the sample still names the key.
         "counts": {
             "missing_required": sum(1 for d in flagged if "missing_required" in d),
-            "unknown_fields": sum(1 for d in flagged if "unknown_fields" in d),
             "status_invalid": sum(1 for d in flagged if "status_invalid" in d),
             "type_conflict": sum(1 for d in flagged if "type_conflict" in d),
-            "epistemic_invalid": sum(1 for d in flagged if "epistemic_invalid" in d),
         },
         "samples": flagged[:20],
     }
@@ -1460,7 +1332,7 @@ def suggest_status(
             days_quiet = (today - datetime.strptime(last, "%Y-%m-%d").date()).days
         except ValueError:
             days_quiet = None
-    valid = declared in PROJECT_STATUS_VALUES
+    valid = declared in ZONE_FOR_STATUS
     effective = declared if valid else "active"
     out: dict[str, Any] = {
         "declared": declared,
@@ -1482,12 +1354,20 @@ def suggest_status(
     return out
 
 
+def _project_candidates(vault: Path, slug: str) -> list[Path]:
+    """Every path a project called `slug` could occupy, best shape first.
+
+    The four named folders come first, so a migrated project always beats an
+    unmigrated twin left behind by an interrupted move.
+    """
+    out = [zone_dir(vault, z) / slug for z in PROJECT_ZONES]
+    out += [zone_dir(vault, z) / slug for z in LEGACY_ZONES]
+    return out
+
+
 def find_project_dir(vault: Path, slug: str) -> Optional[Path]:
-    """Locate a project across zones. Prefers a dir containing brief.md."""
-    candidates = [
-        (vault / "projects" / zone / slug) if zone else (vault / "projects" / slug)
-        for zone in PROJECT_ZONES
-    ]
+    """Locate a project across lifecycle folders. Prefers a dir with brief.md."""
+    candidates = _project_candidates(vault, slug)
     for c in candidates:
         if (c / "brief.md").is_file():
             return c
@@ -1498,64 +1378,47 @@ def find_project_dir(vault: Path, slug: str) -> Optional[Path]:
 
 
 def zone_of(project_dir: Path) -> str:
-    """'' | '_fridge' | '_archive' from the path shape projects[/zone]/slug."""
-    parent = project_dir.parent.name
-    return parent if parent in ("_fridge", "_archive") else ""
+    """The lifecycle folder a project sits in, always one of PROJECT_ZONES.
 
-
-def zone_matches_status(status: Optional[str], zone: str) -> bool:
-    """True when the folder zone agrees with the declared status.
-
-    Unknown status values return True: the vocabulary problem is reported
-    separately (declared_valid), not double-counted as a zone mismatch.
+    A pre-v3 path normalises: `projects/{slug}` reads as "active",
+    `_fridge` as "paused", `_archive` as "archive". Callers get a name they
+    can render and compare; nothing outside this module handles "".
     """
-    if status not in PROJECT_STATUS_VALUES:
-        return True
-    return ZONE_FOR_STATUS[status] == zone
+    parent = project_dir.parent.name
+    if parent in PROJECT_ZONES:
+        return parent
+    if parent in LEGACY_ZONE_ALIAS:
+        return LEGACY_ZONE_ALIAS[parent]
+    return "active"
 
 
 def enumerate_projects_all_zones(vault: Path) -> list[tuple[str, Path, str]]:
-    """Every project (slug, dir, zone) across projects/, _fridge/, _archive/.
+    """Every project (slug, dir, normalised zone) across all lifecycle folders.
 
     A project is a directory containing brief.md. Leading-underscore and dot
-    dirs are skipped inside each zone. Sorted by zone order then slug.
+    dirs are skipped inside each folder, which is also what keeps a legacy
+    `_fridge/` from being read as a project when scanning `projects/` itself.
+    A slug found in more than one place is reported once, from the first
+    folder in PROJECT_ZONES order, then legacy order.
     """
     out: list[tuple[str, Path, str]] = []
+    seen: set[str] = set()
     base = vault / "projects"
-    for zone in PROJECT_ZONES:
-        zdir = (base / zone) if zone else base
+    for zone in PROJECT_ZONES + LEGACY_ZONES:
+        zdir = zone_dir(vault, zone)
         if not zdir.is_dir():
             continue
         for d in sorted(zdir.iterdir(), key=lambda p: p.name):
             if not d.is_dir() or d.name.startswith("_") or d.name.startswith("."):
                 continue
+            if d.name in PROJECT_ZONES and d.parent == base:
+                continue            # a lifecycle folder is not a project
+            if d.name in seen:
+                continue
             if (d / "brief.md").is_file():
-                out.append((d.name, d, zone))
+                seen.add(d.name)
+                out.append((d.name, d, zone_of(d)))
     return out
-
-
-def is_bucket_d_tag(tag: str, project_slug: Optional[str] = None) -> bool:
-    """Return True if tag should be dropped per Bucket D."""
-    # Configured drop-prefixes (empty by default)
-    if BUCKET_D_TAG_PREFIXES and any(tag.startswith(p) for p in BUCKET_D_TAG_PREFIXES):
-        return True
-    # Exact match (vague topicals, crew, project-type tags)
-    if tag in BUCKET_D_TAG_EXACT:
-        return True
-    # Project-slug self-tag and slug/* / slug-* variants
-    if project_slug:
-        if tag == project_slug:
-            return True
-        if tag.startswith(project_slug + "/"):
-            return True
-        if tag.startswith(project_slug + "-"):
-            return True
-    return False
-
-
-def is_bucket_b_migration(tag: str) -> Optional[str]:
-    """If tag is a Bucket B migration source, return the target tag; else None."""
-    return BUCKET_B_MIGRATIONS.get(tag)
 
 
 # ============================================================
@@ -1635,7 +1498,7 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
         if type_counter:
             print(f"\ntype inventory:")
             for t, n in type_counter.most_common():
-                marker = " " if t in BUCKET_A_TYPES_PLUS_HOME else "*"
+                marker = " " if t in FIELD_SCHEMA else "*"
                 print(f"  {marker} {n:4}  {t}")
         if tag_counter:
             print(f"\ntop 30 tags:")

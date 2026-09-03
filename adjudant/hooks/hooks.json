@@ -25,7 +25,7 @@
       }]
     }],
     "PostToolUse": [{
-      "matcher": "Write|Edit",
+      "matcher": "Write",
       "hooks": [{
         "type": "command",
         "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/posttooluse-vault-log.py\"",
@@ -81,6 +81,14 @@
         "type": "command",
         "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/sessionend.sh\"",
         "timeout": 10
+      }]
+    }],
+    "Stop": [{
+      "matcher": "*",
+      "hooks": [{
+        "type": "command",
+        "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/stop-canary.py\"",
+        "timeout": 5
       }]
     }]
   }

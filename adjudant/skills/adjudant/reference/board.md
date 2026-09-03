@@ -151,7 +151,10 @@ Re-running `board` does not wipe in-progress card state:
   Any replace (`--force` or `--data`) first copies the old deck to
   `board/.bak/board-data-<YYYYMMDD-HHMMSS>.json`, newest 5 kept. The copy is
   taken once the replacement deck has been read and validated, so a run that
-  fails and writes nothing leaves every earlier backup byte-identical.
+  fails and writes nothing leaves every earlier backup byte-identical. This
+  directory is one of the two backup paths that deliberately live inside the
+  vault rather than in `$TMPDIR` — see `reference/state-contract.md` for why,
+  and for the other.
 - **`--data FILE` → that deck verbatim** (missing standard fields are backfilled).
 - A corrupt/unreadable `board-data.json` (or `--data` file) exits non-zero with
   a clear error — it never tracebacks or silently rebuilds.
@@ -180,7 +183,7 @@ The board is a view of the vault, but a drag happens in the view. So every
 lane change on **any** surface is pushed back into the task note's `status:`:
 a browser drag, an Obsidian kanban drag folded in by the read-back, or a deck
 you edited by hand. Without this the note stayed stale forever, because the
-merge deliberately keeps the dragged column, and `check`, `dream`, `ramasse`
+merge deliberately keeps the dragged column, and `check`, `dream`, `clean`
 and the sitrep board line all read the note rather than the deck.
 
 - Each lane has exactly one canonical status (`CANONICAL_STATUS_FOR_COLUMN`),
@@ -204,7 +207,8 @@ and the sitrep board line all read the note rather than the deck.
 - Only `status:` changes; other fields, their order, the body and the line
   endings are left exactly as they were. The write is atomic and locked.
 - Cards with no task note (hand-added on the board) are never materialized
-  into notes here; that is `board_bridge`'s job.
+  into notes here, and since v3 nowhere else either: write the note yourself,
+  or use `/adjudant status --capture-task`.
 - It converges: once the note matches, the next run reports `no-change`.
 
 ### Kanban surface (v0.23.0)
@@ -225,13 +229,18 @@ keep the board current without being asked:
 
 - **SessionStart** renders one board status line: per-column counts plus a
   stale flag when any task note is newer than the deck.
-- **PostToolUse (Write|Edit)** under `tasks/` nudges `board_bridge.py
-  --ensure-only`, so editing a task's `status:` refreshes the board.
-- **SessionEnd** replays the session task ledger through `board_bridge.py
-  --bridge` (survivors become `tasks/` notes, deduped by slug) or runs
-  `--ensure-only` when no ledger exists; either path ends in `ensure_board`.
+- **SessionEnd** runs `board_bridge.py --ensure-only` when a deck already
+  exists, so the last edits of the session reach the board. A session end
+  never births a board.
 
-Because three surfaces write the deck, the whole read-merge-write runs under an
+Until v3 a third surface wrote here: PostToolUse fired `board_bridge.py
+--ensure-only` on any Write or Edit under `tasks/`, which meant the first task
+note scaffolded `board-data.json`, `board.html` and a lock file into a project
+that had never run `board`. That branch is deleted. A deck is born by
+`/adjudant board` and by nothing else; a task-note edit reaches the board at
+session end.
+
+Because two surfaces write the deck, the whole read-merge-write runs under an
 advisory lock and both files land via a temp file plus `os.replace`, so a
 concurrent reader never sees a half-written deck and two writers cannot lose
 each other's work. On a mount where locking does not work the write is still
@@ -239,11 +248,14 @@ atomic.
 
 Read-only views: `check` renders a board section, `sitrep` one board line.
 
-`scripts/board_bridge.py` is the ledger-to-vault bridge: TaskCreated and
-TaskCompleted events append to a TMPDIR ledger during the session (zero vault
-writes in-session); at close, ids never completed become schema-conformant
-task notes from `templates/task.md`, and the first bridged note births the
-board.
+`scripts/board_bridge.py` ensures the deck and its HTML match `tasks/`, and
+does nothing else. Until v3 it also replayed the session task ledger at close:
+every id without a `TaskCompleted` event became a task note. Status changes
+other than completion fire no events, so abandoned and renamed todos qualified
+too, and `tasks/` filled with cards nobody wrote. A task note is now written
+only when someone asks for one — `/adjudant status --capture-task`, or your own
+hand. The ledger still lives in `$TMPDIR` for the statusline; nothing reads it
+into the vault.
 
 ## Merge provenance (refresh-without-clobber)
 

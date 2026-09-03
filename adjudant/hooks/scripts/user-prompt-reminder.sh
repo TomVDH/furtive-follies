@@ -38,6 +38,30 @@ intent_nag() {
   printf -- '[adjudant] Intent line is still the placeholder in `%s`: replace it with one plain sentence now that the session has a purpose, then leave it frozen.\n' "$session_file"
 }
 
+# The canary's reporting half. SessionStart names the codeword once; this reads
+# the tally the Stop hook keeps and speaks only after a miss. It must NEVER
+# print the codeword itself: restating the instruction would keep the model
+# obeying it and the check would measure nothing (test_canary asserts this).
+canary_report() {
+  local session_id="$1" tmp="${TMPDIR:-/tmp}"
+  [ -n "$session_id" ] || return 0
+  case "$session_id" in *[!A-Za-z0-9._-]*) return 0 ;; esac
+  local state="$tmp/adjudant-canary-${session_id}.json"
+  [ -f "$state" ] || return 0
+  python3 - "$state" <<'CANARY_PY' 2>/dev/null || true
+import json, sys
+try:
+    s = json.load(open(sys.argv[1]))
+except Exception:
+    raise SystemExit(0)
+misses, turns = int(s.get("misses", 0)), int(s.get("turns", 0))
+if misses:
+    print(f"[adjudant] Session canary missed {misses} of {turns} turns. "
+          "Standing instructions are lapsing: wrap up, then start a fresh "
+          "session rather than pushing this one further.")
+CANARY_PY
+}
+
 main() {
   [ "${ADJUDANT_REMINDER_DISABLE:-0}" = "1" ] && return 0
 
@@ -65,6 +89,11 @@ except Exception:
   pass' 2>/dev/null || true)" || true
   fi
   [ -z "$prompt" ] && return 0
+
+  # Every turn, linked project or not: drift is a property of the session, not
+  # of the vault. Silent while healthy, the rule the statusline applies to its
+  # own segments - a signal that never varies carries no information.
+  canary_report "$session_id"
 
   # The two nags have inverse audiences: a linked project can never need the
   # connect reminder, and an unlinked one has no session note to have an

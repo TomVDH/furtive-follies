@@ -4,39 +4,33 @@
 Run from the plugin root (adjudant/). Exit 0 on pass, 1 on any failure.
 
 Validators:
-  1. harness-parity         — source/, .claude/, .gemini/ skill paths all resolve to skills/adjudant
-  2. templates-tag-schema   — no deprecated tags (#ob/) in any template
-  3. claude-md-imports-agents — templates/CLAUDE.md starts with @AGENTS.md
-  4. template-coverage      — every file-type in vault-standards has a matching template
-  5. command-metadata-coherence — verbs in command-metadata.json match SKILL.md router
-  6. plugin-version-set     — .claude-plugin/plugin.json has a non-empty version
-  7. version-consistency     — plugin.json / command-metadata.json / SKILL.md (+ marketplace when present) versions all match
-  8. tidy-preview-coherence  — if tidy preview dir exists, has summary.md + changes.json + files/
-  9. tidy-backup-integrity   — tidy backup dirs have at least one .legacy file
- 10. gitignore-includes-tidy-dirs — .gitignore lists tidy dirs if either exists
- 11. reference-files-exist   — every reference/*.md named in command-metadata.json and the SKILL.md router exists
- 12. verb-surface-parity     — every verb name appears in plugin.json / README.md / marketplace description; spelled-out verb counts match
- 13. reference-doc-links     — every relative markdown link inside reference/*.md resolves on disk
- 14. verb-description-length — command-metadata verb descriptions stay router-line short (≤ 220 chars)
- 15. repo-helper-parity      — repo_walk/repo_scan/repo_tidy each exist with a matching test_*.py
- 16. repo-standards-coverage — reference/repo-standards.md exists and names each detector category
- 17. repo-tidy-preview-coherence — if repo-tidy preview dir exists, it has summary.md + changes.json + files/
- 18. repo-tidy-backup-integrity   — repo-tidy backup subdirs with files carry at least one .legacy
- 19. gitignore-includes-repo-tidy-dirs — .gitignore lists the repo-tidy dirs if either exists
- 20. status-vocabulary            — _vault_walk constants, vault-standards, and brief templates all agree on the six-state vocabulary
- 21. voice-lexicon                : no banned/glazing/shape terms in templates/, SKILL.md, reference/ (voice.md excepted); no em dashes in templates/
- 22. board-template-markers       : templates/board.html exists, both BOARD_DATA markers present, seeded JSON parses and has columns, nothing fetched off-machine, no empty catch
- 23. task-status-vocabulary       : every board.py STATUS_TO_COLUMN alias is documented in the vault-standards status alias table
- 24. hooks-wiring                 : every hooks.json command resolves to an existing executable file under hooks/scripts/
- 25. decision-status-vocabulary   : _vault_walk constants, vault-standards, and the decision template agree on the five-state note vocabulary
- 26. template-schema-parity       : every registered template's frontmatter keys cover its type's required set and stay inside required | optional
- 27. hook-zone-awareness          : no hook hardcodes projects/<slug>; each resolves zone-aware and gates the slug first
- 28. freshness-vocabulary         : FRESHNESS_VALUES, the epistemic optional sets, and vault-standards section 10 agree
- 29. base-dashboards              : shipped .base dashboard templates are structurally sound and schema-legal
- 30. voice-patterns              : no named no-ai-slop sentence patterns in templates/, SKILL.md, reference/
- 31. render-voice                : no banned lexicon or slop pattern in any string literal the helpers can print
+   1. harness-parity         — source/, .claude/, .gemini/ skill paths all resolve to skills/adjudant
+   2. claude-md-imports-agents — templates/CLAUDE.md starts with @AGENTS.md
+   3. template-schema-loads  — the templates parse into exactly the fifteen kinds, each vocabulary non-empty
+   4. command-metadata-coherence — verbs in command-metadata.json match SKILL.md router
+   5. plugin-version-set     — .claude-plugin/plugin.json has a non-empty version
+   6. version-consistency     — plugin.json / command-metadata.json / SKILL.md (+ marketplace when present) versions all match
+   7. reference-files-exist   — every reference/*.md named in command-metadata.json and the SKILL.md router exists
+   8. verb-surfaces-generated — the ten verb-derived doc surfaces are rendered from command-metadata.json, not typed twice
+   9. reference-doc-links     — every relative markdown link inside reference/*.md resolves on disk
+  10. verb-description-length — command-metadata verb descriptions stay router-line short (≤ 220 chars)
+  11. repo-helper-parity      — repo_walk/repo_scan/repo_tidy each exist with a matching test_*.py
+  12. repo-standards-coverage — reference/repo-standards.md exists and names each detector category
+  13. repo-tidy-preview-coherence — if repo-tidy preview dir exists, it has summary.md + changes.json + files/
+  14. repo-tidy-backup-integrity   — repo-tidy backup subdirs with files carry at least one .legacy
+  15. gitignore-includes-repo-tidy-dirs — .gitignore lists the repo-tidy dirs if either exists
+  16. voice-lexicon                : no banned/glazing/shape terms in templates/, SKILL.md, reference/ (voice.md excepted); no em dashes in templates/
+  17. board-template-markers       : templates/board.html exists, both BOARD_DATA markers present, seeded JSON parses and has columns, nothing fetched off-machine, no empty catch
+  18. hooks-wiring                 : every hooks.json command resolves to an existing executable file under hooks/scripts/
+  19. hook-zone-awareness          : no hook hardcodes projects/<slug>; each resolves zone-aware and gates the slug first
+  20. base-dashboards              : shipped .base dashboard templates are structurally sound and schema-legal
+  21. voice-patterns              : no named no-ai-slop sentence patterns in templates/, SKILL.md, reference/
+  22. render-voice                : no banned lexicon or slop pattern in any string literal the helpers can print
+  23. advisor-wiring              : the advisor's contract doc, SessionStart banner, and AGENTS.md marker stay wired
+  24. place-zone-parity           : _place's lifecycle folder set matches _vault_walk.PROJECT_ZONES
+  25. standards-structure-parity  : reference/vault-standards.md names every folder in KIND_FOLDER and PROJECT_ZONES
 
-31 validators total.
+25 validators total.
 """
 
 import ast
@@ -47,14 +41,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _profile  # noqa: E402
 import _voice  # noqa: E402
-from _vault_walk import (  # noqa: E402
-    DECISION_STATUS_VALUES,
-    FIELD_SCHEMA,
-    FRESHNESS_VALUES,
-    PROJECT_STATUS_VALUES,
-    parse_frontmatter,
-)
+import render_verb_surfaces  # noqa: E402
+from _vault_walk import FIELD_SCHEMA, PROJECT_ZONES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 CANONICAL = ROOT / "skills" / "adjudant"
@@ -65,37 +55,6 @@ HARNESS_DIRS = [
     ROOT / "source" / "skills" / "adjudant",
     ROOT / ".claude" / "skills" / "adjudant",
     ROOT / ".gemini" / "skills" / "adjudant",
-]
-
-# File types that must have a matching template (per vault-standards List A)
-FILE_TYPES_REQUIRING_TEMPLATE = {
-    "decision": "decision.md",
-    "session": "session.md",
-    "note": "note.md",
-    "doc": "doc.md",
-    "handoff": "handoff.md",
-    "source": "source.md",
-    "iteration": "iteration.md",
-    "release": "release.md",
-    "dream-report": "dream-report.md",
-    "task": "task.md",
-    "memory": "memory.md",
-    # project has 4 variants
-    "project": [
-        "project-brief-coding.md",
-        "project-brief-knowledge.md",
-        "project-brief-plugin.md",
-        "project-brief-tinkerage.md",
-    ],
-    # index has 2 variants
-    "index": ["_index-projects.md", "_index-collection.md"],
-    # vault-home is special
-    "vault-home": "home.md",
-}
-
-DEPRECATED_TAG_PATTERNS = [
-    re.compile(r"#ob/"),
-    re.compile(r"^\s*-\s+ob/", re.MULTILINE),
 ]
 
 
@@ -145,23 +104,6 @@ def validate_harness_parity(r: Result) -> None:
     r.add_pass(name)
 
 
-def validate_templates_tag_schema(r: Result) -> None:
-    name = "templates-tag-schema"
-    if not TEMPLATES.is_dir():
-        r.add_fail(name, f"{TEMPLATES.relative_to(ROOT)} not found")
-        return
-    offenders: list[str] = []
-    for f in TEMPLATES.glob("*.md"):
-        text = f.read_text()
-        for pat in DEPRECATED_TAG_PATTERNS:
-            if pat.search(text):
-                offenders.append(f"{f.relative_to(ROOT)} matches {pat.pattern}")
-    if offenders:
-        r.add_fail(name, "deprecated tags found: " + "; ".join(offenders))
-        return
-    r.add_pass(name)
-
-
 def validate_claude_md_imports_agents(r: Result) -> None:
     name = "claude-md-imports-agents"
     f = TEMPLATES / "CLAUDE.md"
@@ -176,17 +118,53 @@ def validate_claude_md_imports_agents(r: Result) -> None:
     r.add_pass(name)
 
 
-def validate_template_coverage(r: Result) -> None:
-    name = "template-coverage"
-    missing: list[str] = []
-    for file_type, template in FILE_TYPES_REQUIRING_TEMPLATE.items():
-        templates = template if isinstance(template, list) else [template]
-        for t in templates:
-            if not (TEMPLATES / t).exists():
-                missing.append(f"type {file_type!r} → {t}")
-    if missing:
-        r.add_fail(name, "missing templates: " + "; ".join(missing))
+def validate_template_schema_loads(r: Result) -> None:
+    """4. template-schema-loads — the templates parse into exactly the fifteen
+    kinds, and every declared vocabulary is non-empty.
+
+    This is the only validator the schema needs now. The six it replaces all
+    checked that two declarations agreed; with one declaration the question
+    cannot be asked, and the only remaining risk is a template that does not
+    parse or a kind that quietly appears or disappears.
+    """
+    name = "template-schema-loads"
+    expected = {
+        "project", "session", "decision", "task", "note",
+        "doc", "source", "spec", "handoff", "index",
+        "release", "dream", "component", "api", "schema",
+    }
+    try:
+        import _template_schema
+        schema = _template_schema.load_schema(TEMPLATES)
+        errors = _template_schema.schema_errors(TEMPLATES)
+    except Exception as e:
+        r.add_fail(name, f"templates do not parse: {e}")
         return
+    # A file that does not parse no longer raises: it is skipped, so one stray
+    # file cannot take the schema down and silently disable the write gate.
+    # Skipped is not forgiven, though. This is where it gets said out loud.
+    if errors:
+        r.add_fail(name, "template(s) did not parse: " + "; ".join(errors))
+        return
+    got = set(schema)
+    if got != expected:
+        missing, extra = sorted(expected - got), sorted(got - expected)
+        r.add_fail(name, f"kinds drifted - missing {missing}, unexpected {extra}")
+        return
+    # A status field with NO vocabulary is the hole the prover found: the
+    # validator only ever rejected an EMPTY vocabulary, and a missing one is
+    # not empty, so a one-word comment passed while enforcing nothing.
+    for kind, spec in schema.items():
+        fields = spec.get("required", frozenset()) | spec.get("optional", frozenset())
+        if "status" in fields and not spec.get("vocab", {}).get("status"):
+            r.add_fail(name, f"{kind}: status has no vocabulary, so any value "
+                             "would be accepted. Write it as `a | b | c`.")
+            return
+    for kind, spec in schema.items():
+        for field, values in spec.get("vocab", {}).items():
+            if not values:
+                r.add_fail(name, f"{kind}.{field} declares an empty vocabulary")
+                return
     r.add_pass(name)
 
 
@@ -250,69 +228,6 @@ def _gitignore_active_entries(gi: Path) -> set[str]:
 
 
 TIDY_PREVIEW_REQUIRED = ["summary.md", "changes.json"]
-
-
-def validate_tidy_preview_coherence(r: Result) -> None:
-    name = "tidy-preview-coherence"
-    preview = ROOT / ".adjudant-tidy-preview"
-    if not preview.is_dir():
-        r.add_pass(name)
-        return
-    missing = [f for f in TIDY_PREVIEW_REQUIRED if not (preview / f).is_file()]
-    if missing:
-        r.add_fail(name, f"tidy preview dir missing required files: {missing}")
-        return
-    if not (preview / "files").is_dir():
-        r.add_fail(name, "tidy preview dir missing files/ subdir")
-        return
-    r.add_pass(name)
-
-
-def validate_tidy_backup_integrity(r: Result) -> None:
-    name = "tidy-backup-integrity"
-    backup_root = ROOT / ".adjudant-tidy-backup"
-    if not backup_root.is_dir():
-        r.add_pass(name)
-        return
-    for subdir in backup_root.iterdir():
-        if subdir.is_dir():
-            # walk recursively because tidy backup mirrors project structure
-            files = [p for p in subdir.rglob("*") if p.is_file()]
-            if not files:
-                # Empty backup dirs are not failure (could be the initial mkdir before any copy)
-                continue
-            has_legacy = any(p.name.endswith(".legacy") for p in files)
-            if not has_legacy:
-                r.add_fail(name, f"tidy backup dir {subdir.name} has files but no .legacy: {[p.name for p in files]}")
-                return
-    r.add_pass(name)
-
-
-def validate_gitignore_includes_tidy_dirs(r: Result) -> None:
-    name = "gitignore-includes-tidy-dirs"
-    preview = ROOT / ".adjudant-tidy-preview"
-    backup = ROOT / ".adjudant-tidy-backup"
-    if not preview.is_dir() and not backup.is_dir():
-        r.add_pass(name)
-        return
-    gi = ROOT / ".gitignore"
-    if not gi.is_file():
-        # Try parent (when running from inside adjudant/)
-        gi = ROOT.parent / ".gitignore"
-    if not gi.is_file():
-        r.add_fail(name, "tidy directories exist but .gitignore is missing")
-        return
-    entries = _gitignore_active_entries(gi)
-    required = []
-    if preview.is_dir():
-        required.append(".adjudant-tidy-preview/")
-    if backup.is_dir():
-        required.append(".adjudant-tidy-backup/")
-    missing = [e for e in required if e not in entries]
-    if missing:
-        r.add_fail(name, f".gitignore missing entries: {missing}")
-        return
-    r.add_pass(name)
 
 
 def _skill_frontmatter_version(skill_file: Path) -> str:
@@ -397,53 +312,75 @@ def validate_reference_files_exist(r: Result) -> None:
     r.add_pass(name)
 
 
-_NUMBER_WORDS = {
-    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
-    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
-    "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
-}
+# Word to index. render_verb_surfaces owns the language table; this inverts it,
+# so the two never disagree about what "six" means.
+_NUMBER_WORDS = {word: n for n, word
+                 in enumerate(render_verb_surfaces.NUMBER_WORDS) if n}
+
+_VERB_COUNT_RE = re.compile(r"\b(\w+)\s+verbs\b", re.I)
 
 
-def validate_verb_surface_parity(r: Result) -> None:
-    """The doc surfaces that enumerate verbs must all know every verb: each verb
-    name appears in plugin.json's description, the plugin README, and the
-    marketplace entry (when present); and any spelled-out '<N> verbs' count
-    matches command-metadata.json. Catches the 'nine verbs' escape class."""
-    name = "verb-surface-parity"
-    meta_file = _load_command_metadata()
-    try:
-        verbs = [v["name"] for v in json.loads(meta_file.read_text()).get("verbs", [])]
-    except (OSError, json.JSONDecodeError) as e:
-        r.add_fail(name, f"could not read command-metadata.json: {e}")
-        return
+def _miscounted_surfaces(expected: int) -> list[str]:
+    """Spelled-out "<N> verbs" claims in prose no marker covers.
+
+    The generated regions are right by construction; the sentences around them
+    are not. adjudant's README says "with six verbs" in an opening paragraph
+    outside every region, and the marketplace's own AGENTS.md said eleven verbs
+    when there were thirteen. This is the half of the old parity validator that
+    generation does not replace, so it stays.
+    """
     surfaces: dict[str, str] = {}
+    readme = ROOT / "README.md"
+    if readme.is_file():
+        surfaces["README.md"] = readme.read_text()
     pj = ROOT / ".claude-plugin" / "plugin.json"
     if pj.is_file():
         try:
             surfaces["plugin.json"] = json.loads(pj.read_text()).get("description", "")
         except json.JSONDecodeError:
             surfaces["plugin.json"] = ""
-    readme = ROOT / "README.md"
-    if readme.is_file():
-        surfaces["README.md"] = readme.read_text()
     mk = ROOT.parent / ".claude-plugin" / "marketplace.json"
     if mk.is_file():
         try:
-            entry = next((p for p in json.loads(mk.read_text()).get("plugins", []) if p.get("name") == "adjudant"), None)
+            entry = next((p for p in json.loads(mk.read_text()).get("plugins", [])
+                          if p.get("name") == "adjudant"), None)
             if entry is not None:
                 surfaces["marketplace.json"] = entry.get("description", "")
         except json.JSONDecodeError:
             pass
     problems: list[str] = []
     for surface, text in surfaces.items():
-        missing = [v for v in verbs if v not in text]
-        if missing:
-            problems.append(f"{surface} missing verbs: {missing}")
-        for word, n in ((m.group(1).lower(), _NUMBER_WORDS[m.group(1).lower()])
-                        for m in re.finditer(r"\b(\w+)\s+verbs\b", text, re.I)
-                        if m.group(1).lower() in _NUMBER_WORDS):
-            if n != len(verbs):
-                problems.append(f"{surface} says '{word} verbs' but metadata has {len(verbs)}")
+        for m in _VERB_COUNT_RE.finditer(text):
+            word = m.group(1).lower()
+            if word in _NUMBER_WORDS and _NUMBER_WORDS[word] != expected:
+                problems.append(
+                    f"{surface} says '{word} verbs' but this build ships {expected}")
+    return problems
+
+
+def validate_verb_surfaces_generated(r: Result) -> None:
+    """8. verb-surfaces-generated — the ten verb-derived doc surfaces are
+    rendered from command-metadata.json, not typed twice.
+
+    This used to compare copies: it checked that each verb name appeared in
+    plugin.json, the README and the marketplace entry, and that any spelled-out
+    "<N> verbs" agreed. Comparing copies is the weaker test, and it still let
+    the marketplace's own AGENTS.md say eleven verbs when there were thirteen.
+    Now there is one copy, and this fails when it is stale.
+    """
+    name = "verb-surfaces-generated"
+    try:
+        stale = render_verb_surfaces.apply(ROOT, check=True)
+        meta = render_verb_surfaces.load_metadata(ROOT)
+        expected = len(render_verb_surfaces.verbs_for(meta, _profile.audience()))
+    except (render_verb_surfaces.SurfaceError, _profile.ProfileError) as exc:
+        r.add_fail(name, f"could not render: {exc}")
+        return
+    problems: list[str] = []
+    if stale:
+        problems.append("stale surfaces (run scripts/render_verb_surfaces.py): "
+                        + ", ".join(Path(p).name for p in stale))
+    problems.extend(_miscounted_surfaces(expected))
     if problems:
         r.add_fail(name, "; ".join(problems))
         return
@@ -625,32 +562,6 @@ def validate_gitignore_includes_repo_tidy_dirs(r: Result) -> None:
     r.add_pass(name)
 
 
-def validate_status_vocabulary(r: Result) -> None:
-    """23. status-vocabulary — _vault_walk constants, vault-standards, and brief
-    templates all agree on the six-state vocabulary."""
-    name = "status-vocabulary"
-    expected = ("active", "stale", "fridge", "done", "dead", "seed")
-    if PROJECT_STATUS_VALUES != expected:
-        r.add_fail(name, f"_vault_walk.PROJECT_STATUS_VALUES is {PROJECT_STATUS_VALUES}")
-        return
-    vs = (REFERENCE / "vault-standards.md").read_text()
-    missing = [s for s in expected if f"`{s}`" not in vs]
-    if missing:
-        r.add_fail(name, f"vault-standards.md missing states: {missing}")
-        return
-    enum_comment = " | ".join(expected)
-    for t in sorted(TEMPLATES.glob("project-brief-*.md")):
-        text = t.read_text()
-        m = re.search(r"^status:\s*(\S+)", text, re.MULTILINE)
-        if not m or m.group(1) not in expected:
-            r.add_fail(name, f"{t.name}: status value missing or off-vocabulary")
-            return
-        if enum_comment not in text:
-            r.add_fail(name, f"{t.name}: enum comment '{enum_comment}' missing")
-            return
-    r.add_pass(name)
-
-
 _BASE_TOP_KEYS = {"filters", "formulas", "properties", "summaries", "views"}
 _BASE_BARE_PROP_RE = re.compile(r"(?m)^\s+-\s+([a-z_][\w.]*)\s*$")
 _BASE_GROUPBY_PROP_RE = re.compile(r"(?m)^\s+property:\s*([\w.]+)\s*$")
@@ -688,7 +599,7 @@ def _base_template_problems(text: str, legal_props: set) -> list[str]:
 
 
 def validate_base_dashboards(r: Result) -> None:
-    """32. base-dashboards — every shipped .base dashboard template is
+    """27. base-dashboards — every shipped .base dashboard template is
     structurally sound and references only schema-legal properties."""
     name = "base-dashboards"
     src = TEMPLATES / "bases"
@@ -712,41 +623,8 @@ def validate_base_dashboards(r: Result) -> None:
     r.add_pass(name)
 
 
-def validate_freshness_vocabulary(r: Result) -> None:
-    """31. freshness-vocabulary — _vault_walk.FRESHNESS_VALUES, the epistemic
-    optional sets, and vault-standards section 10 agree on the truth-lifetime
-    vocabulary and its home types."""
-    name = "freshness-vocabulary"
-    expected = ("timeless", "dated", "pointer")
-    if FRESHNESS_VALUES != expected:
-        r.add_fail(name, f"_vault_walk.FRESHNESS_VALUES is {FRESHNESS_VALUES}")
-        return
-    vs_path = REFERENCE / "vault-standards.md"
-    if not vs_path.is_file():
-        r.add_fail(name, "reference/vault-standards.md not found")
-        return
-    vs = vs_path.read_text()
-    if "## 10. Epistemic freshness" not in vs:
-        r.add_fail(name, "vault-standards.md missing section 10 (Epistemic freshness)")
-        return
-    missing = [s for s in expected if f"`{s}`" not in vs]
-    if missing:
-        r.add_fail(name, f"vault-standards.md missing freshness values: {missing}")
-        return
-    epistemic = {"freshness", "certainty", "validity_context", "valid_from", "valid_until"}
-    for ftype in ("decision", "note", "doc", "source"):
-        if not epistemic <= FIELD_SCHEMA[ftype]["optional"]:
-            r.add_fail(name, f"FIELD_SCHEMA[{ftype!r}] missing epistemic optional set")
-            return
-    for ftype in ("session", "task", "release", "handoff", "index"):
-        if epistemic & (FIELD_SCHEMA[ftype]["required"] | FIELD_SCHEMA[ftype]["optional"]):
-            r.add_fail(name, f"epistemic fields leaked into system shape {ftype!r}")
-            return
-    r.add_pass(name)
-
-
 def validate_hook_zone_awareness(r: Result) -> None:
-    """30. hook-zone-awareness — no hook may hardcode projects/<slug>.
+    """26. hook-zone-awareness — no hook may hardcode projects/<slug>.
 
     Audit 2026-07-27: every hook built `{vault}/projects/{slug}` directly while
     /adjudant shelf moves projects to `_fridge/` and `_archive/` without
@@ -754,6 +632,12 @@ def validate_hook_zone_awareness(r: Result) -> None:
     the active zone that hooks wrote to forever, while writes to the real
     project were silently dropped. Hooks must resolve via find_project_dir
     (python) or zone_project_dir (bash), and gate the slug first.
+
+    v3: the lifecycle is four named folders (active/paused/finished/archive)
+    probed before the two pre-v3 shapes (bare, _fridge/_archive) still on
+    disk until triage runs. The exemption below already strips a resolver's
+    own function body before scanning for the `projects/<slug>` offender
+    shape, so the four folder names appearing there as literals is not drift.
     """
     name = "hook-zone-awareness"
     scripts = sorted((ROOT / "hooks" / "scripts").glob("*"))
@@ -790,68 +674,6 @@ def validate_hook_zone_awareness(r: Result) -> None:
     if missing_guard:
         r.add_fail(name, f"hooks build paths from an unvalidated slug: {sorted(set(missing_guard))}")
         return
-    r.add_pass(name)
-
-
-def validate_decision_status_vocabulary(r: Result) -> None:
-    """28. decision-status-vocabulary — _vault_walk constants, vault-standards,
-    and the decision template agree on the five-state note vocabulary."""
-    name = "decision-status-vocabulary"
-    expected = ("active", "superseded", "reversed", "implemented", "deferred")
-    if DECISION_STATUS_VALUES != expected:
-        r.add_fail(name, f"_vault_walk.DECISION_STATUS_VALUES is {DECISION_STATUS_VALUES}")
-        return
-    vs_path = REFERENCE / "vault-standards.md"
-    if not vs_path.is_file():
-        r.add_fail(name, "reference/vault-standards.md not found")
-        return
-    vs = vs_path.read_text()
-    missing = [s for s in expected if f"`{s}`" not in vs]
-    if missing:
-        r.add_fail(name, f"vault-standards.md missing states: {missing}")
-        return
-    enum_comment = " | ".join(expected)
-    t = TEMPLATES / "decision.md"
-    if not t.is_file():
-        r.add_fail(name, "templates/decision.md not found")
-        return
-    text = t.read_text()
-    m = re.search(r"^status:\s*(\S+)", text, re.MULTILINE)
-    if not m or m.group(1) not in expected:
-        r.add_fail(name, f"{t.name}: status value missing or off-vocabulary")
-        return
-    if enum_comment not in text:
-        r.add_fail(name, f"{t.name}: enum comment '{enum_comment}' missing")
-        return
-    r.add_pass(name)
-
-
-def validate_template_schema_parity(r: Result) -> None:
-    """29. template-schema-parity — every registered template's frontmatter keys
-    cover its type's required set and stay inside required | optional. The
-    permanent regression guard against retired fields re-entering a template."""
-    name = "template-schema-parity"
-    for ftype, entry in FILE_TYPES_REQUIRING_TEMPLATE.items():
-        spec = FIELD_SCHEMA.get(ftype)
-        if spec is None:
-            r.add_fail(name, f"no FIELD_SCHEMA entry for file type {ftype}")
-            return
-        legal = spec["required"] | spec["optional"]
-        for fname in (entry if isinstance(entry, list) else [entry]):
-            path = TEMPLATES / fname
-            if not path.is_file():
-                r.add_fail(name, f"{fname}: template missing")
-                return
-            fm, _body = parse_frontmatter(path.read_text())
-            keys = set(fm.fields)
-            missing = spec["required"] - keys
-            if missing:
-                r.add_fail(name, f"{fname}: missing required keys {sorted(missing)}")
-                return
-            alien = keys - legal
-            if alien:
-                r.add_fail(name, f"{fname}: keys outside schema {sorted(alien)}")
-                return
     r.add_pass(name)
 
 
@@ -894,7 +716,7 @@ def _parse_voice_lists() -> tuple[list[str], list[str], list[str]]:
 
 
 def validate_voice_lexicon(r: Result) -> None:
-    """24. voice-lexicon: no banned/glazing/shape terms in templates/, SKILL.md,
+    """23. voice-lexicon: no banned/glazing/shape terms in templates/, SKILL.md,
     reference/ (voice.md excepted); no em dashes in templates/.
 
     Fenced blocks and inline code spans are exempt from the lexicon scan:
@@ -941,9 +763,9 @@ def _voice_surfaces() -> list[Path]:
 
 
 def validate_voice_patterns(r: Result) -> None:
-    """33. voice-patterns — the named no-ai-slop sentence patterns.
+    """28. voice-patterns — the named no-ai-slop sentence patterns.
 
-    The lexicon (validator 24) catches words. This catches shapes: superficial
+    The lexicon (validator 23) catches words. This catches shapes: superficial
     `-ing` analysis clauses, binary contrasts, importance puffery, weasel
     attribution, recap endings, rhetorical setups, faux-insight setups and
     throat-clearing. Every pattern in `_voice.SLOP_PATTERNS` was measured
@@ -968,7 +790,7 @@ def validate_voice_patterns(r: Result) -> None:
 
 
 def validate_render_voice(r: Result) -> None:
-    """34. render-voice — the voice contract reaches rendered CLI output.
+    """29. render-voice — the voice contract reaches rendered CLI output.
 
     voice.md has always described the shape of what the verbs print, and
     nothing checked it: the contract bound the docs about the code, not the
@@ -1002,6 +824,38 @@ def validate_render_voice(r: Result) -> None:
         r.add_pass(name)
 
 
+def validate_advisor_wiring(r: Result) -> None:
+    """30. advisor-wiring — the opt-in advisor's three surfaces stay wired.
+
+    The mode's whole design is visible state: a contract doc, a SessionStart
+    banner that names it, and an AGENTS.md marker the toggle stamps. Any one
+    of them silently dropping out leaves a mode that claims to watch and does
+    not — the worst version, since the user opted in expecting eyes.
+
+    The toggle moved into `status.py` when the advisor verb folded into
+    `status`; the mode itself did not move, so all three surfaces still have
+    to agree.
+    """
+    name = "advisor-wiring"
+    problems: list[str] = []
+    doc = ROOT / "skills" / "adjudant" / "reference" / "advisor.md"
+    if not doc.is_file():
+        problems.append("reference/advisor.md missing")
+    hook = ROOT / "hooks" / "scripts" / "session-start.sh"
+    hook_text = hook.read_text() if hook.is_file() else ""
+    if "advisor_knob" not in hook_text or "reference/advisor.md" not in hook_text:
+        problems.append("session-start.sh no longer reads the advisor knob "
+                        "and points the banner at reference/advisor.md")
+    helper = ROOT / "scripts" / "status.py"
+    helper_text = helper.read_text() if helper.is_file() else ""
+    if "AGENTS_MARKER_PREFIX" not in helper_text:
+        problems.append("status.py lost the advisor's AGENTS.md marker")
+    if problems:
+        r.add_fail(name, "; ".join(problems))
+        return
+    r.add_pass(name)
+
+
 BOARD_DATA_RE = re.compile(r"/\*BOARD_DATA_START\*/(.*?)/\*BOARD_DATA_END\*/", re.DOTALL)
 # A subresource fetched from off-machine: src=/href= with a scheme or a
 # protocol-relative //, the same inside a CSS url(), or any @import.
@@ -1015,7 +869,7 @@ BOARD_EMPTY_CATCH_RE = re.compile(r"catch\s*\(\s*\w*\s*\)\s*\{\s*\}")
 
 
 def validate_board_template_markers(r: Result) -> None:
-    """25. board-template-markers: templates/board.html exists, both BOARD_DATA
+    """24. board-template-markers: templates/board.html exists, both BOARD_DATA
     markers are present, the seeded JSON between them parses and carries at
     least one column, the file fetches nothing from off-machine, and it
     swallows no error silently.
@@ -1060,52 +914,11 @@ def validate_board_template_markers(r: Result) -> None:
     r.add_pass(name)
 
 
-def _parse_status_alias_table(vs_text: str) -> set[str]:
-    """Backticked aliases from the first column of the vault-standards
-    `| Alias | Board column |` table. Empty set when the table is absent."""
-    aliases: set[str] = set()
-    lines = vs_text.splitlines()
-    for i, ln in enumerate(lines):
-        if re.match(r"^\|\s*Alias\s*\|\s*Board column\s*\|", ln, re.IGNORECASE):
-            for row in lines[i + 1:]:
-                if not row.strip().startswith("|"):
-                    break
-                first_cell = row.strip().strip("|").split("|")[0]
-                aliases.update(re.findall(r"`([^`]+)`", first_cell))
-            break
-    return aliases
-
-
-def validate_task_status_vocabulary(r: Result) -> None:
-    """26. task-status-vocabulary: every status alias board.py normalizes
-    (STATUS_TO_COLUMN keys) appears in the vault-standards alias table. An
-    alias the board accepts but the doc omits is undocumented schema."""
-    name = "task-status-vocabulary"
-    vs = REFERENCE / "vault-standards.md"
-    if not vs.is_file():
-        r.add_fail(name, "reference/vault-standards.md missing")
-        return
-    try:
-        from board import STATUS_TO_COLUMN
-    except Exception as e:
-        r.add_fail(name, f"could not import board.py: {e}")
-        return
-    documented = _parse_status_alias_table(vs.read_text())
-    if not documented:
-        r.add_fail(name, "no `| Alias | Board column |` table found in vault-standards.md")
-        return
-    undocumented = sorted(set(STATUS_TO_COLUMN) - documented)
-    if undocumented:
-        r.add_fail(name, f"board.py aliases missing from the vault-standards alias table: {undocumented}")
-        return
-    r.add_pass(name)
-
-
 PLUGIN_ROOT_PATH_RE = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}(/[^\"'\s]+)")
 
 
 def validate_hooks_wiring(r: Result) -> None:
-    """27. hooks-wiring: every command in hooks/hooks.json resolves to an
+    """25. hooks-wiring: every command in hooks/hooks.json resolves to an
     existing executable file under hooks/scripts/ after ${CLAUDE_PLUGIN_ROOT}
     substitution. Dead wiring cannot stay green."""
     name = "hooks-wiring"
@@ -1142,21 +955,61 @@ def validate_hooks_wiring(r: Result) -> None:
     r.add_pass(name)
 
 
+def validate_place_zone_parity(r: Result) -> None:
+    """24. place-zone-parity — _place's lifecycle folder set matches _vault_walk.
+
+    _place.py duplicates the four folder names on purpose: a hook in degraded
+    mode imports it without _vault_walk. Every duplicate drifts unless
+    something compares them, which is the lesson the 110-key frontmatter
+    taught.
+    """
+    name = "place-zone-parity"
+    from _place import _LIFECYCLE_FOLDERS
+    if set(_LIFECYCLE_FOLDERS) != set(PROJECT_ZONES):
+        r.add_fail(name, f"_place {sorted(_LIFECYCLE_FOLDERS)} vs "
+                         f"_vault_walk {sorted(PROJECT_ZONES)}")
+        return
+    r.add_pass(name)
+
+
+def validate_standards_structure_parity(r: Result) -> None:
+    """25. standards-structure-parity — the standards doc names every folder.
+
+    The doc used to restate every field rule in prose, which made it a second
+    declaration that drifted from the templates. It now links to them, so the
+    one thing it still states alone is the folder layout — and that is what
+    this holds.
+    """
+    name = "standards-structure-parity"
+    from _place import KIND_FOLDER
+    doc = REFERENCE / "vault-standards.md"
+    if not doc.is_file():
+        r.add_fail(name, "reference/vault-standards.md missing")
+        return
+    text = doc.read_text(errors="replace")
+    missing = [f"{f}/" for f in sorted(set(KIND_FOLDER.values()) - {""})
+               if f"{f}/" not in text]
+    missing += [f"{z}/" for z in PROJECT_ZONES if f"{z}/" not in text]
+    if missing:
+        r.add_fail(name, "vault-standards.md omits: " + ", ".join(missing))
+        return
+    if "required:" in text:
+        r.add_fail(name, "vault-standards.md restates a template's field set")
+        return
+    r.add_pass(name)
+
+
 def main() -> int:
     print(f"adjudant validators — running from {ROOT}")
     r = Result()
     validate_harness_parity(r)
-    validate_templates_tag_schema(r)
     validate_claude_md_imports_agents(r)
-    validate_template_coverage(r)
+    validate_template_schema_loads(r)
     validate_command_metadata_coherence(r)
     validate_plugin_version_set(r)
     validate_version_consistency(r)
-    validate_tidy_preview_coherence(r)
-    validate_tidy_backup_integrity(r)
-    validate_gitignore_includes_tidy_dirs(r)
     validate_reference_files_exist(r)
-    validate_verb_surface_parity(r)
+    validate_verb_surfaces_generated(r)
     validate_reference_doc_links(r)
     validate_verb_description_length(r)
     validate_repo_helper_parity(r)
@@ -1164,18 +1017,16 @@ def main() -> int:
     validate_repo_tidy_preview_coherence(r)
     validate_repo_tidy_backup_integrity(r)
     validate_gitignore_includes_repo_tidy_dirs(r)
-    validate_status_vocabulary(r)
     validate_voice_lexicon(r)
     validate_board_template_markers(r)
-    validate_task_status_vocabulary(r)
     validate_hooks_wiring(r)
-    validate_decision_status_vocabulary(r)
-    validate_template_schema_parity(r)
     validate_hook_zone_awareness(r)
-    validate_freshness_vocabulary(r)
     validate_base_dashboards(r)
     validate_voice_patterns(r)
     validate_render_voice(r)
+    validate_advisor_wiring(r)
+    validate_place_zone_parity(r)
+    validate_standards_structure_parity(r)
     return r.report()
 
 
