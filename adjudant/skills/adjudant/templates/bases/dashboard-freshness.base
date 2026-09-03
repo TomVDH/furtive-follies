@@ -2,7 +2,8 @@ filters:
   or:
     - file.inFolder("projects/{slug}/notes")
     - file.inFolder("projects/{slug}/decisions")
-    - file.inFolder("projects/{slug}/references")
+    - file.inFolder("projects/{slug}/docs")
+    - file.inFolder("projects/{slug}/sources")
 views:
   - type: table
     name: Longest unverified

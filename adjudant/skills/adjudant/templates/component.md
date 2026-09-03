@@ -4,7 +4,10 @@ created: {YYYY-MM-DD}
 updated: {YYYY-MM-DD}
 verified: {YYYY-MM-DD}
 verified_by: read                 # tested | read | docs
-source:                           # optional
+source:                           # optional: the script that writes this page.
+                                  # A page with one is machine-owned: adjudant
+                                  # never cleans or nags it, and its filename ends
+                                  # in -generated, beside the hand-written half.
 ---
 
 # {name} · {surface}

@@ -74,6 +74,7 @@ For specialized content types, load the matching reference on demand:
 
 <!-- VERBS:CONTENT-REFS:START -->
 - `reference/content-bases.md` — `.base` files
+- `reference/content-technical.md` — technical pages (api, schema, component, spec, source) and procedures
 - `reference/content-markdown.md` — Obsidian-flavoured markdown (callouts, embeds, wikilinks)
 - `reference/content-clipper.md` — Web Clipper templates
 - `reference/content-cli.md` — Obsidian CLI

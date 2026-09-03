@@ -562,10 +562,17 @@ def detect_unacted_decisions(
     return out
 
 
+# The stub check covered note, doc and decision, so a three-line api page was
+# invisible to every tier. The dev kinds are exactly the pages someone starts
+# and does not finish.
+_STUB_KINDS = ("note", "doc", "decision", "api", "schema", "component",
+               "spec", "source", "release")
+
+
 def detect_documentation_gaps(files: list[VaultFile], today: _dt.date) -> list[dict]:
     """Under-documentation, the inverse of staleness. Three kinds:
       - session-without-decision: a session with real work but no decision on its date
-      - stub: a note/doc/decision with < 3 substantive body lines
+      - stub: a note, doc, decision or dev page with < 3 substantive body lines
       - brief-missing-sections: a brief missing required sections for its project_type
     """
     gaps: list[dict] = []
@@ -582,9 +589,12 @@ def detect_documentation_gaps(files: list[VaultFile], today: _dt.date) -> list[d
                 })
 
     for f in files:
-        if f.file_type not in ("note", "doc", "decision"):
+        if f.file_type not in _STUB_KINDS:
             continue
         if f.rel_path.name == "_index.md":
+            continue
+        # A page a script rewrites every run is as long as the script chose.
+        if f.frontmatter.fields.get("source"):
             continue
         # templates/ holds intentionally-skeletal scaffolds — not under-documented content.
         if "templates" in f.rel_path.parts:

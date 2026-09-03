@@ -1,0 +1,31 @@
+filters:
+  or:
+    - file.inFolder("projects/{slug}/api")
+    - file.inFolder("projects/{slug}/schemas")
+    - file.inFolder("projects/{slug}/components")
+    - file.inFolder("projects/{slug}/specs")
+views:
+  - type: table
+    name: Least confirmed first
+    sort:
+      - property: verified
+        direction: ASC
+    order:
+      - file.name
+      - type
+      - verified
+      - verified_by
+      - status
+      - source
+  - type: table
+    name: Taken on a vendor's word
+    filters:
+      and:
+        - 'verified_by == "docs"'
+    sort:
+      - property: verified
+        direction: ASC
+    order:
+      - file.name
+      - type
+      - verified

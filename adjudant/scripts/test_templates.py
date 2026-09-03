@@ -28,6 +28,9 @@ LEGAL_FIELDS = {
     "type", "created", "updated", "session", "status",
     "verified", "verified_by", "source", "superseded_by",
     "version", "spec", "category", "related",
+    # A runbook, glossary, standard and bug log are all a `doc`. This is what
+    # tells them apart, and what the retired `runbook` tag used to carry.
+    "doc_kind",
 }
 
 _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*:")

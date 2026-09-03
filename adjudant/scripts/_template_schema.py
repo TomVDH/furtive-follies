@@ -249,3 +249,12 @@ STATUS_VALUES_FOR_TYPE: dict[str, tuple[str, ...]] = {
 HEADINGS_FOR_TYPE: dict[str, tuple[str, ...]] = {
     kind: spec["headings"] for kind, spec in _SCHEMA.items()
 }
+
+# Every vocabulary a template declares, by kind then field. STATUS_VALUES_FOR_TYPE
+# above exported one field and dropped the rest, so `verified_by: banana` passed
+# the write gate, status and clean while the template plainly said
+# `tested | read | docs`. A parsed vocabulary nothing reads is a rule that does
+# not exist.
+VOCAB_FOR_TYPE: dict[str, dict[str, tuple[str, ...]]] = {
+    kind: dict(spec.get("vocab", {})) for kind, spec in _SCHEMA.items()
+}

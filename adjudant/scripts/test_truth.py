@@ -78,13 +78,19 @@ class TestReportShape(unittest.TestCase):
             self.assertEqual(report["findings"], [])
 
     def test_a_generated_page_is_never_nagged_about(self):
+        # `source:` must name a script that is really there. It used to be
+        # enough to name anything, which let a `source: confluence` citation
+        # exempt a hand-written page from every check.
         with tempfile.TemporaryDirectory() as tmp:
-            pdir = _project(Path(tmp))
+            root = Path(tmp)
+            pdir = _project(root)
+            code = root / "code"
+            _w(code / "build-module-inventory.py", "#\n")
             _w(pdir / "components" / "gen.md",
                "---\ntype: component\nupdated: 2026-01-01\n"
                "source: build-module-inventory.py\n---\n\n"
                "See [[demo/notes/ghost]].\n")
-            report = truth_report(pdir, vault=Path(tmp) / "vault",
+            report = truth_report(pdir, vault=root / "vault", code_root=code,
                                   today=date(2026, 9, 1))
             self.assertNotIn("broken-wikilink", _kinds(report))
 
@@ -171,7 +177,12 @@ class TestNamesSomethingThatIsNotThere(unittest.TestCase):
                "---\ntype: task\ncreated: 2026-08-01\nupdated: 2026-08-01\n"
                "status: doing\nspec: [[demo/specs/spec-018|SPEC-018]]\n---\n\n# T\n")
             report = truth_report(pdir, vault=root / "vault", today=date(2026, 9, 1))
-            self.assertEqual(report["findings"], [])
+            # Scoped to the link kinds. These fixtures are minimal on purpose
+            # and carry no body headings, which is its own finding now.
+            self.assertEqual(
+                [f for f in report["findings"]
+                 if "link" in f["kind"] or "spec" in f["kind"]
+                 or "superseded" in f["kind"]], [])
 
     def test_an_unquoted_frontmatter_link_that_is_broken_is_still_reported(self):
         # The other direction, and the one that matters: reading the unquoted
@@ -186,8 +197,12 @@ class TestNamesSomethingThatIsNotThere(unittest.TestCase):
                "---\ntype: task\ncreated: 2026-08-01\nupdated: 2026-08-01\n"
                "status: doing\nspec: [[demo/specs/spec-999-nope|SPEC-999]]\n---\n\n# T\n")
             report = truth_report(pdir, vault=root / "vault", today=date(2026, 9, 1))
-            self.assertEqual(sorted(_kinds(report)),
-                             ["superseded-target-missing", "task-spec-missing"])
+            # The two link findings are the point. This fixture writes minimal
+            # bodies, so the heading detector speaks too; it is not what this
+            # test is about.
+            self.assertEqual(
+                sorted(k for k in _kinds(report) if k != "template-headings-missing"),
+                ["superseded-target-missing", "task-spec-missing"])
             detail = [f["detail"] for f in report["findings"]
                       if f["kind"] == "superseded-target-missing"][0]
             self.assertIn("demo/decisions/nope", detail)
@@ -209,7 +224,12 @@ class TestNamesSomethingThatIsNotThere(unittest.TestCase):
                    f"updated: {day}\nstatus: active\n"
                    f"superseded_by:{value}\n---\n\n# D\n")
             report = truth_report(pdir, vault=root / "vault", today=date(2026, 9, 1))
-            self.assertEqual(report["findings"], [])
+            # Scoped to the link kinds. These fixtures are minimal on purpose
+            # and carry no body headings, which is its own finding now.
+            self.assertEqual(
+                [f for f in report["findings"]
+                 if "link" in f["kind"] or "spec" in f["kind"]
+                 or "superseded" in f["kind"]], [])
 
 
     def test_a_brief_repo_path_that_no_longer_resolves(self):
@@ -254,8 +274,10 @@ class TestNamesSomethingThatIsNotThere(unittest.TestCase):
                        "verified": "2026-09-01"},
                       {"Project Name": "Demo"}))
             report = truth_report(pdir, vault=root / "vault", today=date(2026, 9, 1))
-            self.assertEqual(report["findings"], [],
-                             "a project reported a lie on the day it was created")
+            self.assertEqual(
+                [f for f in report["findings"]
+                 if f["kind"] != "template-headings-missing"], [],
+                "a project reported a lie on the day it was created")
 
     def test_the_repo_verdict_does_not_depend_on_where_you_ran_it(self):
         # `acme/toolkit` is a plausible answer to "path or url" and is not
@@ -799,6 +821,200 @@ class TestAgentsReachDetector(unittest.TestCase):
             report = truth_report(pdir, vault=root / "vault", code_root=code,
                                   today=date(2026, 9, 1))
             self.assertNotIn("agents-missing-path", _kinds(report))
+
+
+# ============================================================
+# Headings: the promised check that never shipped
+# ============================================================
+
+_API_FULL = ("---\ntype: api\ncreated: 2026-09-01\nupdated: 2026-09-01\n"
+             "verified: 2026-09-01\nverified_by: tested\n---\n\n# Contacts\n\n"
+             "One line.\n\n## Endpoints\n\n| Method | Path | Scope |\n|---|---|---|\n\n"
+             "## Quirks\n\nx\n\n## Helpers\n\nx\n\n## See also\n\nx\n")
+_API_NO_QUIRKS = _API_FULL.replace("## Quirks\n\nx\n\n", "")
+
+
+class TestTemplateHeadings(unittest.TestCase):
+    """HEADINGS_FOR_TYPE is parsed from every template and, until this
+    detector, read by nothing but its own tests. templates/README.md said
+    `check` reported a missing heading. It did not.
+
+    Reporting is PER KIND, not per file. Measured on the real project, a
+    per-file check flags 221 of 292 files, because the corpus writes
+    `## Context` where the decision template asks `## Why`. Four lines is a
+    report; 221 is the noise this redesign exists to remove.
+    """
+
+    def _report(self, tmp):
+        return truth_report(tmp / "vault" / "projects" / "active" / "demo",
+                            vault=tmp / "vault", today=date(2026, 9, 1))
+
+    def test_one_finding_per_kind_naming_heading_and_count(self):
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            pdir = _project(tmp)
+            _w(pdir / "api" / "contacts.md", _API_FULL)
+            _w(pdir / "api" / "deals.md", _API_NO_QUIRKS)
+            hits = [f for f in self._report(tmp)["findings"]
+                    if f["kind"] == "template-headings-missing"]
+            self.assertEqual(len(hits), 1, hits)
+            self.assertEqual(hits[0]["band"], "going-stale")
+            self.assertEqual(hits[0]["file"], "", "a per-kind finding is project-level")
+            self.assertIn("1 of 2 api", hits[0]["detail"])
+            self.assertIn("Quirks", hits[0]["detail"])
+
+    def test_complete_pages_report_nothing(self):
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            pdir = _project(tmp)
+            _w(pdir / "api" / "contacts.md", _API_FULL)
+            _w(pdir / "api" / "deals.md", _API_FULL)
+            self.assertNotIn("template-headings-missing",
+                             _kinds(self._report(tmp)))
+
+    def test_a_kind_with_no_required_headings_is_never_reported(self):
+        # doc's only heading is a placeholder; its tuple is empty by design.
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            pdir = _project(tmp)
+            _w(pdir / "docs" / "thin.md",
+               "---\ntype: doc\ncreated: 2026-09-01\nupdated: 2026-09-01\n"
+               "verified: 2026-09-01\nverified_by: read\n---\n\n# Thin\n")
+            self.assertNotIn("template-headings-missing",
+                             _kinds(self._report(tmp)))
+
+    def test_extra_headings_are_not_a_finding(self):
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            pdir = _project(tmp)
+            _w(pdir / "api" / "contacts.md",
+               _API_FULL + "\n## Two traps\n\nx\n\n## Publish state machine\n\nx\n")
+            self.assertNotIn("template-headings-missing",
+                             _kinds(self._report(tmp)))
+
+    def test_a_generated_page_is_never_nagged_about_headings(self):
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            pdir = _project(tmp)
+            code = tmp / "code"
+            _w(code / "build-inventory.py", "#\n")
+            _w(pdir / "components" / "modules" / "button-generated.md",
+               "---\ntype: component\ncreated: 2026-09-01\nupdated: 2026-09-01\n"
+               "verified: 2026-09-01\nverified_by: read\nsource: build-inventory.py\n"
+               "---\n\n# button\n\n![[button]]\n")
+            report = truth_report(pdir, vault=tmp / "vault", code_root=code,
+                                  today=date(2026, 9, 1))
+            self.assertNotIn("template-headings-missing", _kinds(report))
+
+
+# ============================================================
+# Generated output: source: means a script, not a citation
+# ============================================================
+
+class TestGeneratedGate(unittest.TestCase):
+    """Any `source:` value used to exempt a page from every other detector.
+    A `source` page whose `source: confluence` is provenance got no staleness
+    check, no broken-link check, nothing. Generated means a script that
+    resolves to a real file; everything else is a page like any other.
+    """
+
+    def test_a_provenance_source_keeps_its_checks(self):
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            pdir = _project(tmp)
+            _w(pdir / "sources" / "runbook.md",
+               "---\ntype: source\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
+               "verified: 2026-01-01\nverified_by: docs\nsource: confluence\n"
+               "---\n\n# Runbook\n\nSee [[demo/notes/ghost]].\n")
+            report = truth_report(pdir, vault=tmp / "vault", today=date(2026, 9, 1))
+            kinds = _kinds(report)
+            self.assertIn("broken-wikilink", kinds, "provenance page escaped the link check")
+            self.assertIn("verified-stale", kinds, "provenance page escaped the date check")
+
+    def test_a_real_script_source_is_still_exempt(self):
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            pdir = _project(tmp)
+            code = tmp / "code"
+            _w(code / "build-inventory.py", "#\n")
+            _w(pdir / "components" / "modules" / "button-generated.md",
+               "---\ntype: component\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
+               "verified: 2026-01-01\nverified_by: read\nsource: build-inventory.py\n"
+               "---\n\n# button\n\nSee [[demo/notes/ghost]].\n")
+            report = truth_report(pdir, vault=tmp / "vault", code_root=code,
+                                  today=date(2026, 9, 1))
+            self.assertNotIn("broken-wikilink", _kinds(report),
+                             "a generated page was nagged about its links")
+
+    def test_an_orphan_named_by_its_manifest_is_reported(self):
+        # The generator writes a manifest of what it produced this run. A page
+        # that claims the script and is not on the list was produced by an
+        # earlier run for an asset that no longer exists. mtime cannot tell
+        # you this: iCloud sync touches every file.
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            pdir = _project(tmp)
+            code = tmp / "code"
+            _w(code / "build-inventory.py", "#\n")
+            fm = ("---\ntype: component\ncreated: 2026-09-01\nupdated: 2026-09-01\n"
+                  "verified: 2026-09-01\nverified_by: read\nsource: build-inventory.py\n"
+                  "---\n\n# x\n")
+            _w(pdir / "components" / "modules" / "button-generated.md", fm)
+            _w(pdir / "components" / "modules" / "hero-generated.md", fm)
+            _w(pdir / "components" / "modules" / ".build-inventory.py.manifest",
+               "button-generated\n")
+            report = truth_report(pdir, vault=tmp / "vault", code_root=code,
+                                  today=date(2026, 9, 1))
+            hits = [f for f in report["findings"] if f["kind"] == "generated-page-orphaned"]
+            self.assertEqual([h["file"] for h in hits],
+                             ["components/modules/hero-generated.md"])
+            self.assertEqual(hits[0]["band"], "going-stale")
+
+    def test_no_manifest_means_silence(self):
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            pdir = _project(tmp)
+            code = tmp / "code"
+            _w(code / "build-inventory.py", "#\n")
+            _w(pdir / "components" / "modules" / "hero-generated.md",
+               "---\ntype: component\ncreated: 2026-09-01\nupdated: 2026-09-01\n"
+               "verified: 2026-09-01\nverified_by: read\nsource: build-inventory.py\n"
+               "---\n\n# x\n")
+            report = truth_report(pdir, vault=tmp / "vault", code_root=code,
+                                  today=date(2026, 9, 1))
+            self.assertNotIn("generated-page-orphaned", _kinds(report))
+
+
+# ============================================================
+# verified_by: parsed, and until now enforced on nothing
+# ============================================================
+
+class TestVerifiedByVocabulary(unittest.TestCase):
+
+    def test_an_off_vocabulary_verified_by_is_reported_not_rewritten(self):
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            pdir = _project(tmp)
+            page = _w(pdir / "api" / "contacts.md",
+                      _API_FULL.replace("verified_by: tested", "verified_by: banana"))
+            before = page.read_text()
+            report = truth_report(pdir, vault=tmp / "vault", today=date(2026, 9, 1))
+            hits = [f for f in report["findings"] if f["kind"] == "verified-by-off-vocabulary"]
+            self.assertEqual(len(hits), 1)
+            self.assertEqual(hits[0]["band"], "wrong-now")
+            self.assertIn("banana", hits[0]["detail"])
+            self.assertEqual(page.read_text(), before, "reported, never coerced")
+
+    def test_the_three_legal_values_are_silent(self):
+        with tempfile.TemporaryDirectory() as t:
+            tmp = Path(t)
+            pdir = _project(tmp)
+            for i, v in enumerate(("tested", "read", "docs")):
+                _w(pdir / "api" / f"p{i}.md",
+                   _API_FULL.replace("verified_by: tested", f"verified_by: {v}"))
+            self.assertNotIn("verified-by-off-vocabulary",
+                             _kinds(truth_report(pdir, vault=tmp / "vault",
+                                                 today=date(2026, 9, 1))))
 
 
 if __name__ == "__main__":

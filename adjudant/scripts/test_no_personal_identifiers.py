@@ -76,6 +76,10 @@ ALLOWLIST = {
     "GUIDE.md",
 }
 
+# A run of seven or more digits standing alone. An account, portal or object
+# id looks like this; a semantic version, a date and a decimal do not.
+LIVE_ID_RE = re.compile(r"(?<![\d.\-])\d{7,}(?![\d.])")
+
 SKIP_DIRS = {"__pycache__", ".pytest_cache", ".git"}
 # Nothing here is a suffix list. An eight-entry allowlist of extensions left
 # the four `.base` dashboard templates unscanned, and they ship to the public
@@ -210,6 +214,56 @@ class TestNoPersonalIdentifiers(unittest.TestCase):
             self.assertFalse(any("_leakcheck.bin" in f for f in leaks()))
         finally:
             planted.unlink()
+
+
+class TestNoLiveIdentifiersInShippedProse(unittest.TestCase):
+    """A denylist of names cannot catch a number.
+
+    Writing the technical-authoring reference, I copied a real example out of
+    a project vault and shipped a live account id, an object id and its
+    fully-qualified name into a public plugin. Every name-based check passed:
+    the terms were not on the list, because a list of names never contains the
+    digits nobody thought to add.
+
+    So this is a SHAPE rule, and it is deliberately narrow. Code and tests
+    carry long digit runs for good reasons -- a digit alphabet, a timestamp
+    stem, milliseconds in a day -- so it looks only at shipped prose, outside
+    fenced code. Measured over the whole plugin: 9 legitimate long runs in
+    code, 0 in prose.
+    """
+
+    def _prose_lines(self, path):
+        fence = False
+        for n, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
+            if line.lstrip().startswith("```"):
+                fence = not fence
+                continue
+            if not fence:
+                yield n, line
+
+    def test_no_long_numeric_id_in_shipped_prose(self):
+        offenders = []
+        for path in sorted((PLUGIN_ROOT / "skills").rglob("*.md")):
+            for n, line in self._prose_lines(path):
+                for m in LIVE_ID_RE.findall(line):
+                    offenders.append(f"{path.relative_to(PLUGIN_ROOT)}:{n}: {m}")
+        self.assertEqual(offenders, [],
+                         "a live account or object id reached shipped prose:\n  "
+                         + "\n  ".join(offenders))
+
+    def test_the_rule_catches_a_planted_id(self):
+        planted = PLUGIN_ROOT / "skills" / "adjudant" / "reference" / "_idcheck.md"
+        planted.write_text("Portal: 50629780 and object 2-62057387.\n")
+        try:
+            found = [m for _, line in self._prose_lines(planted)
+                     for m in LIVE_ID_RE.findall(line)]
+            self.assertIn("50629780", found)
+        finally:
+            planted.unlink()
+
+    def test_a_date_stem_and_a_constant_are_not_ids(self):
+        self.assertEqual(LIVE_ID_RE.findall("built 2026-09-01 in 1.2.3"), [])
+        self.assertEqual(LIVE_ID_RE.findall("version 10.20.30"), [])
 
 
 if __name__ == "__main__":

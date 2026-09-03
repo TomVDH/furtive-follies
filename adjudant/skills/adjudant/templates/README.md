@@ -78,8 +78,8 @@ Braces mark a placeholder. `{YYYY-MM-DD}` in the frontmatter and
 replaces, and both are what `_render` substitutes when a script writes the note
 instead.
 
-`check` reports a file missing a required heading. It does not read the prose
-under one.
+`status` reports a kind whose files are missing a required heading, one line
+per kind rather than one per file, and it does not read the prose under one.
 
 ## Rules
 

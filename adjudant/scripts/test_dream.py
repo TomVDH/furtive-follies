@@ -922,6 +922,34 @@ class TestSupersessionNeedsASharedSubject(unittest.TestCase):
                 "five decisions citing one hub must not yield ten pairs")
 
 
+class TestStubsCoverTheDevKinds(unittest.TestCase):
+    """The stub detector covered note, doc and decision, so a three-line api
+    page was invisible to every tier. The dev kinds are exactly the pages
+    someone starts and does not finish.
+    """
+
+    def test_a_three_line_api_page_is_a_stub(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_file(root / "api" / "contacts.md",
+                        "---\ntype: api\ncreated: 2026-09-01\nupdated: 2026-09-01\n"
+                        "verified: 2026-09-01\nverified_by: read\n---\n\n# Contacts\n")
+            out = detect_documentation_gaps(list(walk_project(root)), TODAY)
+            self.assertTrue(any(g["kind"] == "stub" and "contacts" in g["file"]
+                                for g in out), out)
+
+    def test_a_generated_page_is_not_a_stub(self):
+        # Its script rewrites it every run; a short one is the script's choice.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_file(root / "components" / "modules" / "button-generated.md",
+                        "---\ntype: component\ncreated: 2026-09-01\nupdated: 2026-09-01\n"
+                        "verified: 2026-09-01\nverified_by: read\nsource: build.py\n"
+                        "---\n\n# button\n\n![[button]]\n")
+            out = detect_documentation_gaps(list(walk_project(root)), TODAY)
+            self.assertFalse(any(g["kind"] == "stub" for g in out), out)
+
+
 if __name__ == "__main__":
     unittest.main()
 

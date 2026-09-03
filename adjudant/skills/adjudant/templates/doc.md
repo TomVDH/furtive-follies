@@ -4,6 +4,7 @@ created: {YYYY-MM-DD}
 updated: {YYYY-MM-DD}
 verified: {YYYY-MM-DD}
 verified_by: read                 # tested | read | docs
+doc_kind:                         # optional: runbook | glossary | standard | bug-log
 source:                           # optional
 session:                          # optional
 ---

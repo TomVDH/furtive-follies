@@ -11,6 +11,7 @@ import unittest
 from pathlib import Path
 
 from _template_schema import (
+    VOCAB_FOR_TYPE,
     schema_errors,
     FIELD_SCHEMA,
     HEADINGS_FOR_TYPE,
@@ -222,6 +223,29 @@ class TestShippedSchema(unittest.TestCase):
 
             after = load_schema(tmp)
             self.assertNotIn("status", after["decision"]["required"])
+
+
+class TestEveryVocabularyIsExported(unittest.TestCase):
+    """STATUS_VALUES_FOR_TYPE exported one vocabulary and dropped the rest, so
+    `verified_by: banana` passed everything while the template plainly said
+    `tested | read | docs`. A parsed vocabulary nothing reads is a rule that
+    does not exist.
+    """
+
+    def test_verified_by_is_exported_for_every_kind_that_declares_it(self):
+        for kind in ("api", "schema", "component", "spec", "doc", "source"):
+            self.assertEqual(VOCAB_FOR_TYPE[kind]["verified_by"],
+                             ("tested", "read", "docs"), kind)
+
+    def test_status_is_in_the_same_map(self):
+        self.assertEqual(VOCAB_FOR_TYPE["spec"]["status"],
+                         ("draft", "agreed", "superseded"))
+
+    def test_doc_kind_is_a_parsed_vocabulary(self):
+        self.assertEqual(VOCAB_FOR_TYPE["doc"]["doc_kind"],
+                         ("runbook", "glossary", "standard", "bug-log"))
+        self.assertIn("doc_kind", FIELD_SCHEMA["doc"]["optional"])
+        self.assertNotIn("doc_kind", FIELD_SCHEMA["doc"]["required"])
 
 
 if __name__ == "__main__":

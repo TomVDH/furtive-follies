@@ -55,6 +55,11 @@
       "audience": "all"
     },
     {
+      "path": "reference/content-technical.md",
+      "label": "technical pages (api, schema, component, spec, source) and procedures",
+      "audience": "all"
+    },
+    {
       "path": "reference/content-markdown.md",
       "label": "Obsidian-flavoured markdown (callouts, embeds, wikilinks)",
       "audience": "all"

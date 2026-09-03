@@ -261,5 +261,31 @@ class TestLinkAcceptsEveryFormTheIndexResolves(unittest.TestCase):
             self.assertIn("[[alpha/notes/a]]", built)
 
 
+class TestGeneratedSuffix(unittest.TestCase):
+    """The machine half of a component sits beside the sidecar with a suffix,
+    not in a `_generated/` drawer. A drawer is a second grouping level and §1
+    forbids it; a suffix keeps the halves together with one. A dot would fail
+    the kebab rule, hence the hyphen.
+    """
+
+    def test_the_generated_half_places_beside_the_sidecar(self):
+        with tempfile.TemporaryDirectory() as t:
+            pdir = Path(t)
+            side = place("component", pdir, {"slug": "button", "group": "modules"})
+            gen = place("component", pdir, {"slug": "button-generated", "group": "modules"})
+            self.assertEqual(side.parent, gen.parent)
+            self.assertEqual(gen.name, "button-generated.md")
+
+    def test_a_dotted_stem_is_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            with self.assertRaises(ValueError):
+                place("component", Path(t), {"slug": "button.generated", "group": "modules"})
+
+    def test_a_generated_drawer_is_a_second_level_and_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            with self.assertRaises(ValueError):
+                place("component", Path(t), {"slug": "button", "group": "modules/_generated"})
+
+
 if __name__ == "__main__":
     unittest.main()

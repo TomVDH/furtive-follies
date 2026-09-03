@@ -27,7 +27,7 @@ Public API:
 
 Note schema, re-exported from _template_schema (the templates ARE the schema;
 nothing here declares a second copy):
-    FIELD_SCHEMA, STATUS_VALUES_FOR_TYPE, HEADINGS_FOR_TYPE
+    FIELD_SCHEMA, STATUS_VALUES_FOR_TYPE, HEADINGS_FOR_TYPE, VOCAB_FOR_TYPE
 
 CLI smoke-test mode (read-only, the module never writes):
     python3 _vault_walk.py --project-dir PATH [--vault-dir PATH] [--json]
@@ -56,6 +56,7 @@ from _template_schema import (
     FIELD_SCHEMA,
     HEADINGS_FOR_TYPE,
     STATUS_VALUES_FOR_TYPE,
+    VOCAB_FOR_TYPE,
 )
 
 

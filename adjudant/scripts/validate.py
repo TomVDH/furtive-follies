@@ -609,7 +609,8 @@ def validate_base_dashboards(r: Result) -> None:
         return
     files = sorted(src.glob("dashboard-*.base"))
     expected = {"dashboard-sessions.base", "dashboard-decisions.base",
-                "dashboard-tasks.base", "dashboard-freshness.base"}
+                "dashboard-tasks.base", "dashboard-freshness.base",
+                "dashboard-technical.base"}
     if {f.name for f in files} != expected:
         r.add_fail(name, f"expected {sorted(expected)}, found {[f.name for f in files]}")
         return

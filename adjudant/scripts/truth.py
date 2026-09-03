@@ -28,7 +28,9 @@ from _agents_reach import AGENTS_STALE_COMMITS, agents_reach
 from _vault_walk import (
     ALIAS_SEP_RE as _ALIAS_SEP_RE,
     FIELD_SCHEMA,
+    HEADINGS_FOR_TYPE,
     STATUS_VALUES_FOR_TYPE,
+    VOCAB_FOR_TYPE,
     VaultFile,
     build_vault_index,
     is_checkable_wikilink,
@@ -78,9 +80,39 @@ class _Ctx:
         return str(vf.rel_path)
 
 
-def _is_generated(vf: "VaultFile") -> bool:
-    """True when another script owns and overwrites this file every run."""
-    return bool(vf.frontmatter.fields.get("source"))
+def _source_script(vf: "VaultFile", roots: tuple) -> Optional[Path]:
+    """The script a page's `source:` names, when it is one on disk.
+
+    A `source:` value that does not resolve to a file is provenance, not
+    ownership: `confluence` says where a page came from, not what rewrites it.
+    """
+    raw = vf.frontmatter.fields.get("source")
+    if raw is None:
+        return None
+    value = str(raw).strip().strip('"').strip("'")
+    if not value or "://" in value:
+        return None
+    for base in roots:
+        if base is None:
+            continue
+        try:
+            cand = (base / value).expanduser()
+        except (TypeError, ValueError):
+            continue
+        if cand.is_file():
+            return cand
+    return None
+
+
+def _is_generated(vf: "VaultFile", roots: tuple = ()) -> bool:
+    """True when another script owns and overwrites this file every run.
+
+    This used to be `bool(source)`, which exempted a page from every other
+    detector for carrying ANY value. A `source` page whose `source: confluence`
+    is a citation got no staleness check, no broken-link check, nothing.
+    Generated means a script that is really there.
+    """
+    return _source_script(vf, roots) is not None
 
 
 def _wikilink_target(value: Any) -> Optional[str]:
@@ -697,6 +729,103 @@ def _check_agents_reach(ctx: _Ctx) -> Iterator[Finding]:
 # is the tool spending the same hour twice. A convention is either enforced by
 # `place()` at write time or it is not enforced, and reporting one nobody
 # asked about is how a report becomes something people stop reading.
+
+# ============================================================
+# Template headings, verified_by, and orphaned generated pages
+# ============================================================
+
+_H2_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
+
+
+def _check_template_headings(ctx: _Ctx) -> Iterator[Finding]:
+    """Files missing a heading their template requires. One finding PER KIND.
+
+    HEADINGS_FOR_TYPE is parsed from every template and, until this detector,
+    read by nothing but its own tests. The templates README said check
+    reported a missing heading; it did not.
+
+    Per kind, not per file, and the reason is measured: on the real project a
+    per-file check flags 221 of 292 files, because the corpus writes
+    `## Context` where the decision template asks `## Why`. Four lines is a
+    report a person reads; 221 is the noise this redesign exists to remove.
+    Extra headings are never mentioned: a page carrying more than the template
+    asked for was written well.
+    """
+    for kind, required in sorted(HEADINGS_FOR_TYPE.items()):
+        if not required:
+            continue
+        files = ctx.by_type.get(kind, [])
+        if not files:
+            continue
+        missing_by_heading: dict[str, int] = {}
+        flagged = 0
+        for vf in files:
+            have = {h.strip().lower() for h in _H2_RE.findall(vf.body)}
+            gone = [h for h in required if h.lower() not in have]
+            if gone:
+                flagged += 1
+                for h in gone:
+                    missing_by_heading[h] = missing_by_heading.get(h, 0) + 1
+        if not flagged:
+            continue
+        worst = sorted(missing_by_heading.items(), key=lambda kv: (-kv[1], kv[0]))
+        named = ", ".join(f"`## {h}` ({n})" for h, n in worst[:3])
+        yield Finding("going-stale", "template-headings-missing", "",
+                      f"{flagged} of {len(files)} {kind} pages lack a required "
+                      f"heading: {named}")
+
+
+def _check_verified_by_off_vocabulary(ctx: _Ctx) -> Iterator[Finding]:
+    """A `verified_by:` outside `tested | read | docs`. Reported, never coerced.
+
+    The field is the one that separates a live probe from a vendor's word, and
+    its vocabulary was parsed from the template and enforced on nothing.
+    """
+    for vf in ctx.files:
+        legal = VOCAB_FOR_TYPE.get(vf.file_type or "", {}).get("verified_by")
+        if not legal:
+            continue
+        raw = ctx.fields(vf).get("verified_by")
+        if raw is None:
+            continue
+        value = str(raw).strip()
+        if value in legal:
+            continue
+        yield Finding("wrong-now", "verified-by-off-vocabulary", ctx.rel(vf),
+                      f"verified_by {value!r} is not one of {' | '.join(legal)}")
+
+
+def _check_generated_page_orphaned(ctx: _Ctx) -> Iterator[Finding]:
+    """A generated page its own script no longer produces.
+
+    The generator writes `.{script name}.manifest` beside its output, one stem
+    per line, listing what this run wrote. A page that claims the script and
+    is not on the list was written by an earlier run for an asset that is gone.
+    mtime cannot tell you this: iCloud sync touches every file, and all 107
+    generated pages in the real project read as written the same day. No
+    manifest, no finding: silence over guessing.
+    """
+    roots = (ctx.code_root, ctx.project_dir)
+    manifests: dict[Path, Optional[set]] = {}
+    for vf in ctx.all_owned:
+        script = _source_script(vf, roots)
+        if script is None:
+            continue
+        mpath = vf.path.parent / f".{script.name}.manifest"
+        if mpath not in manifests:
+            try:
+                manifests[mpath] = {
+                    ln.strip() for ln in mpath.read_text().splitlines() if ln.strip()
+                } if mpath.is_file() else None
+            except OSError:
+                manifests[mpath] = None
+        listed = manifests[mpath]
+        if listed is None or vf.path.stem in listed:
+            continue
+        yield Finding("going-stale", "generated-page-orphaned", str(vf.rel_path),
+                      f"carries source: {script.name}, whose manifest no longer "
+                      f"lists it; the asset it documents is probably gone")
+
 _DETECTORS: tuple = (
     _check_broken_wikilinks,
     _check_superseded_target_missing,
@@ -718,6 +847,9 @@ _DETECTORS: tuple = (
     _check_handoff_behind_session,
     _check_generated_page_stale,
     _check_project_zone_drift,
+    _check_template_headings,
+    _check_verified_by_off_vocabulary,
+    _check_generated_page_orphaned,
 )
 
 
@@ -740,7 +872,8 @@ def truth_report(project_dir: Path, *, vault: Optional[Path] = None,
     today = today or date.today()
     owned = [vf for vf in walk_project(project_dir)
              if not is_unowned(vf.rel_path)]
-    checkable = [vf for vf in owned if not _is_generated(vf)]
+    roots = (code_root, project_dir)
+    checkable = [vf for vf in owned if not _is_generated(vf, roots)]
     by_type: dict[str, list] = {}
     for vf in checkable:
         by_type.setdefault(vf.file_type or "", []).append(vf)

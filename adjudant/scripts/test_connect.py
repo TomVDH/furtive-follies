@@ -723,7 +723,8 @@ class TestProvisionDashboards(unittest.TestCase):
             self.assertEqual(names, ["dashboard-decisions.base",
                                      "dashboard-freshness.base",
                                      "dashboard-sessions.base",
-                                     "dashboard-tasks.base"])
+                                     "dashboard-tasks.base",
+                                     "dashboard-technical.base"])
             # The filter must name the folder the project is actually in. A
             # dashboard scoped to a path the project left returns nothing at
             # all, with no error to notice.

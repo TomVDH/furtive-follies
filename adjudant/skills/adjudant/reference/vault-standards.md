@@ -30,6 +30,17 @@ A folder exists when something is in it. One level of grouping inside a
 folder, never two. The folder for each kind is `KIND_FOLDER` in
 `scripts/_place.py`, and `place()` is the only thing that decides a path.
 
+A page a script owns sits beside the hand-written one, told apart by its name
+rather than by a folder:
+
+    components/modules/button.md              hand-written
+    components/modules/button-generated.md    machine, carries `source:`
+
+A `_generated/` drawer would be a second grouping level, which the rule above
+forbids. The suffix keeps the halves together with one. Obsidian resolves
+`![[button]]` by basename from anywhere, so the embed does not need them
+adjacent — but a reader does.
+
 ## 2. Lifecycle
 
 Four folders: `active/`, `paused/`, `finished/`, `archive/`. The folder is the
@@ -64,7 +75,11 @@ Fifteen. Each one's shape is declared by its template and nowhere else:
 
 See `../templates/`. A runbook, a glossary, a standard and a bug log are all
 written as a `doc`: a thing gets its own kind only when it needs a line at the
-top that a plain page does not have.
+top that a plain page does not have. `doc_kind:` tells them apart, so they stay
+findable without a sixteenth kind.
+
+How to write the five technical kinds, and what a template cannot carry, is in
+`content-technical.md`.
 
 ## 6. Markdown elements
 
