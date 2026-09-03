@@ -40,7 +40,7 @@ Inside **Claude Code**, run these three, one at a time:
 `connect` shows where a vault can live (a cloud-sync folder is recommended so your
 notes follow you across computers), makes it for you, and links your project.
 That's it — session notes, the handoff, and the board keep themselves current.
-Come back with `/adjudant sitrep` after a break.
+Come back with `/adjudant status` after a break.
 
 ## Optional: the suitcase
 
@@ -64,4 +64,4 @@ assume **Zsh** (the macOS default). Details are in the field guide.
 ## More
 
 - Plain-text walkthrough: **[GETTING-STARTED.md](GETTING-STARTED.md)**
-- The plugin itself: **[`adjudant/`](adjudant/)** (seven verbs, its own README + GUIDE)
+- The plugin itself: **[`adjudant/`](adjudant/)** (five verbs, its own README + GUIDE)

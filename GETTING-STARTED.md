@@ -107,25 +107,23 @@ below are the few things you'll reach for on purpose.
 
 One command, `/adjudant`, followed by a verb. Here are the handful worth knowing.
 
-### `sitrep` — "where was I?"
+### `status` — "where was I?"
 
 Come back after a break — a weekend, a vacation, a context-switch — and run:
 
 ```
-/adjudant sitrep
+/adjudant status
 ```
 
-It gives you a plain-language orientation: what this project is, what happened last,
-and what's next. It's the fastest way to get your head back in the game.
+It brings the derived state up to date, then gives you a plain-language
+orientation: what this project is, what happened last, and what is wrong. It is
+the fastest way to get your head back in the game.
 
-### `check` — a quick health report
-
-```
-/adjudant check
-```
-
-A **read-only** look at your vault: what's in there and whether anything is
-off-shape. It only reports — it changes nothing. Good for a peace-of-mind glance.
+The report is **read-only** and comes in three bands: what is wrong now, what is
+going stale, and what is worth a look. It never blocks anything. A path your
+notes name that no longer exists, a task sitting open in an archive, a page
+nobody has checked in three months — that band ordering is by the cost of being
+wrong, so you can stop reading whenever you like.
 
 ### `board` — your kanban
 
@@ -133,19 +131,21 @@ off-shape. It only reports — it changes nothing. Good for a peace-of-mind glan
 /adjudant board
 ```
 
-Opens a drag-and-drop kanban board that's built automatically from your task notes.
-Move cards between columns to track what's to-do, in progress, and done. No setup —
-it's born from the notes you already have.
+Opens a drag-and-drop kanban board built from your task notes. Move cards
+between columns to track what is to-do, in progress and done. Ask for it once
+and it is yours; it is never created behind your back.
 
-### `tidy` — gentle cleanup
+### `clean` — gentle cleanup
 
 ```
-/adjudant tidy
+/adjudant clean
 ```
 
-Routine, safe surface cleanup of the vault. It **shows you previews first** and is
-built to never break anything. Think of it as straightening the desk, not
-rearranging the house.
+Routine, safe cleanup of the vault. It **shows you previews first**, and it only
+ever removes and repairs: it never creates a file in your vault. Think of it as
+straightening the desk, not rearranging the house.
+
+Add `--deep` when you want it to look at structure as well as surface.
 
 ### `dream` — an advisory review (read-only)
 
@@ -153,15 +153,16 @@ rearranging the house.
 /adjudant dream
 ```
 
-This one reads through your notes and hands you a **findings report**: what looks
-stale, what contradicts something else, what's orphaned and disconnected. Then it
-**stops.** It changes nothing on its own — you read the report and decide what, if
-anything, to do about each item. It's a thoughtful second pair of eyes, not an
-autopilot.
+This one reads through your notes and hands you a **findings report**: what
+looks stale, what one decision replaced, what nobody ever acted on. Then it
+**stops.** It changes nothing on its own — you read the report and decide what,
+if anything, to do about each item. It is a thoughtful second pair of eyes, not
+an autopilot.
 
-> The other verbs — `connect` and `sync` — you'll use rarely: `connect` once per
-> project (step 4), and `sync` when you want to push the current state to the vault
-> on demand rather than waiting for the background updates.
+It is deliberately terse. It shows you a short, ranked shortlist rather than
+everything it noticed, because a list nobody finishes reading helps nobody.
+
+> The remaining verb, `connect`, you use once per project (step 4).
 
 ---
 
