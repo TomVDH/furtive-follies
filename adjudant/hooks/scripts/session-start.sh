@@ -59,7 +59,9 @@ canary_start() {
   idx=$(printf '%s' "$session_id" | cksum | cut -d' ' -f1)
   n=$(( idx % $# + 1 ))
   eval "word=\${$n}"
-  printf '{"word":"%s","turns":0,"hits":0,"misses":0,"blocked":false}\n' "$word" > "$state" 2>/dev/null || return 0
+  # streak/max_streak, not a blocked flag: nothing blocks any more, and a run
+  # of misses is the only thing that separates drift from a single stray turn.
+  printf '{"word":"%s","turns":0,"hits":0,"misses":0,"streak":0,"max_streak":0}\n' "$word" > "$state" 2>/dev/null || return 0
   find "$tmp" -maxdepth 1 -name 'adjudant-canary-*.json' -mtime +1 -delete 2>/dev/null || true
   printf '%s' "$word"
 }
@@ -95,9 +97,15 @@ except Exception:
   # One rare word, stated HERE and nowhere else, printed at the end of every
   # reply and checked by the Stop hook. A model that stops honouring a one-word
   # instruction it was given minutes ago has stopped honouring instructions
-  # generally, and the rest of the session is worth less. The per-turn hook
-  # reports a lapse but never restates the word: a re-assertion would keep the
-  # model printing it and measure nothing.
+  # generally, and the rest of the session is worth less. This line is the only
+  # thing the whole mechanism ever says: a re-assertion later would keep the
+  # model printing the word and measure nothing.
+  #
+  # Nothing reports the result. The Stop hook writes the tally to
+  # $TMPDIR/adjudant-canary-{session_id}.json and stops there; no hook reads it
+  # back, and no verb prints it. That is the design, not a gap. A reading the
+  # model can see is a reading the model acts on, and it acted: it wound the
+  # session down on its own. The reading is for a person, who reads the file.
   #
   # This runs FIRST, on purpose. It used to sit inside the vault section, after
   # the breadcrumb check below, so a project with no vault linked got no word

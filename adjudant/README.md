@@ -76,7 +76,9 @@ surfaces and retires the rest, so read the preview before you apply.
   first. They ask before they pull a large vault into the conversation.
 - **A drift canary.** Session start names one rare word. Adjudant checks every reply
   for it. A model that drops a one-word instruction has stopped following
-  instructions, and that is the moment to start a fresh session.
+  instructions. Adjudant records the lapse and says nothing. It never tells the
+  model to stop, and it never ends your session for you. That decision is yours.
+  Read the tally in `$TMPDIR/adjudant-canary-<session-id>.json`.
 
 ## The vault
 
