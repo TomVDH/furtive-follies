@@ -105,6 +105,30 @@ def _bootstrap() -> None:
                 c in "abcdefghijklmnopqrstuvwxyz0123456789-" for c in slug)
 
 
+def _ops_flash_py(msg: str, project_dir: str) -> None:
+    try:
+        cache = Path.home() / ".claude" / "statusline-cache"
+        if not cache.is_dir():
+            return
+        key = project_dir.replace("/", "_").replace(" ", "-")[-120:]
+        (cache / f"ops-{key}").write_text(f"{int(time.time())} {msg}\n")
+    except Exception:
+        pass
+
+
+def _mark_vault_write(session_id: str = "") -> None:
+    """Tell the statusline adjudant just documented something. Never raises.
+
+    Imported lazily and swallowed whole: this is a cosmetic signal and it must
+    not be able to fail a hook that has already done its real work.
+    """
+    try:
+        from _vault_walk import mark_vault_write
+        mark_vault_write(session_id)
+    except Exception:
+        pass
+
+
 def read_breadcrumb(project_dir: Path) -> dict:
     """Read `.claude/adjudant` breadcrumb (`key: value` per line, YAML-ish).
 
@@ -229,8 +253,39 @@ def main() -> int:
 
     tool_name = payload.get("tool_name", "")
     tool_input = payload.get("tool_input", {})
-    file_path_str = tool_input.get("file_path") or tool_input.get("path")
     session_id = (payload.get("session_id") or "").strip()
+
+    # --- Job 0: orchestrator dispatch log (SendMessage only) ---
+    # When orchestrator mode is active, log dispatches to a per-day file.
+    orch_mode = info.get("orchestrator", "off").strip().lower()
+    if orch_mode == "on" and tool_name == "SendMessage":
+        try:
+            _now = datetime.now()
+            _today = _now.strftime("%Y-%m-%d")
+            target = tool_input.get("to", "unknown")
+            message = tool_input.get("message", "")
+            excerpt = message[:80].replace("\n", " ") if message else ""
+            bean_id = ""
+            import re as _re
+            m = _re.search(r"[a-z]+-[a-z0-9]{4}", message)
+            if m:
+                bean_id = m.group(0)
+            orch_file = project_root / "sessions" / f"{_today}-orchestrator.md"
+            if not orch_file.exists():
+                (project_root / "sessions").mkdir(parents=True, exist_ok=True)
+                orch_file.write_text(
+                    f"---\ntype: session\ncreated: {_today}\nupdated: {_today}\n---\n\n"
+                    f"# Orchestrator dispatch log\n\n")
+            with orch_file.open("a") as f:
+                f.write(f"- ts: \"{_now.isoformat(timespec='seconds')}\"\n")
+                f.write(f"  target: \"{target}\"\n")
+                if bean_id:
+                    f.write(f"  bean: \"{bean_id}\"\n")
+                f.write(f"  excerpt: \"{excerpt}\"\n")
+        except Exception:
+            pass
+
+    file_path_str = tool_input.get("file_path") or tool_input.get("path")
     if not file_path_str:
         return 0
 
@@ -304,6 +359,8 @@ def main() -> int:
     try:
         with session_file.open("a") as f:
             f.write(f"- {ts} · {label}: {entry}\n")
+        _mark_vault_write(session_id)
+        _ops_flash_py(f"vault: {label}", os.environ.get("CLAUDE_PROJECT_DIR", ""))
     except OSError:
         pass  # log-write failure must not block job 2
 

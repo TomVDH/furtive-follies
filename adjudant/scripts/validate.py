@@ -29,15 +29,18 @@ Validators:
   23. advisor-wiring              : the advisor's contract doc, SessionStart banner, and AGENTS.md marker stay wired
   24. place-zone-parity           : _place's lifecycle folder set matches _vault_walk.PROJECT_ZONES
   25. standards-structure-parity  : reference/vault-standards.md names every folder in KIND_FOLDER and PROJECT_ZONES
-  26. readme-counts-are-true   : README's Facts table matches the tree it describes
+  26. beans-adapter-parity        : every status the beans CLI declares has a lane in _beans
+  27. beans-not-in-hooks          : no hook script imports _beans or shells out to the binary
+  28. readme-counts-are-true   : README's Facts table matches the tree it describes
 
-26 validators total.
+28 validators total.
 """
 
 import ast
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -64,8 +67,12 @@ class Result:
         self.failures: list[str] = []
         self.passes: list[str] = []
 
-    def add_pass(self, name: str) -> None:
-        self.passes.append(name)
+    def add_pass(self, name: str, detail: str = "") -> None:
+        # A pass may carry a reason it is only a partial pass ("beans not
+        # installed; vocabulary unchecked"). Three call sites already did,
+        # and on a machine without beans the validator crashed on the first
+        # one, so CI was red on every push and local runs never noticed.
+        self.passes.append(f"{name} ({detail})" if detail else name)
 
     def add_fail(self, name: str, detail: str) -> None:
         self.failures.append(f"{name}: {detail}")
@@ -484,7 +491,7 @@ def validate_repo_helper_parity(r: Result) -> None:
     r.add_pass(name)
 
 
-REPO_STANDARD_CATEGORIES = ("version coherence", "symlink integrity", "context files", "plan age", "registration")
+REPO_STANDARD_CATEGORIES = ("version coherence", "symlink integrity", "context files", "plan age", "registration", "git practice")
 
 
 def validate_repo_standards_coverage(r: Result) -> None:
@@ -626,7 +633,7 @@ def validate_base_dashboards(r: Result) -> None:
 
 
 def validate_hook_zone_awareness(r: Result) -> None:
-    """26. hook-zone-awareness — no hook may hardcode projects/<slug>.
+    """19. hook-zone-awareness — no hook may hardcode projects/<slug>.
 
     Audit 2026-07-27: every hook built `{vault}/projects/{slug}` directly while
     /adjudant shelf moves projects to `_fridge/` and `_archive/` without
@@ -1002,8 +1009,98 @@ def validate_standards_structure_parity(r: Result) -> None:
 
 
 
+def validate_beans_adapter_parity(r: Result) -> None:
+    """26. beans-adapter-parity — the adapter knows every status Beans has.
+
+    `_beans.STATUSES` is a hand-written copy of a vocabulary that lives in
+    another project. When Beans adds a status, a bean carrying it would land in
+    a lane the deck does not declare, and the board would file it under Unfiled
+    forever with nobody told why.
+
+    The CLI is the authority, so this asks it — but ONLY when it is installed.
+    On a machine without Beans the check passes rather than failing, because a
+    build gate that depends on an optional third-party binary would fail the
+    whole suite on the other machine and teach everyone to ignore it.
+    """
+    name = "beans-adapter-parity"
+    sys.path.insert(0, str(SCRIPTS))
+    try:
+        import _beans
+    except Exception as e:
+        r.add_fail(name, f"_beans is unimportable: {e}")
+        return
+
+    if not _beans.COLUMNS or [c["id"] for c in _beans.COLUMNS] != list(_beans.STATUSES):
+        r.add_fail(name, "COLUMNS and STATUSES disagree: every status needs a lane")
+        return
+
+    if not _beans.available():
+        r.add_pass(name, "beans not installed on this machine; vocabulary unchecked")
+        return
+
+    try:
+        out = subprocess.run([_beans.BINARY, "update", "--help"],
+                             capture_output=True, text=True, timeout=10,
+                             stdin=subprocess.DEVNULL).stdout
+    except Exception as e:
+        r.add_pass(name, f"beans could not be asked ({e}); vocabulary unchecked")
+        return
+
+    # `-s, --status string   New status (in-progress, todo, draft, completed, scrapped)`
+    m = re.search(r"--status\s+string\s+New status \(([^)]*)\)", out)
+    if not m:
+        r.add_pass(name, "beans update --help no longer declares its statuses inline")
+        return
+    declared = {t.strip() for t in m.group(1).split(",") if t.strip()}
+    missing = sorted(declared - set(_beans.STATUSES))
+    extra = sorted(set(_beans.STATUSES) - declared)
+    if missing or extra:
+        bits = []
+        if missing:
+            bits.append(f"Beans has {missing} which the adapter has no lane for")
+        if extra:
+            bits.append(f"the adapter declares {extra} which Beans does not")
+        r.add_fail(name, "; ".join(bits))
+        return
+    r.add_pass(name)
+
+
+def validate_beans_not_in_hooks(r: Result) -> None:
+    """27. beans-not-in-hooks — no hook script may run the beans binary.
+
+    Hooks fire on every Write and every Bash call. `beans list --json` measured
+    52-62 ms, and the commit-log hook already spends 45 ms of imports per Bash
+    call. A subprocess on that path would be a tax on every tool call in every
+    project, Beans-owned or not.
+
+    The rule is stated in `_beans`'s own docstring; this is the part that holds
+    when someone reaches for a quick import at hook time.
+    """
+    name = "beans-not-in-hooks"
+    hooks = ROOT / "hooks" / "scripts"
+    if not hooks.is_dir():
+        r.add_fail(name, "hooks/scripts/ missing")
+        return
+    offenders: list[str] = []
+    for f in sorted(hooks.iterdir()):
+        if not f.is_file():
+            continue
+        try:
+            text = f.read_text()
+        except OSError:
+            continue
+        if re.search(r"(?m)^\s*(import\s+_beans|from\s+_beans\s+import)", text):
+            offenders.append(f"{f.name} imports _beans")
+        elif re.search(r"\bbeans\s+(list|update|create)\b", text):
+            offenders.append(f"{f.name} shells out to beans")
+    if offenders:
+        r.add_fail(name, "; ".join(offenders))
+        return
+    r.add_pass(name)
+
+
 def validate_readme_counts_are_true(r: Result) -> None:
-    """26. readme-counts-are-true — the Facts table matches the tree.
+    """28. readme-counts-are-true — the Facts table matches the tree.
 
     Three of its four numbers were wrong at once, byte-identical in both
     repos, which is how you know the line was copied rather than rendered:
@@ -1092,6 +1189,8 @@ def main() -> int:
     validate_advisor_wiring(r)
     validate_place_zone_parity(r)
     validate_standards_structure_parity(r)
+    validate_beans_adapter_parity(r)
+    validate_beans_not_in_hooks(r)
     validate_readme_counts_are_true(r)
     return r.report()
 

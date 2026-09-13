@@ -46,6 +46,7 @@ from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import _beans  # noqa: E402
 import _profile  # noqa: E402
 from _cost import (  # noqa: E402
     breadcrumb_int, cost_block, read_threshold, stat_walk,
@@ -467,7 +468,8 @@ def _board_brief(project_dir: Path) -> dict:
     return board
 
 
-def _repo_brief(code_root: Optional[Path]) -> dict:
+def _repo_brief(code_root: Optional[Path],
+                beans: Optional[list] = None) -> dict:
     """Code-side git state — the half of orientation the vault cannot know.
 
     "Where were we" is only half answered by the vault: the other half is what
@@ -505,6 +507,154 @@ def _repo_brief(code_root: Optional[Path]) -> dict:
         "head": recent[0] if recent else None,
         "dirty": len([l for l in (porcelain or "").splitlines() if l.strip()]),
         "recent": recent,
+        "practice": _git_practice(code_root, beans),
+    }
+
+
+# The branch rule adjudant states every session (reference/repo-standards.md,
+# "Git practice"): a feature bean works on `feature/<bean-id>`, always in a
+# linked worktree, and the main checkout stays on main. Epics are containers
+# and get no branch; tasks and bugs ride main or their in-progress parent's
+# branch, so only feature beans are ever expected to own one.
+_PRACTICE_BRANCH_RE = re.compile(r"^feature/([a-z0-9][a-z0-9-]*)$")
+_CLOSED = ("completed", "scrapped")
+
+
+def _parse_worktrees(text: str) -> list:
+    """`git worktree list --porcelain` into [{path, branch}]. First entry is
+    the main checkout; a detached or bare entry has branch None."""
+    out: list = []
+    cur: dict = {}
+    for line in (text or "").splitlines() + [""]:
+        if not line.strip():
+            if cur:
+                out.append({"path": cur.get("path"), "branch": cur.get("branch")})
+                cur = {}
+            continue
+        key, _, val = line.partition(" ")
+        if key == "worktree":
+            cur["path"] = val
+        elif key == "branch":
+            cur["branch"] = val[len("refs/heads/"):] if val.startswith("refs/heads/") else val
+    return out
+
+
+def _git_practice(code_root: Optional[Path], beans: Optional[list]) -> dict:
+    """Drift between the branch rule and what the repository is doing.
+
+    Judges the MAIN checkout, wherever the run happens: from inside a linked
+    worktree `code_root` is the worktree, and reading branch and dirtiness
+    there would report "off main" for a checkout that is doing exactly what
+    the rule asks. `git worktree list` names the main checkout first, so the
+    on-main and dirty probes run against that path.
+
+    Instruct and observe: every finding is a report, never a block. With no
+    bean rows only the pure git facts can be judged (`beans: unavailable`).
+    Returns `{present: False}` on any git failure; orientation never breaks.
+    """
+    if not code_root or not (code_root / ".git").exists() or not shutil.which("git"):
+        return {"present": False}
+
+    def g(at: Path, *args: str) -> Optional[str]:
+        try:
+            out = subprocess.run(
+                ["git", "-C", str(at), *args],
+                capture_output=True, text=True, timeout=5,
+            )
+            return out.stdout if out.returncode == 0 else None
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    wt_raw = g(code_root, "worktree", "list", "--porcelain")
+    if wt_raw is None:
+        return {"present": False}
+    worktrees = _parse_worktrees(wt_raw)
+    if not worktrees or not worktrees[0].get("path"):
+        return {"present": False}
+    main_path = Path(worktrees[0]["path"])
+    main_branch = worktrees[0].get("branch")
+    refs = g(main_path, "for-each-ref", "--format=%(refname:short)", "refs/heads/feature/")
+    porcelain = g(main_path, "status", "--porcelain")
+    if refs is None or porcelain is None:
+        return {"present": False}
+    branches = [b.strip() for b in refs.splitlines() if b.strip()]
+    main_dirty = len([l for l in porcelain.splitlines() if l.strip()])
+
+    by_branch = {w["branch"]: w for w in worktrees[1:] if w.get("branch")}
+    for w in worktrees:
+        m = _PRACTICE_BRANCH_RE.match(w.get("branch") or "")
+        w["bean_id"] = m.group(1) if m else None
+
+    index: dict = {}
+    for row in beans or []:
+        bid = str(row.get("id") or "").strip()
+        if bid:
+            index[bid] = (str(row.get("type") or "task").lower(),
+                          str(row.get("status") or "").lower())
+
+    drift: list = []
+    if main_branch != "main":
+        drift.append({
+            "signal": "git-main-off-main",
+            "detail": f"the main checkout is on {main_branch or 'a detached HEAD'}; "
+                      f"run `git switch main` there and do the work on its branch "
+                      f"in a worktree",
+        })
+
+    in_progress = [bid for bid, (typ, st) in index.items()
+                   if typ == "feature" and st == "in-progress"]
+    for bid in sorted(in_progress):
+        if f"feature/{bid}" not in branches:
+            drift.append({
+                "signal": "git-branch-missing",
+                "detail": f"{bid} (feature, in-progress) has no branch; "
+                          f"`git worktree add .worktrees/{bid} -b feature/{bid}`",
+            })
+
+    for name in sorted(branches):
+        m = _PRACTICE_BRANCH_RE.match(name)
+        if not m:
+            continue
+        bid = m.group(1)
+        typ, st = index.get(bid, (None, None))
+        closed = st in _CLOSED
+        wt = by_branch.get(name)
+        if wt and closed:
+            drift.append({
+                "signal": "git-worktree-stale",
+                "detail": f"worktree {wt['path']} is on {name} and the bean is {st}; "
+                          f"`git worktree remove {wt['path']} && git branch -d {name}`",
+            })
+        elif not wt and closed:
+            drift.append({
+                "signal": "git-branch-stale",
+                "detail": f"branch {name} outlived its bean ({st}); `git branch -d {name}`",
+            })
+        elif not wt:
+            drift.append({
+                "signal": "git-branch-no-worktree",
+                "detail": f"branch {name} has no worktree; "
+                          f"`git worktree add .worktrees/{bid} {name}`",
+            })
+
+    if main_dirty and in_progress:
+        drift.append({
+            "signal": "git-dirty-main",
+            "detail": f"the main checkout has {main_dirty} uncommitted change"
+                      f"{'s' if main_dirty != 1 else ''} while {in_progress[0]} "
+                      f"(feature) is in progress; that work belongs in "
+                      f".worktrees/{in_progress[0]}",
+        })
+
+    return {
+        "present": True,
+        "main_path": str(main_path),
+        "main_branch": main_branch,
+        "main_dirty": main_dirty,
+        "worktrees": worktrees,
+        "practice_branches": [b for b in branches if _PRACTICE_BRANCH_RE.match(b)],
+        "beans": "used" if beans is not None else "unavailable",
+        "drift": drift,
     }
 
 
@@ -560,6 +710,7 @@ def orientation(
     vault_path: Optional[Path] = None,
     now: Optional[_dt.datetime] = None,
     code_root: Optional[Path] = None,
+    beans: Optional[list] = None,
 ) -> dict:
     """The momentum half: where you left off and what to do next.
 
@@ -602,7 +753,7 @@ def orientation(
         "were_doing": freshness["last_activity"],
         "whats_done": whats_done,
         "board": _board_brief(project_dir),
-        "repo": _repo_brief(code_root),
+        "repo": _repo_brief(code_root, beans),
         "server": _server_brief(code_root),
         "capabilities": _capability_notes("sitrep_line"),
         "next_step": _next_step(project_dir),
@@ -718,6 +869,7 @@ def make_current(
     code_root: Optional[Path] = None,
     today: Optional[str] = None,
     now: Optional[datetime] = None,
+    beans: Optional[list] = None,
 ) -> dict:
     """Bring the two derived facts up to date. The one phase that writes.
 
@@ -776,6 +928,42 @@ def make_current(
             }
         except Exception as e:            # a broken vault must not fail the report
             warnings.append(f"index regeneration skipped: {e}")
+
+    # The Beans mirror: a generated, read-only index of open beans, so dream can
+    # still reason about the work and the vault is not blind to it. On a machine
+    # without the CLI it is the only record of the work the vault can see, which
+    # is why an unreachable tracker LEAVES THE EXISTING FILE ALONE — a stale
+    # mirror beats an emptied one.
+    # `beans` is the row list when the caller already fetched it (run() does,
+    # once, for the mirror and the git-practice check alike); None means
+    # fetch here. run_sync passes nothing and keeps the old shape.
+    beans_root = _beans.code_root_from(code_root)
+    if _beans.owns(beans_root):
+        blocked = _beans.unreachable_reason(beans_root)
+        if blocked:
+            warnings.append(f"beans mirror not refreshed: {blocked}")
+        else:
+            res = (_beans.Result(True, value=beans) if beans is not None
+                   else _beans.list_beans(beans_root))
+            if res.ok:
+                changed = _beans.write_mirror(vault_project_dir, res.value, today)
+                steps["beans"] = {
+                    "open": len(_beans.open_beans(res.value)),
+                    "total": len(res.value),
+                    "mirror": "rewritten" if changed else "unchanged",
+                }
+            else:
+                warnings.append(f"beans mirror not refreshed: {res.reason}")
+
+    # The sync phase is the one place `status` writes into the vault, so it is
+    # where the vault-operation light belongs. Cosmetic and lazily imported: it
+    # must never be able to fail a sync that already landed.
+    if steps:
+        try:
+            from _vault_walk import mark_vault_write
+            mark_vault_write(os.environ.get("CLAUDE_SESSION_ID", ""))
+        except Exception:
+            pass
 
     return {"today": today, "slug": slug, "steps": steps, "warnings": warnings}
 
@@ -958,6 +1146,28 @@ def capture_task(project_dir: Path, title: str, note: str = "") -> tuple:
     from board import ensure_board
     from board_bridge import kebab, render_task_note
 
+    # Beans owns the work items where it is the tracker, so a capture becomes a
+    # bean. Writing a vault task note there would create a card Beans never
+    # sees and the board never seeds — the exact two-stores-disagree failure
+    # the one-tracker rule exists to prevent.
+    code_root = _beans.code_root_from()
+    if _beans.owns(code_root):
+        blocked = _beans.unreachable_reason(code_root)
+        if blocked:
+            return 1, (f"error: {blocked}\n"
+                       f"  Nothing written. Once beans is reachable: "
+                       f"beans create {title!r}")
+        res = _beans.create(code_root, title, note)
+        if not res.ok:
+            return 1, f"error: beans create failed: {res.reason}"
+        new = res.value if isinstance(res.value, dict) else {}
+        bid = str(new.get("id") or "").strip() or "(id not reported)"
+        try:
+            verdict = ensure_board(project_dir, code_root=code_root)
+        except Exception as e:  # the bean landed; the board can catch up
+            return 0, f"created bean {bid} (board reseed failed: {e})"
+        return 0, f"created bean {bid}; board: {verdict}"
+
     slug = kebab(title)
     if not slug:
         return 1, "error: --title kebabs to nothing; give it at least one word"
@@ -970,7 +1180,7 @@ def capture_task(project_dir: Path, title: str, note: str = "") -> tuple:
     with file_lock(note_path):
         atomic_write_text(note_path, body)
     try:
-        verdict = ensure_board(project_dir)
+        verdict = ensure_board(project_dir, code_root=_beans.code_root_from())
     except Exception as e:  # the note landed; the board can catch up next hook
         return 0, f"wrote tasks/{slug}.md (board reseed failed: {e})"
     return 0, f"wrote tasks/{slug}.md; board: {verdict}"
@@ -1067,8 +1277,18 @@ def _bands(comp: dict, orient: dict, naming: list,
             "signal": "board-stale",
             "detail": "a task note is newer than the deck; the board lags tasks/",
         })
+    # Git-practice drift is never wrong_now: the vault claims nothing about
+    # branches. A worktree or branch that outlived its bean is decaying
+    # state; the rest is a question about where work is happening.
+    practice = ((orient.get("repo") or {}).get("practice") or {})
+    for entry in practice.get("drift") or []:
+        if entry.get("signal") in ("git-worktree-stale", "git-branch-stale"):
+            going_stale.append(dict(entry))
 
     # --- worth_a_look: a question, not a defect ---------------------------
+    for entry in practice.get("drift") or []:
+        if entry.get("signal") not in ("git-worktree-stale", "git-branch-stale"):
+            worth_a_look.append(dict(entry))
     for v in naming:
         entry = {"signal": "naming"}
         entry.update(v)
@@ -1133,15 +1353,27 @@ def run(
     brief = _read_brief(project_dir)
     slug = brief.get("slug") or project_dir.name
 
+    # One beans fetch per run. The mirror (sync) and the git-practice check
+    # (orientation) read the same rows; fetching twice would cost a second
+    # CLI round trip and could disagree with itself mid-run.
+    beans_rows: Optional[list] = None
+    beans_root = _beans.code_root_from(code_root)
+    if _beans.owns(beans_root) and not _beans.unreachable_reason(beans_root):
+        res = _beans.list_beans(beans_root)
+        if res.ok:
+            beans_rows = res.value
+
     if sync:
         synced = make_current(project_dir, vault_dir, slug,
-                              code_root=code_root, today=today_str, now=now)
+                              code_root=code_root, today=today_str, now=now,
+                              beans=beans_rows)
     else:
         synced = {"today": today_str, "slug": slug,
                   "steps": {}, "warnings": [], "skipped": "read-only run"}
 
     comp = compliance(project_dir, code_root=code_root, today=today_date)
-    orient = orientation(project_dir, vault_dir, now=now, code_root=code_root)
+    orient = orientation(project_dir, vault_dir, now=now, code_root=code_root,
+                         beans=beans_rows)
     naming = kebab_violations(project_dir)
 
     advisor: dict = {"state": read_state(code_root) if code_root else None}

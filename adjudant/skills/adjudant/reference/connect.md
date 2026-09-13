@@ -16,6 +16,34 @@ connect is three phases; the card in the middle is the only thing the user must 
    if empty; it becomes the brief's opening line and what sitrep orients from. If
    `contract.zone` is `_fridge` or `_archive`, add one nudge line: project is
    shelved; move its folder back to `projects/` by hand to reactivate it.
+
+   **When `contract.tracker.ask` is set, put that question on the same card.** The repo
+   has a beans project, so who owns the work items is a choice and connect will not make
+   it. Say what each answer means: `beans` seeds the board from `beans list` and writes a
+   drag back to the bean, and `tasks/` stops being used here; `vault` keeps today's
+   behaviour and leaves beans alone. Pass the answer as `--tracker beans|vault`. Omit the
+   flag and the breadcrumb keeps whatever it already says, which is what makes a re-connect
+   safe: a repo already set to `vault` is never switched behind the user's back.
+   `contract.tracker.beans_installed` is false when this machine has no binary — still a
+   valid choice, the repo just cannot be driven from here until it does.
+
+   **When the answer is `beans`, run `beans prime` and follow it before tracking any
+   work.** That command is the tracker's own guide for agents, and adjudant never
+   restates it: `beans prime` is generated from the repo's own `.beans.yml`, so the
+   types, statuses and priorities it lists are that project's. A copy pasted in here
+   would go stale the first time beans changed, and would already be wrong for any
+   project configured differently. The short version, which the SessionStart banner
+   carries every session in a beans-owned repo: work items live in beans, not in the
+   vault and not in a todo list. Find or create a bean before starting, keep its
+   checklist current, and commit the bean file with the code.
+
+   The same banner carries the branch rule in one line, and the `AGENTS.md`
+   connect provisions carries it in full under `## Git practice`: feature beans
+   work on `feature/<bean-id>` in a `.worktrees/<bean-id>` worktree, tasks and
+   bugs commit on `main`, merge-back is a PR. The contract is
+   `repo-standards.md`, "Git practice". Connect never edits an `AGENTS.md`
+   that already exists, so on a re-connect the section is copied in by hand
+   from `templates/AGENTS.md`.
 3. **Apply + receipt.** Run connect.py with the confirmed values (`--purpose`,
    `--initial-status`, plus the usual flags). Render `summary.receipt` back as the same
    card with per-artifact marks: created / already-present / updated. A re-run on a
@@ -24,7 +52,8 @@ connect is three phases; the card in the middle is the only thing the user must 
    run /adjudant board to open a deck on them (opt-in, never auto-seeded).
 
 Config knobs land in the breadcrumb at init with defaults visible on the card:
-`cost_warn_tokens` (the build profile's default), `stale_after_days: 30`. Existing overrides survive re-connect,
+`cost_warn_tokens` (the build profile's default), `stale_after_days: 30`, `tracker`
+(`vault` unless the user chose `beans` on the card). Existing overrides survive re-connect,
 as does an opt-in `stamp_source_session: true` (per-file session stamping, default off —
 connect never writes the key itself).
 

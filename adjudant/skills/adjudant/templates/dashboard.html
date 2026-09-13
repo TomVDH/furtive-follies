@@ -3,59 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Board</title>
+<title>Orchestrator</title>
+<!-- an empty data: icon so the browser never asks the server for /favicon.ico;
+     paintFavicon() finds this link and writes the band into it -->
+<link rel="icon" href="data:,">
 <style>
-  /* ── Tokens: ZenaSoft ──────────────────────────────────────────────────
-     The Adjudant Classic skin. A 70s corporate-paper memo: warm cream stock,
-     brown-black ink, a warm orange accent, and no rounded corner anywhere.
-     Its references are IBM annual reports c.1973, Container Corp of America,
-     Mobil corporate guidelines and Knoll spec sheets, so it is corporate
-     modernism rather than anything nostalgic.
-
-     Ported from the ZenaSoft DESIGN.md that governs the ops surfaces. Hue,
-     chroma and the whole light neutral scale are that document's, unchanged.
-     Four slots had to move, and each one is a fact about THIS surface rather
-     than a disagreement with that one:
-
-       --text-faint  58% -> 48% light. A form sets its faint slot at label
-                     size; this board sets 11.5px counts, ids and field labels
-                     in it, so the 4.5:1 body floor applies. 58% measured
-                     2.99:1 on the well.
-       dark scale    ZenaSoft's dark is a secondary opt-in and puts surface-2
-                     ABOVE surface (32% over 28%), inverting its own light
-                     order. A lane well has to stay recessive under a card in
-                     both schemes, so this reads page 22 / well 24 / card 28.
-       dark ink      Its dark text-dim and text-faint measured 3.93 and 2.12
-                     against that scale. Lifted until both clear 4.5.
-       dark accent   ZenaSoft locks the accent across themes, which is right
-                     for a light-first identity. Here the accent is also the
-                     focus ring, and 2.13:1 fails SC 1.4.11, so dark lifts it.
-
-     --bg, --surface, --surface-2 and --text-faint MUST stay literal
-     oklch(L% C H) triples, and the dark block must keep its closing shape
-     (`    }` then `  }`). test_board reads this text to compute real contrast
-     ratios; a color-mix() or a var() in those four makes it unreadable.
-
-     --text-faint carries the lane counts, the empty-lane markers, the card
-     ids and the sheet's field labels, all at 11.5px, so the 4.5:1 floor
-     applies rather than the large-text one. Measured against bg / surface / surface-2:
-     4.75, 5.05, 4.56 light and 6.13, 5.07, 5.66 dark. ── */
-  /* The display face, carried IN the file ---------------------------------
-     Mozilla Headline Condensed SemiBold, subset to Latin-1 plus the marks this
-     template renders. The board is offline-locked, so a face is either embedded
-     or absent, and absent meant every heading fell through to Iowan Old Style:
-     a wide, soft book serif where the brand is a tight condensed slab. Not the
-     same voice, not close, and nobody could see it was wrong without knowing
-     what right looked like.
-
-     A data URI fetches nothing, which is exactly what validator 24 protects:
-     it bans url() pointing off-machine, not url() itself. 12 KB of woff2 buys
-     every heading, stamp and sheet title on any machine, installed or not. */
   @font-face{
     font-family:"Mozilla Headline Condensed";
     src:url(data:font/woff2;base64,d09GMgABAAAAADAMABAAAAAAdEAAAC+sAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGoEOG91qHIIqBmA/U1RBVEAAg2oRCArvBNhRATYCJAOGfAuDQAAEIAWFFAcgDAcbNWZFB2LQHSCoWveijSLYOIhnYKVRlG3SR3T/H4+Tw9rVxuBQ4MyMynAkiMs0vRItTNrIhVQ3nOHqQpXpiG7RbgeVyY/2ZKMycRdVvFeoiYIkXFGzHUqhOOn4+7qRH0p4pHFmsYRfY9o/G4oEjRIaZgtHlKEOnYHjfNRcou/3463n/BdECUCaqTwASwSViiKQUSkfn1haxypqUWbv/4+b/r1JCnk0DXjFDCYimVMOMzcmlr9SNcpMnMpE9MPQmuXscugwhHQESf75gCgHbJ9oHxIJaGKrWluhKlQtzFlV2xnqig8YFxAktRNl4wME52t/F4CfB4TJDMLwVpRSQDGcT3Kws/a/a+UP0ECSyRDuHiDYK7DuO2EK7CtMK0+oAsk61yq3FF/XO/vuV5EAHyBkATxkXQD/w9O2+rdlLjYzFlFDpYBFhcAQwyhDWYnJupXq3v3/1Y3y2q2Uq9KL9rLdiyi9zz+08wWSCMdYEm6T3R/cJtQTehWRMcwuljA/mrN/ZZ/QkuQHxF4Zgk2WcJbAwrNCIxvoXMd4yfXb/1O1bOdzjifSUdioPUc4y/FiTziEVMWmGGAAEIPhCCtRtERCgVqdZULcQFIOhHkbCIo2iQshda6cqwQuL0iOF3Lq7Fzeu6Jy6dpF07gKsWgLF415nlqWUr07RbglgNrOcAB1AEwMzMWqr/bWIYepUcBd47TK62VKiRkpcCeeMzJyGZsCw/9mYt8X2kt7GLJJCUOCBMlub/WTdK+js1ffXYqISJAgIQQJ4t79flq1YRNUFh38tKLfXrJpDZgpHEMqoVH8ST5Iw/pfjwADAShaiIVkOIingjQ0kI4/FCgSipEC6emhOppBLbSE2ugAddIJEghQVz2gXoyQyQBoiKHQcGOgccZBE0yGZpoFIdBfGD1q5epOPYE/tnvKOOAxgOYiQI7unzQOWKAgUCQz5gGFReP8KPYCisEAQwln/p7MNltg3UP4X7fouIeqIQUdT168+fBj0Fx3PQw0yGDDjCVC3fBQqnwdmkAQDEJBOIgE0SAWxIMMC2GhVk6jmgYkC4NQHmi4AS/gB4JAGFg6/kGFUCPgcc8/guQXYOkPi/77QsMNBar3o4yb5DfJzF64PPBm+C/s012uKfm4ElRaVzvraqao6DRXnwhPeVy3vSsP6zj8bu+w3kKfroNb+2qG9bH1cfTVDG/Sb8WgzL5jpOJ+KyaT+pm14jA/UjwoYdgydbr/sAG2gS/eYqgYthk6wTww4XmQWXd0MMf7DNYPDuc6XJ4f5p/lFZ8VLxT/lCqln3JZtPnxklmjQmd1NlerLo1vahjNVy2r3U5CZ05op6iPO0/XCkh2R+hmPXrbM2u2W4/Gq0AhUCtgNUErXc3Q2WxLTLPWJguIRMtZZVqhkA0vWt2e9rQ5jiuystiu5FeuZzfIt5I7/z3hQfE4Lj/lCOOaeCoZvizf7rLtKxEm8VlGCEa8UdtLtQguFwjMd1VyGBJUn2XGf0+6Wty8uJO1jVAuGw7MPf+eopH4OgkwZdVyqJXJdu4mzwhttc58OCEkfnd4aBnhGWQonUww60reOuANg/wzXPdtz0F7GHn0UGUjuVadA6F+QJf77raQs/dIFVTMLSY3kfa0OAElwQ6BwuCILhlGq2Bi6dCpS7cevTiFG+PhExAW8UJCSkZOz8DEvGo5cNXcyi5OeO/46PpfBSZBIWERUTFxiTYyGjNPPbNQthc7y7uJvcU+DrqHlaPRsROnzso7n7OUDbSP+TSaCClpucigolENtTSaremm5XPSeC80rPtQZaXHti1cVTj5dP5N51ZWqeaUXcMf0OuqEaCqrGnzcoKtHzujorURsFGOcA2FwA6BwuCILlmDXsDA7opSioGSipqGlo6xa54EYkEhYRFRMfFuApI8SrV0pD8ygEFDhqfR1FgvmJys1tLdp5BnkFd5LVOmzZg1910LkMXIcvYM0Q7d3cXeaN9BOwwu4uTV5Ciz0V0eRh6tvBG8Le/MvS8fGB/zifbHTQHFlNJ/U9drAG0cXUYqayTHdzW7XtyktEpKZ9mK8xowDLuJCgqjpIoaGlo6xq65Yp3Y2Dk4SzKRaulUf2QAg4YM//ZoK2uQwz2fvTi8LK8Sr02ZNmPWXOYXbTG1pO9erq0O1nrrsmHTVraXbSezp+zLwXTRuvaIYXBn44PkJu2PnYIpTnWtbkedJjsZh9QyxNmj3cilNiRtiVKDQT2trYbvSQyRO3vaGwuDKwudW5L/rN7ybsW+cUDK55+wWN5SQ3jfUnql4zWnrDMePYulDZ2gKrBDoDA4YnIlPAKJZxv5yaUXsKWhYIk1x2bsHJxd18Db8q1mCFnGdlPIcsny1aZyN1mX2VLvuwoK88eo4IqtjKtMqYZa6ltpKi3fFGXEPFLic8KUZKV1hXG7Ou2leXtkylXF4PvKlr9px8F2JcvawubRMIELaYYVcWKpRqs3mLfUXUFahVmzbsOmre420i6mvWEfphF325owosVeT+GeyPXxmwH0MLZB+c335/kPQDiMYERXSdFxfoLRZZG0VGe60K1Hb9hLabhXcimUqjQiKVKkPnKKAm5syrQZs+YyTzEgLWZpHDc3yBIJKy6bsXNwNpdublv26OLFsse0r0dIgl5tEOJKq7dxjaO5J4kB7oHmEeUxrmeZarjOUeSNvPXOe598/u4bnbJGRa6KWmsqtBjbWNcYQhiM6CoL6Ag/wWgsho7+nC3qSkR6LL1T2Etp4xLiOT4BYREzkHSlOvUM5EUBMTZl2oxZc5lni36DLL1dM5pVZrbYnYOz68LjJuEpXiK++K3GpCtmQ3Aksy5d7FLkupjPdpiGeyrfzGyzvUZ6Y95653254VTUSlOuVemusdo94ep5j3yj8SvEoofZw+xhZsNGgmssB5TSKndCr7q2D63FjNXtnMvJ62mgca0mTyLjDgLO8MSpBzJ+dYiADlDykL6bXiccBXeVTr1PT2D3DkfxPN+jWpqo1oTwbCsd2wan2Udf7b1oDO7H64fvKR28Wly8Oe55b9HyRnx+cnQZQRVJluXF4h3pPT6VP4KCYkop5WariKpRa6Mme9RCxyzyNmBsS4LPsTYHmCTPoQfNOgmqdwgUBkd0yRh6BaOyh3gcx/Hnc6KWgpKKmoaWjnH7zdkeNVsCKUEXEhYRFRMvyUFKWr8Bg4YMZ3TpldemTJsxa86i5c3u1t45eC+fyh9EQTGlVOsDXa85ym1LoI28HDjQ8xiG3RU1FD0lFTUNLR1jzOLa0fdaq8NxEsdx/ADHcRzHcZwUFpE/Vgqm+Ol1nSbQqghl+3wIe7A/2R7C4MB/6gjR3BQCgUAgEEjvOMQkZOT0TKxs7Byc2yOd+bn/hrOmLVVjN9qD/85hbstWBD2N4dgUlFTUNLR0jN9tnlk2rD3bwc7B+d2uPfeRd8t3lGQnlXSZ/siADBoyXMZHkzKycp5cZtzmOI7juANu3VvNGtZt2LQ1bcd23pZCUM+Yf9awZg9p3oZPAxN0gyFBgcER22mt8Exd6hgV51ZT8zzPT57l1j/i3muehjfF51+pfzQykGKr3u1agSzLsjwPb94AAGAIjtyxE6fOFvPvaKAnMBAoDF4JaUTxquM9woGEzRi3XtUbFAZHXMYLXt6jBTaCCAmLiIqJl+SHVEuv9EcGMGjIcBvdeUVeY8q0GbPmsrhx/vLB9vxxxu2gi9y/YA/y4aWebtYjSZJUU0tuS8ghvcefBhL0BBYECoMjNoUPrGoG5zhajr1DoDA4oks2Qw8wsLui/1EESipqGlo6xtMWiAVaYC2IkLCIqJj4jgZXI/+8/4Dl7lMdequjg7qNOyuKLBK7VxAyz+gfHaCgLjIKWdlIPCdArYxusbF7MwHa9mZ92pICYwfPGbD2JldVY4DFMHoRw7EpKKmoaWjpGB9sWX3owLXqznnXfAJJvaT1GzBoyPBVOoEk9XjltSnTZsyaM2/R0smV0R8FQRAEHvB88eA5+cfgu6wGdlqgRGCR7zrciR1b5BQACa+JRNJLZ2MowJSLJbrEpKqAcNMp4Pw2AFwioNi6KdvH+8edgfmhJ8/Ze/N0eaG89KQvYqL33Fy8P2uQgPeeRKoArE/TzIezkHpdTUDQ0xKtsgDwUM1i6euGuSBlx+79GYPlTnOSc3jDyxcP3YwGKKqKAHJ78wLoIsBEcXvKc8zamil3rW06qRVwK4lRXXo6JWskkevjti1GnR4oJJX3vkXWapm7C3dE0Z+tYPly3TKJC3wUTntrfZ/wB3xDAC+kNKDApItP8GxZYI0H9qzS5bFFCgC/n3VjoTM5j/4OLbKree2fCKCUXTWgWw74oCibkrZsgmSdgn7yMqoDOxBAh9qcZhIo0EaRdHKtzI7WWVrzU/3AONlXDJGza+J04SFNrHpnFApDebmKdfVEpZu2MaClQn4BquzBmAmrZIP/57PdycdMQe2HbJr6/So+lHV66s2LsV5/FqZ51i9y2sxUpu6q3I79x8stJ7UvRSmAWQy32+jdBbO1l7tvtwZ8CZq2/T5xBPKiZVK1jp1uBjTY8Q7DIF8ZKRhCbVwBGD6xdOqXnzbvppxOpJwBOKOJF/tzvujnnOseXLGm81hlaUUijfc4cgG6jYAdZSD6+YohYdP5us5Cl5QrfFvfJdpg2ucYOCnPw5/AUnj5TGMInTmrkiQbDTAS/WFPf+E63WzI0Os4QUTP2LniYBTuBj3h5gc3+05RZ4EwFJ8mODyrudttW7Hjaaac0cdn8R9aaUR54hK/PgHaAuUB/oe7G7oEVSWXNhBSQnoTm+7Q5FHpgSY8WzZt63SIxk8QPVjNO64khRsMVNP11M6+fIEUqrduSeCbf/0FsK5O/Nh/BNK1+nGIcnfvvW/wnydmLxe/rt3tr+mWwWjtEwAEdZrOlCG6nzMIGhf+cnMKcWuW0CBzcNfoKKqN19BHcxyYAm9Y/XE0Y9MUYtl+9h1sS4GX6eWtaRxaAL9kdF66A9k2aP7O9fp8R0IwLvEjAX00iY8JGAoAamoJ6NqfjUYciTnBZ+89YBgYcTkqPAOd64gmt1E82mcGitd2rkxLJ/BqZgKIRC0o0+P1ERRvE5YXev2jLjZ2LaprXN8WgA3Z+83+s25tlgOir38iJo0oHRo4QeG3BOidWjRfKT03u408uc3cl1ak0Dn3ebs2yFbB1Vr8hyHRtu6MI/FNS/OmjbnRaExD5oHdeVgPDjfFuc8J4u6Cof13eArPwBI7m9jFh+/sf+LPdj7ht/kPIL3vH1hGpnWAP4Bed4YQgOBVByIoUHI+u/7GIWMEgGwBiN5XjJAZpxfAAHPnST7gBTDhxVM4aEoP3MUB6PAAyJCHVwUoACiXyugh0kcZAMBaWwBLwAbdB2IDeKwE5YSFFTwDIzMAve8fRG5A6OtBdO0E0DUTagYz6ZRaJVc1gAFg9f646FIIv5wDwEzcjHUCmPjikENTYqYq4DwW1GHgqwIkAKQbBQiAD20agAG6QfKBugFcK0E5oqR69KRkFORhkmvu5X+QSyiAxp6/RHa5/9d8gpnKV5Sik6fh9f3yH3bqcJ/VHHoHdVkfxWVJel/6GLSzRHxC8kBxvnGwPK/S5ot99bpovo5s7Nzy7ti9EeVHgPqS59y2d8VSdlRRVRvrqt08aY60FKSH9Sg+n/AO896nvmLZnpTusdNlibRrjmsOZVHHyf8mfaiVhqCZlrd/IWgfQXqUQmYURXtKhVPT1Hqrw8WwH9E5setjH/cqVnMFxZTS2WWOGtj+vcvWwHHrbrOkTqfT8TzbLAj1DeseNt689e0XaV577bXPfe5zr9+706C0dTquPLqK3Ao1m3toj0ZUbyKuM8J6u28x3QrDPIfX9lhgsninCurqi7z814rItQkOGuVnYy5jV186z7svnOvuK9DjEztsZc5Zu10ESYq9F8/KDiquqlbrWpm0D7l7v4coq0H6okDGHdAOAPd3/jwpmz33iw0crqwGrXLJXQaA4GFGj4t3Y8Da75Mv/H4KDSxpp195EcTnif7WjvTGLVsZF+8jkvbVzi537nb5t/Tdcxf+NTm8Ngm+nOYL8GHMvMJ0KwwYMcvcS+wOpHEdNxtsRMXyqOgjSRVLrBJJqlRilUm08n6MCjYSFD4fy5ZKrGeBJLO0TcWAEoWEmMUEs5hgBrs50j3ub3SKfOzw8IGg/92EwXB8vH7PUGTqccPR8BMiylS0jgTTFtloCopNPyXBjKVGEjx96E/7OlYOKmnMJhMYGdVnNY7ZEK2kqW+IXkRPKOJP/lATpGnOzEj0GB/7/Y3MOjET2XEIQ6T6hrx3JWk/0S4SnQ2XRseRd28Rk31lQoO6G+vAhm+cHVJiMH/iZdBD++8Q/6rCcUHjIujKhqDXTHeAAGp02YFxVBBiUcBIFDAJdfHgiCmYAC7umzIC9RBDAQFZUCYgEGSxjgAF9AAj0RAYicldYDQFmoSwTcC1H7lesYdqaIfxMDspQC+7oGLlbzwUQxPQ6fL9f37/7tvpLREEIB2wwEE3Qc4AwAObVfjPMVftYZMth+gkC6v1dhr0xp931jlb7YYIGQ5PTUNLx5cf/574f4hRYsSKEy9BKj2DOurJl67AZVnuq6+5Flppo6NOOhP01ItRGhOzgQYbYqjhRhhrnPEmmCzXIXkuWmeLI4476oTD9rlnv5nKXHLAQwddsMpqD1yx13aPrDRLueWWWWGbi8FghEBxks/pZHUT4uETYBloKKnoqP1Ny8nGzsHHYEVEUEhMWFRcyrABg4bkTMrI6vPSjNemzJn2j1lb1m3YtG/BgaofvkDQuhgAyD8AAH2AGoC5IH6AHIAHAAAAkJ3nUSSP48XA84agFUJ6SnrLSYZ+BBScqP9sLvSBEGyTs2PCt28KBqRay1t63ih4FI5NgoQFfpwhMF06NAMAmXtUpEdaDbjNvOhiprmGORek5DSDfzLugI2VQTpA1nNYX9LcjJGCU/KKUt7vzzrPG4UezTs9d64LMhfYxOrcCqqomBe6kKtBLe3S01u/XelRpytNZ95UuaRVwymP5x1fKBmJirXqmmh5kSrKahvpSGZo6PBHEtEj43x0LXhdNPUXNgVbnNKq03q0aJCYXc5TwU1s3M3Sjh5eMY63t6UUID+GW4/SXMB29btppsKTMHEjS7WvAv1gIx8SIodWjzlLmZNSzmVC1ib1B9GTQwOviuVeCxtoj1POa81TWXCTdrUTjP4JIWru/CTaVQ+LghB1G2wOZXsdUmF94PK+CD+GF6uhDkR6viri45CvzvHRa8Jn1Out7jOtPqjye2F34zT7fQma99Toa2D9l7T3U41C5Be7n6zDuEowlUEJYUlp0+zJo54mWiVXqzBxWuxnQ2y8Fdhoc9sSqHQbRFASooRBIZCUVpR1vPiEkfmNLULbmjxrIOWH2NJubuhD6mhXhVrO7VVFsh1t3aOgTmZnRPD1ZrVBrnHGgqaJY6iDfLtqkhLkCZM/s4C7jn29hytU1qs9j0UgVDdrsuILhKYkRIkaGocDBqJ8sn5L4Zbwmyo1pD1svWLfAyjhzf7XN2swCQwHa7zFgI++llI2CL8LR0X3z+xyEwt2IprUa1tzCiPApT8tXCyjACEr7YfaHAQlKieFjae+vcsMiw7bQOlAQIMllb4d0DZPoCpsm7HcXM5dHVDbNIWudbTtWbALteRSd96g+/eHq3XKQnFQUcpX8dDbZi/tF/+MBUMg2CRJkPWAryzYp4iYYiv6P/u83miOqQISD4B3vuToTMXhau7cPreAXx4m08yw0BZDmctvR6HoYWbsqspIvyzwwtqSnqlajdJ7Uz4S1l/Vh6UjZzAT7Te9JYXY+6uYrRBCAfv0ns+kFIWEaadY16LHyFM/W97O9FEGBn5tUOQaT4rF1Ace2lh/r58C1XL1wkEKGn3B/dQGWSWOKAdPZZuDTOqx1zXj+9iwfgj1eGhNRSXv/rD0tGt190P1jxY69N1B2h6dyhGdoTb5QuYIaxB3TXyho5+3UTpPqq55vu7WCWMEdNRuaN9jhab21Qx7BywYQQgUidRipBH9NneS+SB52rgzPW52HrkblfkUux/6HGh+YXZ0Ipty1WkZFXOatlntJvu+Q0e8UBRMxkMq+sTqJb1t6VJMmk1IiAFy1RNXjBSBQIUrotttxz1GEgu16Z+Y0rkFNBaLOxSmTnTCyB3/z7RjgYnmdIJLjaqXucMesMEzeOamA92KPY2J379vEplncKkxEaPMZf34RZpO7dSwn7lvCprfQCRoLgyyqHEWi4ToiJxqqfzUcjGpGQH03TEbKdYH+hjICieaRy0p3nPPkq75lsg8ftcIZZKYEfui9IKpM7dRBkb+sxmDtdcBSm/StM04MAc+0oyuN+TIAIse1LnLpL18l+1JyJ4o5yhGRzi5l4DeNnMZcxaM5U7OU6EFlWhQsXAwmXlKe0v+mXbYvswxfqk/EE477uE5y35rs+Oi/flj4EpToqF30ZavvzRUc7ku3rjSLwsX+fluQVA3Lyxce4m71aoiPyEZHvoK/y7f8u/wbRECnMV85rtBjFjIb/p9KI+BT+ZbiO15TbNETUz5Bb4KyC4O9QTBkDo+flCf/SdL4UBLkHn0hiXTtxslRrxb71K/v1+nkJTBwOCVxIMHS++p8tGLltbyfVLH/Yhj5r47rG5a4VnHbmY03KcYezT09zS8RoeMHk5NAnnsj7knhWLiook+8HhJ6mtCiPZ8hkeebL1AAN8ZEngCJr9wucwWuSTiBfLkPQY3x+hmmHeXIPw1NbAx9ZHURxpsxr3TzWY71bsQmhXsNKcVdQt5eB44VKvxmuVBDTuXui4YxF3KiKBbNzqp5qpIxLPxazS4bQkKzOWtKVl3hHL+8Eqksbj1bt3dW+BNa8kX2ZAmWmiR2vgUNyw06A4+qvefKp/92LTgoBIgsuozCQbcE+fb2zjnwpRw/KL6l6hHPepp49swKFIZxhZm66WBo0+3doXGifIbhqXe1VeLrRvQt36ifKgisKZsdrkTr2+EwzFlkkt7zprnhOgizMqvdMHW+7AxpzR0/ivYuzEpWUGX936DfPVW0mYFQ5TPL+csp3l21fuvcBth0zmmLnI2CfgrZ7CUSSz6Njy5Pn9i4+MRkPNg8SQhdB/Gs6OB+GoMzFXgNHeuWGcnjgy1KMuPVvn91CLyqKxuXnaNfkHvGHILKhoqur/PCu4V9zo5glNtwVVjrdHf9tDIkD+cmiP+OJkVBPqKQF8YndR4naOziiU38x5cPuc+pVghKJ8Fd+fOmOvlOWfHDoaMVm1Nq09TOcwwibRUVbx3R3XsYXWdnIuH8DDOmS9WHpFHpVlkLcbs3u5Y+jZ2vHJhvWVo3TJj95Nw+B7L0HxVhb6aRdOYP/u7pzXb11fn6BoqSEbRe5bcNvdUPzSAuuEXsk6uCvz5FxO+i9hEgDXH5xaINniLm3ISBH7FvrmL2EyUjSR3vzwdmP5wbFPsFW/KtQiqCTHxI+YlGp0qowIaUtvcLb5YMD1Ee5mFs1+mYR96pdR5Vh1jnup7GXxN7A0m/k37xvgzDSZ7JJJMuzFhoWRwKKLxGnrNuIjCyaLU9adNhjeBakJEfOEI1nCOjI9zjgarHWjIId5XW167T+wAeerAV4H71Eb4Etj7sCWb5PAVPCyxAd6nyd0vHwgc+HBsU/QVLyEkRhu5uGkxltxz6ZdfA54kaoeZddPeMd5Mg8kWCndnbu+TF00h30Ci0Rpa7YRYNKbe9FAj9nBjqBPOHQQ1qUSqnxARx1O1FcGsIKATUiAlniMkQEKAx4kBVTFHWxn9Q4plNmdZeXKC+PXcCnOTRwWqCDExg0g2cYaPtSFDQnFoz7BGoq2J9ZREgm2bYq+AitS85yoU7m8+lfBAXe4Y2Wn7937nlhEItcO/96Tab1l5i9oFviMOwsSfGRuTbWGT3RFKUKhHo/hYbXntMbH47HSKs+AHGjJ3ObaNUelxfbn+uFS2fyTfEq3ekvklm0k3Wqo2ZX0hzWRaQBUhIn7Gfc3dnWhjMEof8dNfYYfZr9D9YPdMYBf9MVaYvUDfFdiPeyPdHWgce3aGEBInUmDVXqez1+4gjPybxvbxZzjkcISMffclaQeNdQ5pE37o3fqho/iM1r57+5egn2iq05hSkPFt0zYRcfRHS7VLhY1XW+os1cFXwTvE6JUhfWsiCZ3ULUBaWQjl7v9jyPcV9Wg8Eo2qgRPrwxz0w6Yf1EHvtQenCE0ysji1GElqCfBwpslSj98rJI7/o4gjXFTxT6LZVe90lkGjT4FRG7B6l0jQEpzr17shi3vYeiOwuk7Fy/JH4b4ewITQVWm3rX9DcX8tBMG/jxDZ1oOvrvK8opEHm3igj5BePXh+0LsOhtW39LoqJUAxcf3/FRFKH8qaANOZlXqXzW0PODPrs9Evfr0iK6F+SGV8gnQWtAruopOvPkwmd2c0eQOo34/X03i41u4ogJuNPGttAcfgp49Qn/sihfnaEI1822Ks65HlEd14I3zhgrDarWIPhQUMdNlUWlNBYrNJFdeUOWw49UIhuTsrFsBd1W7FE/BdFgVIzxS2tcDxUIyLT4/AdhTetcKXvEfdEo9LxXsNEfaKsphbYbNJUxQJQGq9lcjm5maS+U6o9WDRzLYeKvmlx2DWsjKlWGHBjy3AzJ70bqwRnMsUfyN++SX8lUEYtcNUAX4oxsM1DicZbmkDEZa8DDuMBBKdV8MdwjHakO+tjYhGYSnSYGxLDWSoCE570QZrC7LFW6WLsMtlk/JyNnu9fFK2nveI/nObHrz6qlIld3Nzs5D5Z+tq3CrOUFjAQv81c50VJE674yWPBAwHzi6ncwD3xrql+Lv4h/P4tzjg7sWfKdYX5OuLO5RWFuMuNvk2fsDaHIxjQSze3IiFA7QiEiknuyiqN9bGqzgMNtk2xqvcGu4rDPrStPfrsSzVMF+O++hcIAMxNuyb+k5YVeVBpZcrNSR6is54UzQE1AsC/DA04Owa7kqqQNpeXPpj7PmdTmRRMwmkMd9Ld2CDsP3twf3koraPuPho29fCb4AylkanQEGSf5pKuZu/oXtB12NnFGopEAt+wsjTuEZbzsiGohzQBgsBSWV1Hda8Saef4jWih6tTn1ToIpwc5ZU6z2FTpzNGBW/QXHGCS624oqZwuRT1lQrqAcKQTH90JI1j0L3+BLYBaPZaEXxnnLwnKMSTjoTBf6e4C0Vx8xuGRcPzBra9S/gzGGM8sDQZYv7ZG/FagKb+5aPsD/aNWBRsgeKElYe/IZdCgOK3zCohLxqgvyVKgAXi9QYym7rhokdfgun/UEoTD9fRN0standQo2avkNHUCZNfjNHg8iNFblZ7cC/Qrg0RjQEs1Bw2S22rIb/S7mv3xRp4OIuxxGpiLTGogVLaS0wncxWNXsSGD83jLTi40elc5LUaOTb8iwv6suF8ZlU16pEimBhk0J8q9SwguNp+SQuhgAm0Bsl9ujthw52dOBnE3OQezT5Zc+dAb8GL1XEqnheoyLwkoBDn6n8AturHuPgO+XOw4rktFdkJyL2E4NvV73ut8D5Q78V3XW3E1vbpr8L9Kl3NPnOQBSD88d7HcU12uE/awXE2nD0+K8z4UZqOeVx/z7ygxHBMIKKy33fzMT5+KPVsFHfTtyW31dWMgfvX5qk5D+4BySbkI6EMqDcogwWr8jJY7MIiSEvSQmsL8woKsgJ9hyuqjqpPl+qFJSeK0/LR78HtTUadPxzW+YzmGj8RrvUbzWR7eWeZg0zWlnWWa8BXxI4bkZnxcWQGN9odwQQFDxMRtdcIatpF4b1rSz/HeO08AzCI0Ff1ovBOk5UgCMC7oQrycg+jvB/OUjTsAJNbLdP1rQmzE6hMX+Plcf26fHsF8ZHlCf2IZGjolQ2xV8DbxIBKOYk1kYRe6uKyMLafc53uDnhor7JtLBMLqZPpE6vDnAQqM9R6+XzcbFNamJBC5XBaeURAAODZ+mP39R6/D6q/MGvktlhOgSVVePWjCuFUytqk1ZyiRa6ud1PjYmzoeDfkQKHtXKHsJ3qrZ3N0GHxK7JieNbN/P+tEwGCvx6KZiQS1eOl6CadOzCRbXPBOrVD6E6PNrXYoFkVc0g6FNCwByzw+db+ui+HoozhYIrqAQEBYHVIrAkEio9XMwwP8mlp/jS3rpfg7lCZVW1ZbX0xQ24hgHB8HQzjhFWDLEQXLwTZyOHK2g2UC7x9qyntNsGY+Dnz9Z6931O4uvr7QiPebDw/wkRLcZQTigRr5A//WuijKNHkNKB5wcf7Zef31l/LX5i3nF+Tm56GiVo3mFtFq9rcD1393sOXTSYmlB9zQo8Gq0LxcWn4+NRf1NKFWSKWszyWdrNzyknqdmLryVglthZ4jAzTZNVB4TUs8g3LlWe2AYeYDxTOAM7JhBLCilaG6RNRGgfksfI0YIZqxyFnSsccTuVvz2Nm1Qdb5Wx5rL9dwjAy2U6zrW00gvW5JbZUX4aE1ZZIi4+rNKBVabXFFycRPiYTyfjuJLpfB4W/35SS81QcoNK7ZFKemrdFU33rW+XsevgfAlFJsLohRLbqQjmrBsNky7E5nBmRgGu0qOcmeQbIplsifIUc6eBvmwvVzRGpFUJ1/R8NEw+1f5tUgN5Jh7mmVCXAoXuT/FDwffMVu9MNKlCFciIMbIirZbujWxkZecdkeZUQq2FiwxTnsKNgqGGUawLpftEu6p6Ao3a2K3IiCKCcdw04zcbnXpWAq4kFz7OmWdRYrScjiBDgsIcm6zpJuseegnjgmL4YzasIxZS6P3AQ1kXm5Sk9PTQZcLMdA+kiO+1UkttO2wATmmjTLurg71iNzfJCPE4/Vg4pIzxnM/IR5LWe/xvec9maAYE5/I/GXCXDsrAKs9mMpST8UCcwXdH6bnCGw+TNSpXap7Ji2RzvcQwDdo3w9e0IqnpCQZmWvhnqZpF522HFUq2svr7bp1AF3fDtvvlAhUjQ8OaGeyFOMKN69V90OnrpXMXYKzw07dlV99dSxP0fW20Lq0NdKhRIDbWAPUAPpbUANwPrry9UXGW/7ZBUv5nalXkgu2ITlb7z0Hsy3+4ZKgMLkqsDTnh+DiaREmfyzPTlZFNHCPz9z4umbTj/c1lc3mo+qj/qrkhJIbZxrRdVXIxtGkrMo6WZH59ouEcDjah/HLOd27hQyl9rbJzDz9g/CFmvSJolBRcRzXNlApanG9KUj04IcaiguLO4qLr2ZiuUGGbGSAvfR/Px4ut9iNdtsdscblBK4m390sDfZ3ZVIDk4PJjZ0vYiCwQcLMsp0boPzwmI0aVcJSbfe/eRBB3HgdKbF2tbW4CQ82XDdr0sqnfgvJjlc3cLGN5+bVjj5d8e2Mj82g3VN2gxOnSvoC9eHsTMp8NJQjYPF8TZ2wuTvfyhmkGjlZz8MMAkKDxnrKjKLpArE6mJrA/5gerwQfXSL59DLj3yIMTdT+MjezUX/feN7qhv3wcZz53LLDuX6KAFq6V0/AC/XmpC7m3mT8XhAAhJw6xFwMTfCokB7nJp9ITQ0kGUG9fSlqC8ipLbJWb2hEKtnvuXUZrc/PdpUVnhhqoh6mjfLP00tmrpUSG9Ka3IHwWthareUHzEY+OEXpt4SvHCCF6kvCTH75dzBoCKrqHPRXQYnR43O6BoY61KfYawxBiPJooTA9lLSQ+uzS0pKwe3DFs8fwIw+j0kfFtjq9ObibkqAQqgvDUHxUwmgivS09ADV1I6WHc3fDBHgTbrWq0FGm5qEzLdKLRpoyGjtLoNeXIBZ/yiuKP5hwY/Nw7Tu9M5AZGND0p/0EYwAn8+vdSvYTVYrCadra10JwS36SK1BFkw+nUr4E0/jyce64DsWiltL5u+A4bn5ktbihbn674MjBqkvcUvFk0ZSXBHwFm30ipGeNeFEjcQlQJpZ7H+RSDUYizRk0MvDqqUuPuK3T2+RZks0GhpryGPG+/1W/1bAbY7SDGwkz0w25dn41TzMJaqo9siQBAh322i/vMylFTKETJKh0EAyMgQ0076/W4eYmAgDt2UcPD/gWwf5/hP6Ml7ZZtfY1X3DjwEHb28iml4bC3qDAEa8qPpLF7OzH6zJysp6IPaB/xTRSMQBx97cQ64omwn/4IPKLw57tg2D1rQU0J6wAvfir+0KEaHXblhXAHCh/kEp7Pr4Yg6VF4iQ5Kb/eJFJ44Hs+6dN/CC6ANivtH00HPuoXjMNaaeBcu9M9z3BXruhUBRqoTGK/wm3OdwlILnF2Ny/cHbgFmNL3dfpqpVyt0wq+1tWqZbL3VLZJVhRWii7qXW0XZTy22l11Dv491gZRTdHca2o/MCl7ZLlBzZNl1OmfQeAxdk12IVIJDinqxtNMkfBQR1zRnWDBp2b5Jc5uBXaCp6qw/uWiyzzeMsId3kHlbmOSQ1WBH9XFd/+2xIjH6KamYJe9g6/3gpkmpnFj4I9pw26UohcyrD6DLwC/gE66xcpcDu7BrqKZUXg97i/dYPctvr6yfrd/+xqK7YprvM76Mn+rqe2KeiJfYP7p6dA9dza0N30/a1NTVbSt2rHo+iVk2ZZ1taJyfFxiq3RJf3iO1NMo/WYUJNHq4mZzj+XY8/uvKszXq2w8yH9larOZ6DJ1GTnJFIRZjl1h6hHMnVNpopteH3FVkTpql2aWXrz+c4qh7rCHwpl0mfPh938nUmsVotNKHX6RSANAavAAgQQ8sHNd8oqo0S54wNZHg5OKDhFDjGQTFRWmTgYem9dPyirvHEEjQOWCkbZTh4qq4yS+HRL8pUSpUQpEWrE66FyBw6kwe/UpiaV1I0Hm6RDALa9le6pTQ0Ge9/KrNSmXgwOSeMNcPit5FKbmlTw4K63UpPa1GDw4FvpQkHzpwasfLKnWhoE0Meq+Pxv2cbXxFfHtThhbH2fW3k9aXKUFnk9MDVbDrz0Bl1EcVPbScDCxdQvtLT/cVNCwqZYB+BFsP1gW2w2Yyud0p58E/s66RrA1/ENuEMecKzQx5PBY8CSYTXVD6fm98dU/Wnm9mwA0JdPLQBFoOBPtCBve7ovYcIKZgGs1lNIM6e4DpOD3FkEoCPgAYOA7z3dmxMGejIQ4r4BPZG/J8r/QAcIWMKEldQTB3cCwBHAY0Eew7w4rY21F8LsEHf49/Nv5sypIAhs0SIAHTuWOOATyVYLf8IH63cb1pwAvCgrQd4RkSasDpjC7CvSAB6KAtCx4w55m5NZ8Jp28aBGwRjwZgusXxzwsnRiWw5cu3CQ/+BQjFoZ6SWsZRNNEpLaxG9YYSSJzCeBb28vjgzPaa2rQzoetf2qqe94r/FGE6PHy+JmTgqZRu2HW0GNSz8EBLZwdsc/0ORZl5YX/Pvw7sZlbK4fE+csIBBwc0vedH95o/9Ymn4F+GPH4JpD7ambR1qcK5agEeiNAlL177RXDP/uinOuqWl60/z9+jlX1M9e2se+NRmd8/hcEnLwPyFPLWVKIhBYesO7LzSOMSWDIBx1OQFZlG8KqHKdR7bZsEpnyCsN3/8jIaIKX/UgPhd5sZutP/RuAbFT5RkOf5KdskQeuc0zOdjDZ7iSV8RELTtIbEi28/fvFZB8frEqEDwFXbYtvtEuxDUcJFstfEDOn0maQqwrSK2hzKHD+y/kL0on9wBVca9SQFq2/Et5Zx8+0okdjsBHtPxiawZFcqmzgvwgD6WrIPiIPiRTBQ65o+C08G6LiADs7X1AUAp55biYnEzeMt45S++TQnm3OCpWfCUaa1l4CAlRimvxxRr5QPogXA5zRdyBY8tHuMtiN2UVfjWtC2LSXptM5JUbxxopKEb9Ly9TTLVUebgAr1FmIgW17O0reG0+cY90FJh2Qhxm+H5hmSuATP0MfOTxLxMZXHqLuErnn98gjEiVHIGVKTIFxwFaCHSZQc/kCc0VYankdxwyOCW4LOAV5vc7rt3ehe8Oz1766s8LWHXY4aFlTlnvWtkUi9b62aT7/7R4+Bto1M0zYtBGjSDws8nkVvOA5tqt/mqAVWjYEQAfwfQ0auPi0xQ+iqdppgTczESfduOTaU9JtIjlPEzA5SY8nUIRx9N6snz4Zwaq/IKUF9i1J+/AulVrjsg52b15yD3JljO2zvmqbNkyn8G5zVuyddYdHCYdXNkYdTF7SDiOrE1nHzgkpycdjuz9V4NsbFatx/pGW2C1eH1gm812icuvYum2vD3Lb1ZUt0OfMM/GwG6ryuzksmzHYZYYc5bzkyxtJXuNq46zzz7gYGU/tpBxE56+F2guEXjW6uz1W+CZJghfT+qQT19rUnhuqNgqKK9bctSCIouYP91kx6X2b1gaohsA) format("woff2");
     font-weight:600;font-style:normal;font-display:swap
   }
+
   :root{
     color-scheme: light dark;
     --bg:oklch(91% 0.012 75);
@@ -67,97 +25,59 @@
     --border:oklch(78% 0.016 75);
     --border-strong:oklch(62% 0.020 75);
     --accent:oklch(52% 0.17 38);
-    /* THE KEY: the campaign form's vintage bevel, light variant. One button
-       on this board, everywhere a button is. */
-    --key-bg:oklch(78% 0.008 75);--key-bg-hover:oklch(74% 0.010 75);--key-bg-down:oklch(70% 0.012 75);
-    --key-ink:oklch(22% 0.014 60);--key-hi:oklch(88% 0.005 78);--key-lo:oklch(60% 0.012 72);
     --accent-wash:oklch(90% 0.045 38);
     --ok:oklch(48% 0.14 145);
     --bad:oklch(48% 0.20 25);
     --park:oklch(48% 0.010 70);
-    /* The ZenaSoft logo's own three bands. They are the wipe, and they are the
-       plume on the mark, so they are the one palette shared with the figure.
-       Both figures wear the same ramp since the refined artwork of 4.1.27. */
     --band-1:#7c1b16; --band-2:#bd281c; --band-3:#dd4d25;
-    /* The memo has no shadow vocabulary. The one raised surface, the card
-       sheet, is separated by a NeXT-style inset bevel instead (see .sheet). */
     --lift:none;
-
-    --s1:4px; --s2:8px; --s3:12px; --s4:20px; --s5:32px; --s6:48px;
-    /* Zero everywhere. Square wells, square cards, square chips: the sharp
-       corner is the memo's voice, not a setting. */
-    --r-well:0px; --r-card:0px; --r-chip:0px;
-    --fs-micro:12px; --fs-small:13px; --fs-body:14.5px; --fs-lead:26px;
-    --ease:cubic-bezier(0.22, 1, 0.36, 1);
-    /* The first name is the embedded @font-face above, so it always wins. The
-       rest are insurance for a data URI that somehow fails to decode. */
+    --r:0px;
     --serif:"Mozilla Headline Condensed","Mozilla Headline",Georgia,"Times New Roman",serif;
-    --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
     --mono:"IBM Plex Mono","SF Mono",Menlo,Consolas,ui-monospace,monospace;
+    --fs-display:clamp(1.25rem,2vw,1.5rem);
+    --fs-body:0.90625rem;
+    --fs-small:0.8125rem;
+    --fs-micro:0.75rem;
+    --s2:0.25rem;--s3:0.5rem;--s4:0.75rem;--s5:1rem;--s6:1.5rem;--s8:2rem;
+    --ease:cubic-bezier(.16,.84,.44,1)
   }
-  @media (prefers-color-scheme: dark){
-    :root{
-      --bg:oklch(22% 0.014 70);
-      --surface:oklch(28% 0.014 70);
-      --surface-2:oklch(24% 0.014 70);
-      --text-faint:oklch(68% 0.012 70);
-      --text:oklch(90% 0.010 75);
-      --text-dim:oklch(78% 0.012 72);
-      --border:oklch(38% 0.014 70);
-      --border-strong:oklch(50% 0.016 70);
-      --accent:oklch(68% 0.15 38);
-      --key-bg:oklch(38% 0.02 68);--key-bg-hover:oklch(42% 0.02 68);--key-bg-down:oklch(34% 0.02 68);
-      --key-ink:oklch(88% 0.04 55);--key-hi:oklch(52% 0.016 70);--key-lo:oklch(22% 0.02 60);
-      --accent-wash:oklch(30% 0.05 38);
-      --ok:oklch(62% 0.14 145);
-      --bad:oklch(65% 0.19 25);
-      --park:oklch(68% 0.010 70);
-      --lift:none;
+  @media(prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:oklch(20% 0.010 70);
+      --surface:oklch(24% 0.010 70);
+      --surface-2:oklch(28% 0.012 70);
+      --text-faint:oklch(58% 0.012 70);
+      --text:oklch(88% 0.008 75);
+      --text-dim:oklch(65% 0.010 70);
+      --border:oklch(32% 0.012 70);
+      --border-strong:oklch(44% 0.016 70);
+      --accent:oklch(62% 0.17 38);
+      --accent-wash:oklch(28% 0.045 38)
     }
   }
-  *{box-sizing:border-box}
-  html{margin:0;height:100%}
-  body{margin:0;display:flex;flex-direction:column;height:100vh;height:100dvh}
-  ::selection{background:var(--accent-wash);color:var(--text)}
-  body{
-    background:var(--bg);color:var(--text);
-    font-family:var(--sans);font-size:var(--fs-body);line-height:1.5;
-    -webkit-font-smoothing:antialiased;
-    /* Paper stock. Two offset dot grids, straight from the ZenaSoft body
-       rule: pure CSS, so nothing is fetched. */
-    background-image:
-      radial-gradient(oklch(35% 0.02 60 / 0.025) 1px, transparent 1px),
-      radial-gradient(oklch(35% 0.02 60 / 0.020) 1px, transparent 1px);
-    background-size: 3px 3px, 7px 7px;
-    background-position: 0 0, 1px 2px;
-    /* tabular figures: counts and dates line up in the docket and the sheet */
-    font-feature-settings:'tnum' 1,'ss01' 1;
+  :root[data-theme="dark"]{
+    --bg:oklch(20% 0.010 70);
+    --surface:oklch(24% 0.010 70);
+    --surface-2:oklch(28% 0.012 70);
+    --text-faint:oklch(58% 0.012 70);
+    --text:oklch(88% 0.008 75);
+    --text-dim:oklch(65% 0.010 70);
+    --border:oklch(32% 0.012 70);
+    --border-strong:oklch(44% 0.016 70);
+    --accent:oklch(62% 0.17 38);
+    --accent-wash:oklch(28% 0.045 38)
   }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:var(--fs-body);line-height:1.5;color:var(--text);background:var(--bg);
+    display:flex;flex-direction:column;min-height:100vh}
+  h1,h2,h3{font-weight:600;line-height:1.2}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
 
-  /* ── The mark ─────────────────────────────────────────────────────────────
-     A letterhead, not a title: the mark says which tool made this page, the
-     h1 below says which board it is. The band sweeping out from behind the
-     figure and uncovering the wordmark is the ZenaSoft logo's own three bars,
-     which are also the plume on the figure's helmet. One motion, on open.
-
-     This is a deliberate exception to ZenaSoft's "no entrance animations".
-     That rule governs page chrome; a brand mark introducing itself once is
-     the thing the rule exists to leave room for. */
-  .brand{display:flex;align-items:center;gap:14px}
   .brand-mark{width:64px;height:auto;flex:none;position:relative;z-index:2;display:block}
-  /* THE LETTERHEAD: the tool and the kind of document on one line, the
-     document's name on the next, behind a drawn chevron. The name was a mono
-     chip in a box; it is a title now, in the display face, and the chevron
-     is a stroke rather than a glyph. */
   .brand-text{min-width:0}
-  /* The wordmark is an SVG, which has no baseline: `baseline` alignment put
-     the SVG's box edge on the text's baseline, and the letters' own baseline
-     sits 5.8px above that edge (viewBox 0 -75 300 85 at 28px). Measured in a
-     browser: BEAN BOARD's baseline landed 2.3px under ADJUDANT's. So the
-     line aligns on its bottom edge and the text is lifted to the letters. */
-  .brand-line{display:flex;align-items:flex-end;gap:8px;min-width:0}
-  .brand-pip{color:var(--text-faint);font-size:14px;line-height:1;padding-bottom:4px;opacity:.5}
-  .brand-feature{font-family:"Mozilla Headline","Mozilla Headline Condensed",Georgia,serif;font-size:15px;font-weight:600;line-height:1;padding-bottom:3px;letter-spacing:.02em;text-transform:uppercase;color:var(--text-faint);white-space:nowrap}
+  .brand-line{display:flex;align-items:baseline;gap:7px;min-width:0}
   /* Which adjudant drew this page. Stamped at scaffold time, because the file
      is static once written: a board made by 4.1.9 must keep saying 4.1.9 when
      the plugin has moved on, or the stamp is a guess. Sized and coloured to be
@@ -181,7 +101,7 @@
   .brand-word svg{
     height:21px;width:auto;color:var(--text);display:block;
     /* Locked to the band, not merely timed near it. See brand-uncover. */
-    clip-path:inset(0 100% 0 0)
+    clip-path:inset(0 100% 0 0);animation:brand-uncover .62s linear 1.46s forwards
   }
   .brand-band{
     position:absolute;inset:0;display:flex;flex-direction:column;
@@ -190,6 +110,7 @@
        outside the page. Clipped from the left edge instead, it grows out of the
        figure standing there, which is where the plume already is. */
     clip-path:inset(0 100% 0 0);
+    animation:brand-unfurl .62s linear 1.46s forwards;
     pointer-events:none
   }
   .brand-band i{flex:1}
@@ -225,987 +146,108 @@
     100%{clip-path:inset(0 0 0 0)}
   }
 
-  /* ── Masthead ── */
-  header.masthead{
-    flex:none;
-    position:sticky;top:0;z-index:20;
-    /* the same paper as the body, grain included: a flat fill here was the
-       one patch of the page with no stock, and it showed once the ledger
-       put a ruled sheet on it */
-    background:var(--bg);
-    background-image:
-      radial-gradient(oklch(35% 0.02 60 / 0.025) 1px, transparent 1px),
-      radial-gradient(oklch(35% 0.02 60 / 0.020) 1px, transparent 1px);
-    background-size: 3px 3px, 7px 7px;
-    background-position: 0 0, 1px 2px;
-    padding:var(--s4) var(--s6) var(--s3);
-  }
-  /* A LETTERHEAD, A LEDGER, A RAIL. Chosen from four renders of the real
-     board on 2026-09-12 (the design-pass bean).
 
-       mark · wordmark · breadcrumb        126 cards | updated | hide closed
-                                           [filter] [persist] [by parent] [download]
-       ─────────────────────────────────────────────────────────────────────
-       TOUCHED                              FILED           126 cards, 6 weeks
-       ruled time sheet, a week a column    ruled time sheet
-       ───────────────────────────────────────────────────────────── [chevron]
-       [type keys]  #tags
 
-     Three bands stacked the brand, then a docket line, then the rails, and the
-     activity card sat alone in the top right where it set the height of the
-     brand row: 119px against the brand's 69. Measured at 1440: masthead
-     300px, Download wrapped onto a second line, the first card began at
-     332px. Now the docket stands beside the mark, as tall as it (63 against
-     69), the time sheets run the width of the page as a ledger, and the
-     masthead is 263px with the first card at 295px. Folded, 175px.
+  body.loading>:not(.preloader){opacity:0}
+  .preloader{
+    position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);transition:opacity .3s var(--ease)
+  }
+  .preloader-bar{
+    width:120px;height:4px;display:flex;overflow:hidden;
+    clip-path:inset(0 100% 0 0);
+    animation:preloader-wipe 1.4s cubic-bezier(.16,.84,.44,1) forwards
+  }
+  .preloader-bar i{flex:1}
+  .preloader-bar i:nth-child(1){background:var(--band-1)}
+  .preloader-bar i:nth-child(2){background:var(--band-2)}
+  .preloader-bar i:nth-child(3){background:var(--band-3)}
+  @keyframes preloader-wipe{
+    0%{clip-path:inset(0 100% 0 0)}
+    60%{clip-path:inset(0 0 0 0)}
+    100%{clip-path:inset(0 0 0 100%)}
+  }
+  body:not(.loading)>.preloader{opacity:0;pointer-events:none}
 
-     The HTML is unchanged and the row wrappers are `display:contents`, so
-     the four groups place themselves on one grid. DOM order and reading
-     order still agree: identity, state and actions, the ledger, the rail. */
-  header.masthead{
-    display:grid;grid-template-columns:minmax(0,1fr) auto;
-    grid-template-rows:auto auto auto;column-gap:var(--s5);row-gap:0;
-    align-items:center
+  .masthead{
+    flex:none;position:sticky;top:0;z-index:20;background:var(--bg);
+    padding:var(--s5) var(--s6) var(--s4)
   }
-  .head-row{display:contents}
-  .ident{grid-column:1;grid-row:1}
-  .head-ops{grid-column:2;grid-row:1}
-  .spark{grid-column:1/-1;grid-row:2}
-  .spark-toggle{grid-column:2;grid-row:3}
-  .rails{grid-column:1/-1;grid-row:3}
+  .head-row{display:flex;align-items:center;gap:var(--s5);flex-wrap:wrap;min-height:55px}
+  .ident{display:flex;flex-direction:column}
+  .brand{display:flex;align-items:center;gap:var(--s4)}
+  .title{font-family:var(--serif);font-size:var(--fs-display);letter-spacing:-0.02em;margin:0}
+  .sub{margin:2px 0 0;font-size:var(--fs-small);display:flex;align-items:baseline;gap:var(--s3)}
+  .sub-product{font-size:var(--fs-body);color:var(--text-dim);letter-spacing:-.01em}
+  .sub-pip{color:var(--text-faint)}
+  .sub-label{font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint)}
+  .updated{margin-left:auto;font-size:var(--fs-micro);color:var(--text-faint)}
 
-  /* THE DOCKET. State over actions, both flush right against the page edge,
-     the way a form's reference block sits opposite the letterhead. */
-  .head-ops{display:flex;align-items:center;gap:var(--s4);flex-wrap:nowrap;
-    flex-direction:column;align-items:flex-end;gap:var(--s2);margin:0}
-  .head-ops .meta{flex:none;justify-content:flex-end;white-space:nowrap}
-  .head-ops .controls{margin-left:0;gap:var(--s2);flex-wrap:nowrap;justify-content:flex-end}
-  /* THE FILTER AND ONE MENU. Four bordered controls in a row under the
-     state line read as a toolbar pinned to a letterhead, and three of them
-     are used once a session or less. The filter stays out, because it is
-     the control this board is used through; persist, grouping and download
-     fold into a menu. The buttons are the campaign form's ghost button:
-     body face, 13px, weight 500, sentence case, a 1px strong rule, the
-     surface-2 fill on hover. The uppercase tracked-out version was a
-     costume the form does not wear. */
-  .head-ops .controls input#q{
-    box-sizing:border-box;height:32px;padding-top:0;padding-bottom:0;
-    flex:0 1 240px;max-width:240px;width:auto;
-    background:var(--bg);border-color:var(--border-strong);
-    padding-left:10px;padding-right:10px;font-size:var(--fs-small)
-  }
-  .head-ops .controls input#q::placeholder{color:var(--text-faint)}
-  .head-ops .controls input#q:focus{border-color:var(--accent);background:var(--surface)}
-  /* the buttons here are THE KEY (see `.pane-btn`), and these rules only
-     place them; `.controls button` and `.controls .link` further down are
-     overridden by the key rule's later position and these resets */
-  .head-ops .controls button{flex:0 0 auto;margin:0}
-  .head-ops .controls .link,.head-ops .controls .link:hover{border:0;text-decoration:none;margin-left:0}
-  .docket-menu{position:relative;flex:0 0 auto}
-  .docket-menu summary{list-style:none;user-select:none}
-  .docket-menu summary::-webkit-details-marker{display:none}
-  .docket-menu summary svg{width:10px;height:7px;display:block;transition:transform .15s var(--ease)}
-  .docket-menu[open] summary svg{transform:rotate(180deg)}
-  /* the panel is a slip of paper under the summary. Its items are ROWS, not
-     keys: a menu is a list, and three raised keys stacked in a drawer was
-     more plastic than the drawer could carry. The summary stays the key. */
-  .docket-menu-panel{
-    position:absolute;right:0;top:calc(100% + 6px);z-index:30;min-width:240px;
-    display:flex;flex-direction:column;
-    background:var(--surface);border:1px solid var(--border-strong);padding:4px
-  }
-  .head-ops .controls .docket-menu-panel button{
-    width:100%;height:36px;justify-content:flex-start;padding:0 12px;
-    background:none;box-shadow:none;color:var(--text-dim);
-    border-top:1px solid var(--border)
-  }
-  .head-ops .controls .docket-menu-panel button:first-child{border-top:0}
-  .head-ops .controls .docket-menu-panel button:hover{background:var(--surface-2);color:var(--text);box-shadow:none}
-  .head-ops .controls .docket-menu-panel button[aria-pressed="true"]{
-    background:none;color:var(--text);box-shadow:inset 5px 0 0 0 var(--accent)
-  }
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:var(--s5);
+    padding:var(--s6);flex:1}
 
-  /* THE RAIL sits under a rule. The ledger folds away above that rule, so
-     the rule is the rail's, not the ledger's, and it stays when the ledger
-     goes. Room on the right for the fold tab. */
-  /* ONE RAIL, NOT TWO. Chosen in live, 2026-09-10. Type and tag both answer
-     "narrow this board", so they stopped being two labelled rows and became one
-     scrolling line split by a rule. A whole row of chrome went and the tags
-     inherited it. */
-  .rails{
-    margin-top:var(--s4);display:flex;flex-direction:row;align-items:center;
-    gap:var(--s4);flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;
-    border-top:1px solid var(--border);padding-top:var(--s3);padding-right:44px
-  }
-  .rails .rail{border:0}
-  .rails .rail-row{margin-top:0;flex:0 0 auto;gap:var(--s2)}
-  .rails .rail-lbl{display:none}
-  /* the tags take the width the labels and the second row gave back. The rule
-     that once divided the two rails went with the chip boxes: keys that sit on
-     the paper instead of in pills are already read as two groups by the gap,
-     and the marks say which group is which. */
-  .rails #tagRow{flex:1 1 auto;min-width:0}
-  /* and they SCROLL rather than wrap. Wrapping inside a one-line rail is just
-     the two-row layout again with the label removed: measured 59px against the
-     type rail's 25px. */
-  .rails #tagRow .legend{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;min-width:0;gap:var(--s3)}
-  .rails #tagRow .legend .k{flex:0 0 auto}
-  /* keys sit on their own line height, never on the rail's */
-  .rails #tagRow .legend{align-items:center}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+    padding:var(--s5);display:flex;flex-direction:column;gap:var(--s4)}
+  .card h2{font-size:var(--fs-body);text-transform:uppercase;letter-spacing:0.06em;
+    color:var(--text-faint);border-bottom:1px solid var(--border);padding-bottom:var(--s3)}
 
-  /* ColorSym, one vocabulary. github.com/luisfrancisco/colorsym, symbols
-     CC BY-SA 4.0. Colour alone excluded anyone with a colour vision deficiency
-     from telling one type from another; the symbol carries the same fact in
-     shape. It is the SAME mark everywhere a type is named: the rail key, the
-     card face and the sheet, so the three read as one thing.
+  .stat-row{display:flex;gap:var(--s5);flex-wrap:wrap}
+  .stat{display:flex;flex-direction:column;align-items:center;gap:var(--s2)}
+  .stat .n{font-size:1.5rem;font-weight:700;line-height:1}
+  .stat .label{font-size:var(--fs-micro);color:var(--text-faint);text-transform:uppercase;letter-spacing:0.04em}
+  .stat.ok .n{color:var(--ok)}
+  .stat.bad .n{color:var(--bad)}
+  .stat.accent .n{color:var(--accent)}
 
-     Keyed by data-sym, which catSym assigns by index alongside the hue, so a
-     card and its key always agree. The eight are a BIJECTION, solved rather
-     than matched, because nearest-hue gave blue and cyan the same symbol and
-     two identical marks are worse than none. */
-  .sym{display:inline-block;flex:none;background:var(--c);-webkit-mask:center/contain no-repeat;mask:center/contain no-repeat}
-  .sym[data-sym="1"]{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M50.41,33.25c.99,1.06.93,2.73-.13,3.72-.51.47-1.15.7-1.79.7-.7,0-1.41-.28-1.92-.84l-13.01-13.98-13.26,14c-1,1.06-2.67,1.1-3.72.1-1.05-1-1.1-2.66-.1-3.71l15.19-16.03c.5-.52,1.19-.82,1.91-.82h0c.73,0,1.42.3,1.91.84l14.92,16.03h0ZM38.62,45.29c0,2.86-2.33,5.19-5.19,5.19s-5.19-2.33-5.19-5.19,2.33-5.19,5.19-5.19,5.19,2.33,5.19,5.19Z'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M50.41,33.25c.99,1.06.93,2.73-.13,3.72-.51.47-1.15.7-1.79.7-.7,0-1.41-.28-1.92-.84l-13.01-13.98-13.26,14c-1,1.06-2.67,1.1-3.72.1-1.05-1-1.1-2.66-.1-3.71l15.19-16.03c.5-.52,1.19-.82,1.91-.82h0c.73,0,1.42.3,1.91.84l14.92,16.03h0ZM38.62,45.29c0,2.86-2.33,5.19-5.19,5.19s-5.19-2.33-5.19-5.19,2.33-5.19,5.19-5.19,5.19,2.33,5.19,5.19Z'/%3E%3C/svg%3E")}
-  .sym[data-sym="2"]{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M20.28,36.64c-1,1.06-2.67,1.1-3.72.1-1.05-1-1.1-2.66-.1-3.71l15.19-16.03c.5-.52,1.19-.82,1.91-.82.7.12,1.43.3,1.92.84l14.92,16.03c.99,1.06.93,2.73-.13,3.72-.5.47-1.15.7-1.79.7-.7,0-1.41-.28-1.92-.84l-13.01-13.98-13.26,14h-.01ZM51.11,47.63c0,1.45-1.18,2.63-2.63,2.63h-30.11c-1.45,0-2.63-1.18-2.63-2.63s1.18-2.63,2.63-2.63h30.11c1.45,0,2.63,1.18,2.63,2.63Z'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M20.28,36.64c-1,1.06-2.67,1.1-3.72.1-1.05-1-1.1-2.66-.1-3.71l15.19-16.03c.5-.52,1.19-.82,1.91-.82.7.12,1.43.3,1.92.84l14.92,16.03c.99,1.06.93,2.73-.13,3.72-.5.47-1.15.7-1.79.7-.7,0-1.41-.28-1.92-.84l-13.01-13.98-13.26,14h-.01ZM51.11,47.63c0,1.45-1.18,2.63-2.63,2.63h-30.11c-1.45,0-2.63-1.18-2.63-2.63s1.18-2.63,2.63-2.63h30.11c1.45,0,2.63,1.18,2.63,2.63Z'/%3E%3C/svg%3E")}
-  .sym[data-sym="3"]{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M51.11,43.23c0,1.45-1.18,2.63-2.63,2.63h-30.11c-1.45,0-2.63-1.17-2.63-2.63s1.18-2.63,2.63-2.63h30.11c1.45,0,2.63,1.17,2.63,2.63ZM28.24,26.19c0-2.86,2.33-5.19,5.19-5.19s5.19,2.33,5.19,5.19-2.33,5.19-5.19,5.19-5.19-2.33-5.19-5.19Z'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M51.11,43.23c0,1.45-1.18,2.63-2.63,2.63h-30.11c-1.45,0-2.63-1.17-2.63-2.63s1.18-2.63,2.63-2.63h30.11c1.45,0,2.63,1.17,2.63,2.63ZM28.24,26.19c0-2.86,2.33-5.19,5.19-5.19s5.19,2.33,5.19,5.19-2.33,5.19-5.19,5.19-5.19-2.33-5.19-5.19Z'/%3E%3C/svg%3E")}
-  .sym[data-sym="4"]{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M50.41,39.65c.99,1.06.93,2.73-.13,3.72-.51.47-1.15.71-1.79.71-.7,0-1.41-.28-1.92-.84l-13.01-13.98-13.26,14c-1,1.06-2.67,1.1-3.72.1-1.05-1-1.1-2.66-.1-3.71l15.19-16.03c.5-.52,1.19-.82,1.91-.82h0c.73,0,1.42.31,1.91.84l14.92,16.03h0v-.02Z'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M50.41,39.65c.99,1.06.93,2.73-.13,3.72-.51.47-1.15.71-1.79.71-.7,0-1.41-.28-1.92-.84l-13.01-13.98-13.26,14c-1,1.06-2.67,1.1-3.72.1-1.05-1-1.1-2.66-.1-3.71l15.19-16.03c.5-.52,1.19-.82,1.91-.82h0c.73,0,1.42.31,1.91.84l14.92,16.03h0v-.02Z'/%3E%3C/svg%3E")}
-  .sym[data-sym="5"]{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M50.36,33.43c0,9.34-7.6,16.93-16.94,16.93s-16.94-7.6-16.94-16.93,7.6-16.93,16.94-16.93,16.94,7.6,16.94,16.93ZM45.59,33.43c0-6.71-5.46-12.17-12.17-12.17s-12.16,5.46-12.16,12.17,5.46,12.17,12.16,12.17,12.17-5.46,12.17-12.17ZM38.61,33.43c0,2.86-2.33,5.19-5.19,5.19s-5.19-2.33-5.19-5.19,2.33-5.19,5.19-5.19,5.19,2.33,5.19,5.19Z'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M50.36,33.43c0,9.34-7.6,16.93-16.94,16.93s-16.94-7.6-16.94-16.93,7.6-16.93,16.94-16.93,16.94,7.6,16.94,16.93ZM45.59,33.43c0-6.71-5.46-12.17-12.17-12.17s-12.16,5.46-12.16,12.17,5.46,12.17,12.16,12.17,12.17-5.46,12.17-12.17ZM38.61,33.43c0,2.86-2.33,5.19-5.19,5.19s-5.19-2.33-5.19-5.19,2.33-5.19,5.19-5.19,5.19,2.33,5.19,5.19Z'/%3E%3C/svg%3E")}
-  .sym[data-sym="6"]{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M51.79,18.72c-.08.11-.18.24-.29.34l-4.39,4.39v.03c2.05,2.79,3.26,6.23,3.26,9.94,0,4.68-1.89,8.91-4.97,11.96-3.05,3.08-7.28,4.99-11.96,4.99-.95,0-1.84-.08-2.73-.24-1.31-.21-2.6-.58-3.81-1.1-1.21-.53-2.34-1.18-3.39-1.95h-.03l-4.34,4.36-.05.05c-.53.47-1.16.71-1.81.71-.5,0-1-.16-1.45-.42-.29-.18-.55-.45-.76-.74-.66-1.03-.55-2.37.29-3.29l4.42-4.39v-.03c-1.55-2.08-2.6-4.55-3.05-7.2-.16-.89-.24-1.81-.24-2.73,0-3.5,1.08-6.76,2.92-9.46.32-.45.63-.89.97-1.29.34-.42.71-.84,1.1-1.21,3.08-3.08,7.28-4.97,11.96-4.97.47,0,.92.03,1.39.05.92.08,1.79.24,2.66.45.45.1.87.21,1.29.37.84.29,1.63.63,2.39,1.03h.03c.76.42,1.5.87,2.18,1.37h.03l4.39-4.39c.11-.11.24-.21.37-.29,1-.66,2.39-.55,3.29.34s1,2.29.34,3.31h0ZM39.96,23.19c-1.89-1.21-4.13-1.92-6.52-1.92-2.94,0-5.62,1.05-7.73,2.76-2.71,2.23-4.44,5.62-4.44,9.38,0,.97.11,1.89.34,2.79.11.5.26,1,.45,1.47.21.53.45,1.05.71,1.52.13.26.26.5.42.74,0,0,16.77-16.74,16.77-16.74ZM45.61,33.42c0-2.39-.71-4.65-1.92-6.55l-16.77,16.8c1.89,1.21,4.1,1.92,6.52,1.92,6.7,0,12.17-5.47,12.17-12.17Z'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M51.79,18.72c-.08.11-.18.24-.29.34l-4.39,4.39v.03c2.05,2.79,3.26,6.23,3.26,9.94,0,4.68-1.89,8.91-4.97,11.96-3.05,3.08-7.28,4.99-11.96,4.99-.95,0-1.84-.08-2.73-.24-1.31-.21-2.6-.58-3.81-1.1-1.21-.53-2.34-1.18-3.39-1.95h-.03l-4.34,4.36-.05.05c-.53.47-1.16.71-1.81.71-.5,0-1-.16-1.45-.42-.29-.18-.55-.45-.76-.74-.66-1.03-.55-2.37.29-3.29l4.42-4.39v-.03c-1.55-2.08-2.6-4.55-3.05-7.2-.16-.89-.24-1.81-.24-2.73,0-3.5,1.08-6.76,2.92-9.46.32-.45.63-.89.97-1.29.34-.42.71-.84,1.1-1.21,3.08-3.08,7.28-4.97,11.96-4.97.47,0,.92.03,1.39.05.92.08,1.79.24,2.66.45.45.1.87.21,1.29.37.84.29,1.63.63,2.39,1.03h.03c.76.42,1.5.87,2.18,1.37h.03l4.39-4.39c.11-.11.24-.21.37-.29,1-.66,2.39-.55,3.29.34s1,2.29.34,3.31h0ZM39.96,23.19c-1.89-1.21-4.13-1.92-6.52-1.92-2.94,0-5.62,1.05-7.73,2.76-2.71,2.23-4.44,5.62-4.44,9.38,0,.97.11,1.89.34,2.79.11.5.26,1,.45,1.47.21.53.45,1.05.71,1.52.13.26.26.5.42.74,0,0,16.77-16.74,16.77-16.74ZM45.61,33.42c0-2.39-.71-4.65-1.92-6.55l-16.77,16.8c1.89,1.21,4.1,1.92,6.52,1.92,6.7,0,12.17-5.47,12.17-12.17Z'/%3E%3C/svg%3E")}
-  .sym[data-sym="7"]{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M51.11,33.55c0,1.45-1.18,2.63-2.63,2.63h-30.11c-1.45,0-2.63-1.17-2.63-2.63s1.18-2.63,2.63-2.63h30.11c1.45,0,2.63,1.18,2.63,2.63Z'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M51.11,33.55c0,1.45-1.18,2.63-2.63,2.63h-30.11c-1.45,0-2.63-1.17-2.63-2.63s1.18-2.63,2.63-2.63h30.11c1.45,0,2.63,1.18,2.63,2.63Z'/%3E%3C/svg%3E")}
-  .sym[data-sym="8"]{-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M38.61,33.51c0,2.86-2.33,5.19-5.19,5.19s-5.19-2.33-5.19-5.19,2.33-5.19,5.19-5.19,5.19,2.33,5.19,5.19Z'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66.86 66.86'%3E%3Cpath d='M38.61,33.51c0,2.86-2.33,5.19-5.19,5.19s-5.19-2.33-5.19-5.19,2.33-5.19,5.19-5.19,5.19,2.33,5.19,5.19Z'/%3E%3C/svg%3E")}
-  /* the rail key's mark, a notch larger than the card's, because the rail is
-     where the vocabulary is learned */
-  .legend .k .sym{width:20px;height:20px}
-  /* a tag has no hue to key, so it keeps its count and takes no mark */
-  #tagRow .k i{display:none}
-  .ident{min-width:0}
-  /* The board's own name, subordinate to the mark: this is a letterhead, so
-     the tool is named first and the document second. ZenaSoft's section-sub
-     role, 14.5px sans in --text-dim. */
-  .title{
-    display:flex;align-items:center;gap:7px;margin:3px 0 0;
-    font-family:"Mozilla Headline Condensed","Mozilla Headline",Georgia,serif;
-    font-size:18px;font-weight:500;line-height:1.1;color:var(--text);
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap
-  }
-  /* the chevron is drawn, one stroke in the faint ink, masked from a data
-     URI so it fetches nothing and takes the page's colour */
-  .title::before{
-    content:"";flex:none;width:6px;height:10px;background:var(--text-faint);
-    -webkit-mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 10'%3E%3Cpath d='M1 1l4 4-4 4' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='square'/%3E%3C/svg%3E");
-    mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 10'%3E%3Cpath d='M1 1l4 4-4 4' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='square'/%3E%3C/svg%3E")
-  }
-  .sub{display:none}
-  .sub[hidden]{display:none}
-  /* The header is sticky, so its top right corner IS the viewport's, with no
-     floating overlay to obstruct a lane. The histogram takes that corner and
-     the controls sit under it. */
-  .controls{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap}
-  .controls input#q{
-    font:inherit;font-size:var(--fs-small);
-    background:var(--surface);color:var(--text);
-    border:1px solid var(--border);border-radius:var(--r-chip);
-    padding:5px 9px;width:170px;outline:none;
-    transition:border-color .15s var(--ease)
-  }
-  .controls input#q::placeholder{color:var(--text-faint)}
-  .controls input#q:hover{border-color:var(--border-strong)}
-  /* every button in the controls is the one key (`.pane-btn`, further down) */
-  /* The save state IS the control. It used to be a badge reading "local" next
-     to a button reading "Connect file": two things saying one thing in two
-     vocabularies. Now the button names the action while there is one to take,
-     and names the state once there is not. The box before the label is the
-     answer: hollow while it is a question, filled once it is answered. */
-  .conn::before{content:"";width:7px;height:7px;border:1.5px solid currentColor;flex:none}
-  .conn.on,.conn.on:hover{color:var(--ok)}
-  .conn.on::before{background:currentColor;border-color:currentColor}
-  .conn.bad,.conn.bad:hover{color:var(--bad)}
-  .conn.bad::before{background:currentColor;border-color:currentColor}
+  .session-list{list-style:none;display:flex;flex-direction:column;gap:var(--s3)}
+  .session-item{display:flex;align-items:center;gap:var(--s4);padding:var(--s3) var(--s4);
+    background:var(--surface-2);border-radius:var(--r)}
+  .session-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .session-dot.active{background:var(--ok);animation:pulse 2s ease infinite}
+  .session-dot.idle{background:var(--text-faint)}
+  .session-name{font-weight:600;font-size:var(--fs-small)}
+  .session-beans{font-size:var(--fs-micro);color:var(--text-dim)}
+  .session-age{margin-left:auto;font-size:var(--fs-micro);color:var(--text-faint)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
-  /* counts as a sentence, not a slash-separated ledger strip */
-  /* Reads as part of the count line, because it changes what the count means. */
-  /* a key on the state line, one size down (the key rule paints it) */
-  .metabtn{height:24px;padding:0 10px;font-size:11px;margin-left:var(--s2)}
-  .metabtn[hidden]{display:none}
+  .dispatch-list{list-style:none;display:flex;flex-direction:column;gap:var(--s2)}
+  .dispatch-item{display:grid;grid-template-columns:auto 1fr auto;gap:var(--s3);
+    padding:var(--s2) var(--s4);font-size:var(--fs-small);border-left:2px solid var(--border)}
+  .dispatch-item .ts{color:var(--text-faint);font-size:var(--fs-micro);white-space:nowrap}
+  .dispatch-item .target{font-weight:600;color:var(--text)}
+  .dispatch-item .excerpt{color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dispatch-item .bean{font-size:var(--fs-micro);color:var(--accent);font-family:monospace}
 
-  /* ── The activity ledger ────────────────────────────────────────────────
-     Every card carries createdAt and updatedAt. Two time sheets of the same
-     six weeks, Touched and Filed, run the width of the page under the
-     letterhead: seven day-rows, a column per week, a cell per day tinted by
-     count. It was a 180px card in the corner; the corner is the docket's
-     now, and a ledger that spans the page is read as part of the form rather
-     than pinned to it. Plain elements, no SVG and no library, and nothing
-     here changes size on hover: the date lives in the tooltip, because a
-     readout that swapped into the label moved the whole masthead every time
-     the pointer crossed a bar. */
-  .spark{display:flex;flex-direction:column;align-items:stretch;gap:0;position:relative;margin-top:var(--s3)}
-  .spark[hidden]{display:none}
-  /* the caption sits on the caption line, at the right end, where the row
-     is empty; a lone line of small text above the sheets read as an orphan */
-  .spark-head{position:absolute;right:0;top:0;display:flex;align-items:baseline;gap:var(--s2);font-size:var(--fs-micro);line-height:12px;color:var(--text-faint)}
-  .spark-head .lbl{font-variant-numeric:tabular-nums;white-space:nowrap}
-  /* Two time sheets side by side, each taking half the page. Seven rows are
-     the days of the week, Monday at the top; a column is a week; a cell is a
-     day, tinted by count in four steps of the accent. A bulk write goes grey,
-     today is ringed in ink. The sheet is RULED: a 1px line between days and
-     between weeks, on a ground lighter than the page like a card's, so an
-     empty week still reads as a week and not as nothing. Stretched cells
-     without rules measured as faint stripes. */
-  .spark .panels{display:flex;gap:var(--s5)}
-  .spark .panel{display:flex;flex-direction:column;gap:3px;flex:1 1 0;min-width:0}
-  /* the field names, in the lane heading's voice: a field on the form is a
-     field on the form. Mono is for the dates under the sheet, which are data. */
-  .spark .cap{font-family:"Mozilla Headline Condensed","Mozilla Headline",Georgia,serif;font-size:12px;line-height:12px;font-weight:600;color:var(--text-faint);letter-spacing:.04em;text-transform:uppercase}
-  .spark .punch{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,8px);grid-auto-columns:minmax(12px,1fr);gap:1px;padding:1px;width:100%;background:var(--border)}
-  .spark .punch i{display:block;background:var(--surface);position:relative;outline:none}
-  .spark .punch i[data-l="1"]{background:color-mix(in oklch,var(--accent) 35%,var(--surface-2))}
-  .spark .punch i[data-l="2"]{background:color-mix(in oklch,var(--accent) 60%,var(--surface-2))}
-  .spark .punch i[data-l="3"]{background:color-mix(in oklch,var(--accent) 82%,var(--surface-2))}
-  .spark .punch i[data-l="4"]{background:var(--accent)}
-  .spark .punch i.bulk{background:var(--text-faint)}
-  /* the rest of this week is paper, not a hole in the sheet */
-  .spark .punch i.pad{background:var(--bg)}
-  .spark .punch i.today::after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 1px var(--text)}
-  /* the date lives in the tooltip, so hover changes nothing that has a width */
-  .spark .punch i[data-l]:hover{box-shadow:inset 0 0 0 1px var(--text)}
-  .spark .punch i:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-  /* the month labels share the sheet's columns, so a label stays under its week */
-  .spark .months{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(12px,1fr);gap:1px;padding:0 1px;font-family:var(--mono);font-size:9px;line-height:10px;color:var(--text-faint);letter-spacing:.02em}
-  .spark .months b{font-weight:400;overflow:visible;white-space:nowrap}
-  /* THE FOLD. A tab hung from the rail's rule at the right end, a chevron
-     drawn in one stroke. Up folds the ledger away, down brings it back; the
-     choice is kept per browser, beside the other reading preferences. When
-     the ledger is folded the rule stays, so the docket and the rail keep
-     their division and only the sheet is gone. */
-  .spark-toggle{
-    /* shares the rail's grid cell and comes first in the DOM, so without a
-       stacking order the rail paints over it and takes its clicks. Driven
-       in a browser: the tab measured visible and never received one. */
-    position:relative;z-index:1;
-    justify-self:end;align-self:start;margin-top:var(--s4);
-    width:28px;height:16px;padding:0;display:inline-flex;align-items:center;justify-content:center;
-    background:var(--surface);color:var(--text-faint);cursor:pointer;
-    border:1px solid var(--border);border-top:0;border-radius:0;
-    transition:color .15s var(--ease),border-color .15s var(--ease)
-  }
-  .spark-toggle svg{width:10px;height:7px;display:block;transition:transform .15s var(--ease)}
-  .spark-toggle:hover{color:var(--text);border-color:var(--border-strong)}
-  .spark-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-  .spark-toggle[aria-expanded="false"] svg{transform:rotate(180deg)}
-  .spark-toggle[hidden]{display:none}
-  header.masthead.ledger-folded .spark{display:none}
-  /* Under 900px there is no ledger and no corner: the grid drops to one
-     column and the docket stands under the mark, flush left, the controls
-     wrapping as they need to. */
-  @media (max-width:900px){
-    .spark,.spark-toggle{display:none}
-    header.masthead{grid-template-columns:minmax(0,1fr)}
-    .head-ops{grid-column:1;grid-row:2;align-items:flex-start;margin-top:var(--s3)}
-    .head-ops .meta{justify-content:flex-start}
-    .head-ops .controls{justify-content:flex-start;flex-wrap:wrap}
-    .head-ops .controls input#q{flex:1 1 140px;max-width:none}
-    .rails{grid-row:3;padding-right:0}
-  }
+  .progress-list{list-style:none;display:flex;flex-direction:column;gap:var(--s3)}
+  .progress-item{padding:var(--s3) var(--s4);background:var(--surface-2);border-radius:var(--r)}
+  .progress-header{display:flex;justify-content:space-between;align-items:center}
+  .progress-session{font-weight:600;font-size:var(--fs-small)}
+  .progress-count{font-size:var(--fs-micro);color:var(--text-faint)}
+  .progress-beans{display:flex;gap:var(--s2);flex-wrap:wrap;margin-top:var(--s2)}
+  .progress-bean{font-size:var(--fs-micro);padding:var(--s2) var(--s3);
+    background:var(--accent-wash);color:var(--accent);border-radius:var(--r)}
 
-  .meta{
-    display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;
-    font-size:var(--fs-small);color:var(--text-dim)
-  }
-  .meta b{font-weight:600;color:var(--text)}
-  .meta .rule{width:1px;height:12px;background:var(--border-strong)}
+  .empty{font-size:var(--fs-small);color:var(--text-faint);font-style:italic;padding:var(--s4) 0}
 
-  /* Two filters that narrow the board on two different axes. They were two
-     rows of identically shaped buttons, which read as one undifferentiated
-     block and left you to infer the axis from whether a key had a swatch or a
-     count. Each row says which axis it is, once. */
-  .rail-row{display:flex;align-items:baseline;gap:var(--s3);margin-top:var(--s2)}
-  .rail-lbl{
-    flex:none;width:2.4em;padding-top:2px;
-    font-size:var(--fs-micro);color:var(--text-faint);
-    text-transform:uppercase;letter-spacing:.07em
-  }
-  .legend{display:flex;gap:var(--s2);flex-wrap:wrap;min-width:0}
-  /* a real <button>: keyboard-reachable, with aria-pressed carrying the toggle.
-
-     UNDERSCORED, not boxed. The key was a bordered pill, and eight bordered
-     pills in a row read as eight buttons on a toolbar, which pulled the eye
-     off the cards. Now it is a word standing on a rule in its own hue, the
-     way a heading sits on a letterhead: the rule keys the colour, the mark
-     keys the shape, and the paper shows through. Picked from eight studies
-     under live; the docket controls above are the next round. */
-  /* A VINTAGE KEY, and it is the campaign request form's `.btn-fancy` in its
-     LIGHT variant: a 2px raised bevel in paper tones, the label in ink tinted
-     by the type's hue. The dark bevel had shipped in both schemes and sat on
-     the light paper as five black slabs. Equal widths, so the row reads as a
-     keyboard rather than five words of different length. The dark scheme
-     keeps the dark bevel, below. */
-  .legend .k{
-    display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;
-    min-width:112px;
-    font:inherit;font-size:var(--fs-micro);font-weight:700;letter-spacing:.06em;text-transform:uppercase;
-    color:color-mix(in oklab,var(--c) 62%,oklch(22% 0.014 60));
-    background:color-mix(in oklab,var(--c) 9%,oklch(78% 0.008 75));
-    border:0;border-radius:0;padding:6px 14px;
-    box-shadow:inset 2px 2px 0 0 color-mix(in oklab,var(--c) 6%,oklch(88% 0.005 78)),
-               inset -2px -2px 0 0 color-mix(in oklab,var(--c) 12%,oklch(60% 0.012 72));
-    transition:color .15s var(--ease),background .15s var(--ease),opacity .15s var(--ease),box-shadow .15s var(--ease)
-  }
-  #legend{gap:6px}
-  /* A tag key has no hue to key, so it carries a count instead: the rail says
-     how much of the deck each tag is worth before you spend a click on it. */
-  .legend .k b{font-weight:500;color:var(--text-faint);font-variant-numeric:tabular-nums}
-  .legend .k.on b{color:var(--text-dim)}
-  /* One line, and it may not shrink. Measured on a deck with more than
-     twelve tags: inside the one-line scrolling rail this note was squeezed to
-     31px and wrapped into six lines, 103px tall, and every key in the rail
-     stretched to match; the filtered tag's ink block made it a black slab. */
-  .legend .rail-more{
-    flex:0 0 auto;white-space:nowrap;align-self:center;
-    font-size:var(--fs-micro);color:var(--text-faint)
-  }
-  .legend .k:hover{color:oklch(22% 0.014 60);background:color-mix(in oklab,var(--c) 14%,oklch(74% 0.010 75))}
-  .legend .k.off{opacity:.45}
-  /* pressed: the insets invert, the way the form's Continue key goes down */
-  .legend .k.on{color:oklch(22% 0.014 60);font-weight:700;
-    background:color-mix(in oklab,var(--c) 24%,oklch(74% 0.010 75));
-    box-shadow:inset -2px -2px 0 0 color-mix(in oklab,var(--c) 6%,oklch(88% 0.005 78)),
-               inset 2px 2px 0 0 color-mix(in oklab,var(--c) 12%,oklch(60% 0.012 72))}
-  @media (prefers-color-scheme: dark){
-    .legend .k{
-      color:color-mix(in oklab,var(--c) 70%,var(--text));
-      background:color-mix(in oklab,var(--c) 10%,oklch(30% 0.01 68));
-      box-shadow:inset 2px 2px 0 0 color-mix(in oklab,var(--c) 20%,oklch(45% 0.01 70)),
-                 inset -2px -2px 0 0 color-mix(in oklab,var(--c) 10%,oklch(18% 0.01 60))}
-    .legend .k:hover{color:var(--text);background:color-mix(in oklab,var(--c) 16%,oklch(34% 0.01 68))}
-    .legend .k.on{color:var(--text);
-      background:color-mix(in oklab,var(--c) 20%,oklch(34% 0.01 68));
-      box-shadow:inset -2px -2px 0 0 color-mix(in oklab,var(--c) 20%,oklch(45% 0.01 70)),
-                 inset 2px 2px 0 0 color-mix(in oklab,var(--c) 10%,oklch(18% 0.01 60))}
-  }
-  /* A tag is an identifier, not a category, so it is set the way identifiers
-     are set on this page: in the mono face with a leading hash, no rule and no
-     box. The two rails then read as two classes of control instead of one
-     rail with the marks missing. Picked from four studies under live (mono
-     labels, index line, ticket stub, stamp row). The filtered tag is stamped
-     in ink.
-
-     Stated on its own rather than inherited: a box-shadow built on the --c a
-     tag never sets is not "no colour", it is an invalid declaration, and the
-     whole shadow would go. */
-  #tagRow .k{font-family:var(--mono);font-size:11px;gap:5px;padding:2px 5px;box-shadow:none}
-  #tagRow .k::before{content:"#";color:var(--text-faint)}
-  #tagRow .k b{font-weight:400}
-  #tagRow .k.on{background:var(--text);color:var(--bg);box-shadow:none}
-  #tagRow .k.on::before,#tagRow .k.on b{color:var(--bg);opacity:.7}
-  .legend .k:focus-visible,
-  .controls button:focus-visible,
-  .controls input#q:focus-visible,
-  .notice button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-  .controls input#q:focus{border-color:var(--accent)}
-
-  /* a save that did not happen, said out loud (see persist / applyMove) */
-  .notice{
-    display:flex;align-items:flex-start;gap:var(--s4);
-    margin:var(--s4) var(--s6) 0;padding:var(--s3) var(--s4);
-    background:var(--surface);color:var(--text);
-    border:1px solid var(--border);border-left:3px solid var(--text-dim);
-    border-radius:var(--r-card);font-size:var(--fs-small);line-height:1.55
-  }
-  .notice.bad{border-left-color:var(--bad)}
-  .notice[hidden]{display:none}
-  .notice button{
-    font:inherit;font-size:var(--fs-micro);background:none;border:none;
-    color:var(--text-dim);cursor:pointer;padding:0;margin-left:auto;
-    text-decoration:underline;text-underline-offset:3px
-  }
-  .notice button:hover{color:var(--text)}
-  .fatal{
-    font-size:var(--fs-small);line-height:1.6;color:var(--text);
-    border:1px solid var(--bad);border-radius:var(--r-card);
-    padding:var(--s4);max-width:60ch
-  }
-  .fatal p{margin:var(--s2) 0 0}
-  /* in the accessibility tree, out of the layout */
-  .sr-only{
-    position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
-    clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0
-  }
-
-  /* ── Board: lanes are wells, cards sit in them ── */
-  .board{
-    flex:1 1 0;min-height:0;
-    display:grid;grid-auto-flow:column;grid-auto-columns:minmax(272px,1fr);
-    gap:var(--s3);align-items:stretch;overflow-x:auto;
-    padding:var(--s5) var(--s6) var(--s6)
-  }
-  .lane{
-    display:flex;flex-direction:column;min-width:0;
-    background:var(--surface-2);border-radius:var(--r-well);padding:var(--s4);
-    transition:background .18s var(--ease),box-shadow .18s var(--ease),opacity .18s var(--ease)
-  }
-  /* A terminal lane is told by its stamp and a quieter heading. It used to be
-     told by a third grey mixed a shade off the other two, which read as a
-     rendering artefact rather than as a state. */
-  /* The colour is what carries this. The file embeds one cut of the display
-     face, at 600, so the lighter weight below renders as 600 too and only
-     matters if the embedded face ever fails and a fallback takes over. */
-  .lane.muted .lane-head .nm{color:var(--text-dim);font-weight:500}
-  .lane.unfiled{box-shadow:inset 0 0 0 1px var(--border-strong)}
-  /* the one orchestrated moment: picking a card up lights every lane that can
-     take it and quiets the rest. Motion answering an action, nothing on load. */
-  .lane.drop{background:var(--accent-wash);box-shadow:inset 0 0 0 1.5px var(--accent)}
-  body.dragging-now .lane:not(.drop){opacity:.6}
-
-  .lane-head{display:flex;align-items:baseline;gap:var(--s2);padding:0 var(--s1) var(--s3)}
-  .lane-head .nm{
-    font-family:var(--serif);font-size:13.5px;font-weight:600;
-    text-transform:uppercase;letter-spacing:.04em
-  }
-  /* Said once, in the heading. It used to be printed on every card in the lane,
-     which restated the heading those cards were already sitting under, once per
-     card, in a marker the accessibility tree was told to ignore. */
-  .lane-head .stamp{
-    font-family:var(--serif);font-size:var(--fs-micro);font-weight:600;
-    letter-spacing:.06em;padding:1px 6px;border:1px solid currentColor
-  }
-  .lane-head .stamp.built{color:var(--ok)}
-  .lane-head .stamp.parked{color:var(--park)}
-  .lane-head .ct{margin-left:auto;font-size:var(--fs-small);color:var(--text-faint);font-variant-numeric:tabular-nums}
-  .lane-head .ct.over{color:var(--bad);font-weight:600}
-  .lane-body{
-    display:flex;flex-direction:column;gap:var(--s2);flex:1 1 0;
-    min-height:72px;overflow-y:auto;overscroll-behavior:contain
-  }
-  /* a real target to aim at, not the old 48px strip — but sized to a card, not
-     to the lane: a full-height dashed box makes an empty lane the loudest thing
-     on the board. */
-  .lane-empty{
-    display:flex;align-items:center;justify-content:center;
-    min-height:88px;padding:var(--s4);
-    border:1px dashed var(--border-strong);border-radius:var(--r-card);
-    font-size:var(--fs-micro);color:var(--text-faint);text-align:center
-  }
-
-  /* ── Card: the two lines you scan by, and the id you quote ── */
-  .ticket{
-    background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);
-    transition:border-color .15s var(--ease),opacity .15s var(--ease)
-  }
-  .ticket:hover{border-color:var(--border-strong)}
-  /* focus ring uses --text, never the category hue: the eight palette hues
-     measure 1.65:1 to 2.28:1 on --surface, under the 3:1 SC 1.4.11 floor, so
-     the documented keyboard alternative to dragging had no visible focus. */
-  .ticket:focus-visible{outline:2px solid var(--text);outline-offset:2px}
-  /* The face is the button and the wrapper carries the drag, because one node
-     cannot be both a listitem and a button. The ring is drawn on the wrapper so
-     it surrounds the card rather than the button's padding box inside it. */
-  .ticket:has(.ticket-face:focus-visible){outline:2px solid var(--text);outline-offset:2px}
-  .ticket-face:focus-visible{outline:none}
-  /* the source of a drag steps back; the target lane is what lights up */
-  .ticket.dragging{opacity:.4;border-color:var(--border-strong)}
-  .ticket-face{
-    display:flex;flex-direction:column;gap:var(--s2);width:100%;
-    font:inherit;color:inherit;text-align:left;background:none;border:0;
-    padding:var(--s3);border-radius:inherit;cursor:grab
-  }
-  .ticket-face:active{cursor:grabbing}
-
-  .t-title{font-size:var(--fs-body);font-weight:600;line-height:1.42;color:var(--text);text-wrap:pretty}
-  /* Two lines, then the sheet. An unclamped note made one card three times
-     taller than its neighbours and pushed the rest of the lane out of view. */
-  .t-note{
-    font-size:var(--fs-small);line-height:1.45;color:var(--text-dim);
-    display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden
-  }
-  .t-foot{display:flex;align-items:center;gap:7px;margin-top:var(--s1)}
-  /* The same mark the rail key carries, so a card and its key read as one
-     vocabulary. It classifies the card without printing the category name on
-     every card in the deck. */
-  .t-sym{width:22px;height:22px}
-  /* The exception names itself. The hue is mixed toward --text because the raw
-     palette hue measures 1.65:1 to 2.28:1 as text on --surface. */
-  .t-cat{font-size:var(--fs-micro);font-weight:600;color:color-mix(in oklch,var(--c) 52%,var(--text))}
-  .t-id{font-family:var(--mono);font-size:var(--fs-micro);color:var(--text-faint);letter-spacing:.02em}
-  /* The same chip the sheet draws, one step quieter, because on the face it is
-     scanned past rather than read. Three, then a count: a tracker puts no
-     ceiling on how many tags a card may carry, and the face must not grow with
-     them. */
-  .t-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:var(--s1)}
-  .t-tags span{
-    font-size:var(--fs-micro);color:var(--text-faint);
-    border:1px solid var(--border);border-radius:var(--r-chip);padding:1px 6px;
-    white-space:nowrap;max-width:16ch;overflow:hidden;text-overflow:ellipsis
-  }
-  .t-tags span.more{border-color:transparent;padding-left:1px}
-  /* A tracker writes `priority` only when it is worth showing, so the key's
-     presence is the signal. Quiet priorities must not shout in the same red as
-     the urgent ones. */
-  .prio-icon{display:inline-block;flex:none;width:16px;height:16px;margin-left:auto;-webkit-mask:center/contain no-repeat;mask:center/contain no-repeat}
-  .prio-icon[data-prio="critical"]{background:var(--bad);-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M7 1h2v8H7zM7 11h2v3H7z'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M7 1h2v8H7zM7 11h2v3H7z'/%3E%3C/svg%3E")}
-  .prio-icon[data-prio="high"]{background:var(--bad);-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 2L13.5 11H2.5z'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 2L13.5 11H2.5z'/%3E%3C/svg%3E")}
-  .prio-icon[data-prio="low"]{background:var(--ok);-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 14L13.5 5H2.5z'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 14L13.5 5H2.5z'/%3E%3C/svg%3E")}
-  .prio-icon[data-prio="quiet"]{background:var(--text-faint);-webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 8L12.5 3H3.5zM8 14L12.5 9H3.5z'/%3E%3C/svg%3E");mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 8L12.5 3H3.5zM8 14L12.5 9H3.5z'/%3E%3C/svg%3E")}
-
-  /* ── The card, opened ─────────────────────────────────────────────────────
-     A native <dialog>. The focus trap, Esc, the inert background and the top
-     layer all come from the platform, and the top layer is what puts the panel
-     clear of the lane's own overflow-y:auto, which clips anything positioned
-     inside it. Styled as a sheet against the right edge, not as a box dropped
-     over the middle of the board. */
-  .sheet{
-    margin:0 0 0 auto;width:min(560px,100%);max-width:100%;resize:horizontal;overflow:hidden;min-width:360px;
-    height:100%;max-height:100%;
-    padding:0;border:0;border-radius:0;
-    background:var(--surface);color:var(--text)
-  }
-  /* The memo has no shadow vocabulary, so the sheet is separated the way the
-     ZenaSoft shell separates its rail: a four-pixel NeXT inset channel, struck
-     down the edge where the panel meets the board. */
-  .sheet::before{
-    content:"";position:absolute;inset:0 auto 0 0;width:4px;
-    background:linear-gradient(90deg,
-      var(--border-strong) 0 25%, var(--surface) 25% 50%,
-      var(--border-strong) 50% 75%, var(--surface) 75% 100%)
-  }
-  .sheet::backdrop{background:oklch(24% 0.012 70 / 0.42)}
-  /* opened non-modally (live preview only): pinned where the modal one sits */
-  .sheet[open]:not(:modal){position:fixed;inset:0 0 0 auto;z-index:40}
-  .sheet-wrap{display:flex;flex-direction:column;height:100%}
-  .sheet-head{
-    display:flex;flex-direction:column;gap:0;
-    padding:0;border-bottom:1px solid var(--border)
-  }
-  /* THE COVER. A risograph field in the card's type hue, chosen from seven
-     studies rendered on the real sheet, 2026-09-12. The full tint sits top
-     right; the hue's own dark ink pools in the bottom-left corner, UNDER the
-     mark and the type name, which are printed in paper and so read against it
-     whatever the hue's lightness: a blue at 45% and a yellow at 80% both put
-     the label on a ground under 45%. Grain is a soft-light overlay, because
-     multiplied in it turned every hue to mud. Nothing here moves: the drift
-     the old mesh had was ambient motion on a surface a person reads. */
-  .sheet-type-bar{
-    display:flex;align-items:flex-end;gap:10px;
-    min-height:96px;padding:var(--s4) var(--s5) var(--s3);
-    font-family:"Mozilla Headline Condensed","Mozilla Headline",Georgia,serif;
-    font-size:22px;font-weight:600;line-height:1;
-    letter-spacing:.05em;text-transform:uppercase;
-    color:oklch(96% 0.008 75);
-    background:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
-      radial-gradient(ellipse 85% 130% at 0% 105%, color-mix(in oklab,var(--c,var(--accent)) 55%,oklch(22% 0.03 60)) 0%, color-mix(in oklab,var(--c,var(--accent)) 55%,oklch(22% 0.03 60)) 22%, transparent 66%),
-      radial-gradient(ellipse 65% 130% at 85% -10%, color-mix(in oklab,var(--c,var(--accent)) 84%,var(--surface)), transparent 70%),
-      radial-gradient(ellipse 50% 100% at 100% 100%, color-mix(in oklab,var(--c,var(--accent)) 62%,var(--surface)), transparent 70%),
-      color-mix(in oklab,var(--c,var(--accent)) 30%,var(--surface));
-    background-size:140px 140px,auto,auto,auto,auto;
-    background-blend-mode:soft-light,normal,normal,normal,normal
-  }
-  /* the mark is printed in the same paper as the name; the hue is the field's */
-  .sheet-type-bar .sym{width:24px;height:24px;background:oklch(96% 0.008 75)}
-  .sheet-title-row{
-    display:flex;align-items:flex-start;gap:var(--s3);
-    padding:var(--s4) var(--s5) var(--s4)
-  }
-  /* the job's name, in the display face: the one line on the docket that is
-     typed in the headline voice, the way a work order's subject line is */
-  .sheet-title{
-    margin:0;font-family:"Mozilla Headline Condensed","Mozilla Headline",Georgia,serif;
-    font-size:24px;font-weight:600;
-    line-height:1.15;letter-spacing:0;text-wrap:pretty;
-    color:var(--text)
-  }
-  .sheet-sym{display:none}
-  /* a square ghost with a drawn cross, one stroke, the same weight as the
-     chevrons on the fold tab and the menu */
-  .sheet-close{flex:none;margin-left:auto;width:36px;height:36px;padding:0}
-  .sheet-close svg{width:16px;height:16px;display:block;flex:none}
-  /* The inline padding sits on the sections, not on the body, so a section's
-     rule runs the full width of the sheet the way the head's rule does. Inset
-     rules would have read as a second, weaker kind of line. */
-  .sheet-body{flex:1 1 auto;overflow-y:auto;padding:var(--s4) 0 var(--s5);
-    /* the scrollbar is part of the sheet, not the browser's: thin, in the rule colour */
-    scrollbar-width:thin;scrollbar-color:var(--border-strong) transparent}
-  .sheet-sec{margin:0;padding:0 var(--s5)}
-  /* A rule belongs to the section BELOW it, so the space is asymmetric: more
-     above the line than below, and more above a label than under it. Whitespace
-     alone was carrying every boundary in here, which left the sheet reading as
-     one undifferentiated column of label, content, label, content. */
-  .sheet-sec + .sheet-sec{
-    margin-top:var(--s4);padding-top:var(--s4);
-    border-top:1px solid color-mix(in oklch,var(--border) 50%,transparent)
-  }
-  /* a field name on the form, in the field-name voice the lane headings and
-     the ledger captions already use; mono is for the values that are data */
-  .sheet-lbl{
-    margin:0 0 var(--s3);
-    font-family:"Mozilla Headline Condensed","Mozilla Headline",Georgia,serif;
-    font-size:12px;font-weight:600;line-height:1.2;
-    text-transform:uppercase;letter-spacing:.04em;
-    color:var(--text-faint)
-  }
-  .sheet-lbl-row{display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s3)}
-  .sheet-lbl-row .sheet-lbl{margin:0}
-  .sheet-lbl-row .rail{border:0;gap:0}
-  /* THE RAILS ARE KEYBOARDS. The lane rail and the note view are rows of the
-     same key the type rail wears, 4px apart, the live one pressed: insets
-     inverted and a stroke of the accent down its left edge. The routing
-     slip (dots on a printed line, 4.1.26) went for one vocabulary across
-     the board, the user's call on 2026-09-13. The lane rail wraps rather
-     than scrolls now, because a key row cut off at the sheet's edge hides a
-     lane, and a vault board has seven. */
-  .rail{
-    display:flex;flex-wrap:wrap;gap:4px;padding:0;
-    background:none;border:0;border-radius:0
-  }
-  .rail button{flex:0 0 auto;height:28px;padding:0 12px;font-size:11px}
-  .sheet-lbl-row .rail{margin-left:auto;flex-wrap:nowrap}
-  /* THE ROUTING SLIP, with square stations. The lane rail is where the one
-     meaningful act in the sheet happens, and a row of keys only ever said
-     where the card is. A work order's routing slip says where it has BEEN:
-     the lanes are stations on a printed line, the ones the card has passed
-     are inked, the one it is at is the accent and a size larger, the ones
-     ahead are hollow. Square, because this is the memo: round pips read as
-     a stepper from a web kit. Brought back on 2026-09-13 after a day as
-     keys. The id outranks the key rule, so nothing here is raised. */
-  #sheetLanes{position:relative;padding:8px 0 0;gap:0;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain}
-  #sheetLanes::before{content:"";position:absolute;left:16px;right:16px;top:12px;height:1px;background:var(--border-strong)}
-  #sheetLanes button{
-    display:flex;flex-direction:column;align-items:center;gap:8px;
-    height:auto;padding:0 12px 2px;font-size:11px;letter-spacing:.06em;
-    color:var(--text-faint);background:none;box-shadow:none
-  }
-  #sheetLanes button::before{
-    content:"";width:9px;height:9px;box-sizing:border-box;
-    border:1.5px solid var(--text-dim);background:var(--surface);
-    position:relative;z-index:1;transition:transform .2s var(--ease),background .2s var(--ease),border-color .2s var(--ease)
-  }
-  #sheetLanes button:has(~ [aria-current="true"]){color:var(--text-dim)}
-  #sheetLanes button:has(~ [aria-current="true"])::before{background:var(--text);border-color:var(--text)}
-  #sheetLanes button[aria-current="true"]{color:var(--text);font-weight:700;background:none;box-shadow:none}
-  #sheetLanes button[aria-current="true"]::before{background:var(--accent);border-color:var(--accent);transform:scale(1.35)}
-  #sheetLanes button:hover,#sheetLanes button:active{color:var(--text);background:none;box-shadow:none}
-  #sheetLanes button:hover::before{border-color:var(--text)}
-  #sheetLanes button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-  /* ONE BUTTON. The campaign request form's vintage bevel, in the voice the
-     type keys set: the body face at 12px, weight 700, uppercase, tracked.
-     Every button on this board is this key: the docket and its menu, hide
-     closed, close, copy, the note view, the lane rail, and the type keys
-     (which tint it by hue). A ghost variant shipped beside it for a day and
-     the sheet spoke two vocabularies; the user's call, 2026-09-13, was one.
-     The tokens live on :root and switch with the scheme, so a key is the
-     same key on light paper and on the dark ground. */
-  .pane-btn,.btn-fancy,.metabtn,.docket-menu summary,.rail button{
-    position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;
-    box-sizing:border-box;height:32px;padding:0 14px;white-space:nowrap;
-    font:700 12px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;
-    color:var(--key-ink);background:var(--key-bg);
-    border:0;border-radius:0;cursor:pointer;text-decoration:none;
-    box-shadow:inset 2px 2px 0 0 var(--key-hi),inset -2px -2px 0 0 var(--key-lo);
-    transition:background .15s var(--ease),box-shadow .15s var(--ease)
-  }
-  .pane-btn:hover,.btn-fancy:hover,.metabtn:hover,.docket-menu summary:hover,.rail button:hover{background:var(--key-bg-hover)}
-  .pane-btn:active,.btn-fancy:active,.metabtn:active,.docket-menu summary:active,.rail button:active,
-  .pane-btn[aria-pressed="true"],.metabtn[aria-pressed="true"],.rail button[aria-pressed="true"],.rail button[aria-current="true"],.docket-menu[open] summary{
-    background:var(--key-bg-down);
-    box-shadow:inset -2px -2px 0 0 var(--key-hi),inset 2px 2px 0 0 var(--key-lo)
-  }
-  /* the pressed key also says so in ink: a 3px stroke of the accent along its
-     left edge, the one place the accent is spent on a key */
-  .pane-btn[aria-pressed="true"],.metabtn[aria-pressed="true"],.rail button[aria-pressed="true"],.rail button[aria-current="true"]{
-    box-shadow:inset -2px -2px 0 0 var(--key-hi),inset 2px 2px 0 0 var(--key-lo),inset 5px 0 0 0 var(--accent)
-  }
-  .pane-btn:focus-visible,.btn-fancy:focus-visible,.metabtn:focus-visible,.docket-menu summary:focus-visible,.rail button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-  .pane-btn.bad,.btn-fancy.bad{color:var(--bad)}
-  .pane-btn.on{color:var(--ok)}
-  .copy{margin-left:var(--s2);height:26px;padding:0 10px;font-size:11px}
-  .sheet-facts dd.with-copy{display:flex;align-items:center;gap:var(--s2);justify-content:flex-start}
-  .sheet-facts dd.with-copy>span{min-width:0;overflow-wrap:anywhere}
-  #noteCopy{display:flex;align-items:center}
-
-  /* The note, read rather than shown as source. Raw keeps every character the
-     tracker wrote, which is the point of having the toggle at all. */
-  .sheet-note{margin:0;font-size:var(--fs-body);line-height:1.6;
-    background:color-mix(in oklch,var(--surface-2) 40%,var(--surface));padding:var(--s3) var(--s4)
-  }
-  .sheet-note.raw{
-    white-space:pre-wrap;font-family:var(--mono);
-    font-size:var(--fs-small);color:var(--text-dim)
-  }
-  .sheet-note>*:first-child{margin-top:0}
-  .sheet-note>*:last-child{margin-bottom:0}
-  .sheet-note p{margin:0 0 var(--s3)}
-  /* a body's own `#` is not this page's h1: the sheet title already holds that
-     level, so a body heading starts two steps down */
-  .sheet-note h3,.sheet-note h4{
-    margin:var(--s4) 0 var(--s2);font-size:var(--fs-body);
-    font-weight:600;letter-spacing:-0.008em
-  }
-  .sheet-note h5,.sheet-note h6{
-    margin:var(--s4) 0 var(--s2);font-size:var(--fs-small);
-    font-weight:600;color:var(--text-dim)
-  }
-  .sheet-note ul,.sheet-note ol{margin:0 0 var(--s3);padding-left:1.35em}
-  .sheet-note li{margin:0 0 3px}
-  /* A checklist is a status column, so it loses the bullet and hangs its boxes
-     on one edge. `--ok` is already this board's done: the BUILT stamp wears it. */
-  .sheet-note ul.tasks{list-style:none;padding-left:0}
-  .sheet-note li.task{display:flex;gap:8px;align-items:baseline;margin:0 0 5px}
-  .sheet-note li.task .box{
-    flex:none;width:12px;height:12px;line-height:11px;text-align:center;
-    font-size:10px;border:1px solid var(--border-strong);color:var(--ok);
-    position:relative;top:1px
-  }
-  .sheet-note li.task.done .box{border-color:var(--ok)}
-  /* Done steps back rather than striking through: a finished item is still read,
-     and struck text is measurably slower to read when you need to. */
-  .sheet-note li.task.done .txt{color:var(--text-faint)}
-  .sheet-note blockquote{
-    margin:0 0 var(--s3);padding-left:var(--s3);
-    border-left:1px solid var(--border-strong);color:var(--text-dim)
-  }
-  .sheet-note code{
-    font-family:var(--mono);font-size:var(--fs-micro);
-    background:var(--surface-2);border-radius:var(--r-chip);padding:1px 4px
-  }
-  .sheet-note pre{
-    margin:0 0 var(--s3);padding:var(--s3);overflow-x:auto;
-    background:var(--surface-2);border-radius:var(--r-chip)
-  }
-  .sheet-note pre code{background:none;padding:0}
-  .sheet-note hr{border:0;border-top:1px solid var(--border);margin:var(--s4) 0}
-  .sheet-note a{color:var(--accent)}
-  /* THE FIELD LIST reads across, label then value, the way a form's reference
-     block does. Stacked, each fact cost 55px and the eight of them ran to
-     440px of sheet; across, a fact is one 34px line and the labels make one
-     column the eye can run down. */
-  .sheet-facts{
-    margin:0;display:flex;flex-direction:column;gap:0;
-    font-size:var(--fs-small)
-  }
-  .sheet-fact{
-    display:grid;grid-template-columns:92px minmax(0,1fr);align-items:baseline;column-gap:var(--s3);
-    padding:8px 0;border-bottom:1px solid color-mix(in oklch,var(--border) 50%,transparent)
-  }
-  .sheet-fact:first-child{padding-top:0}
-  .sheet-fact:last-child{border-bottom:0;padding-bottom:0}
-  .sheet-facts dt{color:var(--text-faint);font-family:"Mozilla Headline Condensed","Mozilla Headline",Georgia,serif;font-size:11px;font-weight:600;
-    text-transform:uppercase;letter-spacing:.04em}
-  .sheet-facts dd{margin:0;color:var(--text);text-align:left}
-  .sheet-facts dd.mono{font-family:var(--mono);font-size:var(--fs-small);letter-spacing:.02em}
-  .sheet-facts dt.dim{color:var(--text-faint);font-size:10px}
-  .sheet-facts dd.dim{color:var(--text-faint)}
-  .sheet-cat{display:inline-flex;align-items:center;gap:7px}
-  .sheet-cat .sym{width:16px;height:16px}
-  /* the mark's auto margin is for the card face, where it is pushed to the
-     right edge; in a fact row it pushed the whole value to the right */
-  .sheet-prio{display:inline-flex;align-items:center;gap:7px;justify-self:start}
-  .sheet-prio .prio-icon{margin-left:0}
-  .sheet-tags{display:flex;flex-wrap:wrap;gap:var(--s2)}
-  .sheet-tags span{
-    font-size:var(--fs-micro);color:var(--text-dim);
-    background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-chip);padding:3px 10px
-  }
-  /* the relation rows stack inside one section, so they space themselves */
-  #sheetLinks .sheet-lbl{margin-top:var(--s4)}
-  #sheetLinks .sheet-lbl:first-child{margin-top:0}
-  .sheet-refs{
-    display:flex;flex-wrap:wrap;gap:var(--s2);
-    font-family:var(--mono);font-size:var(--fs-micro);color:var(--text-dim);letter-spacing:.02em
-  }
-  .sheet [hidden]{display:none}
-
-  /* Attribution, on the boards beans actually powers. */
-  .colophon{flex:none;display:flex;align-items:center;gap:var(--s4);padding:var(--s4) var(--s6);font-size:var(--fs-micro);color:var(--text-faint);border-top:1px solid var(--border)}
-  .colophon[hidden]{display:none}
-  .colophon a{color:var(--text-dim);text-decoration:underline;text-underline-offset:3px}
-  .colophon a:hover{color:var(--text)}
-  .colophon a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-  .colophon .brand-ver{margin-left:auto}
-  .colophon-mark{flex-shrink:0;display:flex;align-items:center;cursor:default}
-  .colophon-mark svg{height:36px;width:auto;display:block;transition:opacity .3s var(--ease)}
-  .colophon-mark:not(:hover) svg{opacity:.4}
-  .colophon-mark:hover svg{opacity:1}
-  .colophon-mark .cm-capsule{fill:#26211a;stroke:#fdf4df;stroke-width:10px;transition:fill .3s var(--ease),stroke .3s var(--ease)}
-  .colophon-mark .cm-band{transition:fill .5s var(--ease),stroke .5s var(--ease),clip-path .8s cubic-bezier(.22,1,.36,1);clip-path:inset(100% 0 0 0)}
-  .colophon-mark .cm-band:nth-of-type(2){fill:var(--band-1);transition-delay:.15s}
-  .colophon-mark .cm-band:nth-of-type(3){fill:var(--band-2);transition-delay:.08s}
-  .colophon-mark .cm-band:nth-of-type(4){fill:var(--band-3);transition-delay:0s}
-  .colophon-mark .cm-fig{fill:#fdf4df;transition:fill .3s var(--ease)}
-  .colophon-mark .cm-grey{fill:#d2d7d8;stroke:#d2d7d8;stroke-width:1px;transition:fill .3s var(--ease);display:none}
-  .colophon-mark:not(:hover) svg{opacity:.35}
-  .colophon-mark:not(:hover) .cm-band{fill:none !important;stroke:var(--text-faint);stroke-width:4px;clip-path:inset(0)}
-  .colophon-mark:not(:hover) .cm-fig{fill:var(--text-faint) !important}
-  .colophon-mark:not(:hover) .cm-capsule{fill:var(--surface-2) !important;stroke:var(--text-faint) !important}
-  .colophon-mark:hover svg{opacity:1}
-  .colophon-mark:hover .cm-band:nth-of-type(2){fill:var(--band-1) !important;stroke:none;clip-path:inset(0)}
-  .colophon-mark:hover .cm-band:nth-of-type(3){fill:var(--band-2) !important;stroke:none;clip-path:inset(0)}
-  .colophon-mark:hover .cm-band:nth-of-type(4){fill:var(--band-3) !important;stroke:none;clip-path:inset(0)}
-  .colophon-mark:hover .cm-fig{fill:#fdf4df !important}
-  .colophon-mark:hover .cm-capsule{fill:#26211a !important;stroke:#fdf4df !important}
-  .colophon-mark:hover .cm-grey{display:block;fill:#d2d7d8 !important}
+  .colophon{padding:var(--s4) var(--s6);font-size:var(--fs-micro);color:var(--text-faint);
+    border-top:1px solid var(--border);display:flex;align-items:center;gap:var(--s4)}
+  .colophon-mark{flex-shrink:0;display:flex;align-items:center}
+  .colophon-mark svg{height:28px;width:auto;display:block}
   .colophon-tag{font-variant:small-caps;letter-spacing:.06em;color:var(--text-dim)}
+  .colophon .ver{margin-left:auto}
 
-  @media (max-width: 640px){
-    header.masthead{padding:var(--s3) var(--s4) var(--s3)}
-    .head-ops{margin-top:var(--s3);gap:var(--s2)}
-    .head-ops .controls{width:100%;margin-left:0}
-    .rails{margin-top:var(--s3)}
-    /* One row, not three. A 120px basis is enough to type a filter into and
-       small enough that both buttons stay on the line with it; at `auto` the
-       input claimed the row and pushed Download onto its own. */
-    .controls input#q{flex:1 1 120px;width:auto;min-width:0}
-    .controls .conn,.controls .link{flex:0 0 auto}
-    .controls{gap:var(--s2)}
-    /* MEASURED on a 375px screen: the tag rail wrapped to FOUR rows and the
-       type rail to two, and with the rest of the chrome the header took 487px
-       of an 812px phone. Sixty percent of the screen, and the first card began
-       at 559px. A filter rail is scanned along, not read down, so here it
-       scrolls sideways on one line and the board gets its screen back. */
-    .legend{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:2px}
-    .legend .k{flex:0 0 auto}
-    .rail-row{align-items:center;gap:var(--s2)}
-    .rail-lbl{padding-top:0;width:auto}
-    .notice{margin:var(--s3) var(--s4) 0}
-    body{height:auto}
-    .board{flex:none;padding:var(--s4);grid-auto-columns:minmax(84vw,1fr);align-items:start}
-    .lane-body{flex:0 1 auto}
-    /* a 430px rail on a 375px screen is a rail with no room to read in */
-    .sheet{width:100%}
-    .sheet-type-bar{padding-left:var(--s3);padding-right:var(--s3)}
-    .sheet-title-row{padding-left:var(--s3);padding-right:var(--s3)}
-    .sheet-sec{padding-left:var(--s3);padding-right:var(--s3)}
-    #sheetLanes button{min-height:44px}
-    .rail button{min-height:44px}
-    .colophon{padding-left:var(--s5);padding-right:var(--s5)}
-  }
-  @media (prefers-reduced-motion: reduce){
-    .ticket,.lane,.legend .k,.controls button,.controls input#q,
-    .rail button,.sheet-close{transition:none}
+  @media(prefers-reduced-motion:reduce){
+    .session-dot.active{animation:none}
     .brand-word svg{animation:none;clip-path:none}
     .brand-band{display:none}
   }
-  body.loading>:not(.preloader){opacity:0}
-  .brand-anim .brand-word svg{animation:brand-uncover .62s linear .06s forwards}
-  .brand-anim .brand-band{animation:brand-unfurl .62s linear .06s forwards}
-  .brand-anim .brand-word svg{animation:brand-uncover .62s linear .06s both}
-  .brand-anim .brand-band{animation:brand-unfurl .62s linear .06s both}
-  .preloader{
-    position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
-    background:var(--bg);transition:opacity .3s var(--ease)
-  }
-  .preloader-bar{
-    width:120px;height:4px;display:flex;overflow:hidden;
-    clip-path:inset(0 100% 0 0);
-    animation:preloader-wipe 1.4s cubic-bezier(.16,.84,.44,1) forwards
-  }
-  .preloader-bar i{flex:1}
-  .preloader-bar i:nth-child(1){background:var(--accent)}
-  .preloader-bar i:nth-child(2){background:var(--bad)}
-  .preloader-bar i:nth-child(3){background:oklch(59% 0.19 48)}
-  @keyframes preloader-wipe{
-    0%{clip-path:inset(0 100% 0 0)}
-    60%{clip-path:inset(0 0 0 0)}
-    100%{clip-path:inset(0 0 0 100%)}
-  }
-  body:not(.loading)>.preloader{opacity:0;pointer-events:none}
-
-  /* ── Dependency arrows: SVG overlay on .board ── */
-  .dep-overlay{
-    position:absolute;inset:0;pointer-events:none;z-index:5;overflow:visible
-  }
-  .dep-overlay line{stroke:var(--border-strong);stroke-width:1.5;opacity:.55}
-  .dep-overlay polygon{fill:var(--border-strong);opacity:.55}
-  .board{position:relative}
-
-  /* Lock icon on blocked cards */
-  .t-lock{
-    display:inline-block;flex:none;width:14px;height:14px;margin-left:auto;
-    color:var(--text-faint);font-size:11px;line-height:14px;text-align:center
-  }
-
-  /* Blocked-drag toast */
-  .toast{
-    position:fixed;bottom:var(--s5);left:50%;transform:translateX(-50%);z-index:60;
-    background:var(--text);color:var(--bg);padding:var(--s2) var(--s4);
-    font-size:var(--fs-small);line-height:1.4;
-    animation:toast-fade 2.5s ease forwards;pointer-events:none
-  }
-  @keyframes toast-fade{0%,70%{opacity:1}100%{opacity:0}}
-
-  /* ── Live session indicator: pulsing green dot ── */
-  .t-live{
-    position:absolute;top:6px;right:6px;width:8px;height:8px;
-    background:oklch(62% 0.18 152);border-radius:50%;
-    animation:live-pulse 2s ease-in-out infinite
-  }
-  @keyframes live-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.75)}}
-  .ticket{position:relative}
-
-  /* ── Swimlane toggle button ── */
-  /* the swim toggle is the one key (`.pane-btn`); its pressed state is the
-     key's pressed state, nothing of its own */
-
-  /* ── Quick-add form at the bottom of each lane ── */
-  .lane-add{
-    display:flex;align-items:center;justify-content:center;
-    margin-top:var(--s2);padding:var(--s2);cursor:pointer;
-    color:var(--text-faint);font-size:var(--fs-small);
-    border:1px dashed var(--border);border-radius:var(--r-card);
-    transition:color .15s var(--ease),border-color .15s var(--ease)
-  }
-  .lane-add:hover{color:var(--text-dim);border-color:var(--border-strong)}
-  .add-form{
-    display:flex;flex-direction:column;gap:var(--s2);
-    margin-top:var(--s2);padding:var(--s3);
-    background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card)
-  }
-  .add-form input,.add-form select{
-    font:inherit;font-size:var(--fs-small);
-    background:var(--bg);color:var(--text);
-    border:1px solid var(--border);border-radius:var(--r-chip);
-    padding:5px 8px;outline:none
-  }
-  .add-form input:focus,.add-form select:focus{border-color:var(--accent)}
-  .add-form .add-actions{display:flex;gap:var(--s2);justify-content:flex-end}
-  .add-form button{
-    font:inherit;font-size:var(--fs-micro);cursor:pointer;
-    background:var(--surface);color:var(--text-dim);
-    border:1px solid var(--border);border-radius:var(--r-chip);padding:4px 10px
-  }
-  .add-form button:hover{color:var(--text);border-color:var(--border-strong)}
-  .add-form button.primary{background:var(--accent);color:var(--bg);border-color:var(--accent)}
-  .add-form button.primary:hover{opacity:.9}
-  .add-form[hidden]{display:none}
-  @media (prefers-reduced-motion: reduce){
-    .t-live{animation:none}
-    .toast{animation:none}
-  }
-  body.loading>:not(.preloader){opacity:0}
-  .preloader{
-    position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
-    background:var(--bg);transition:opacity .3s var(--ease)
-  }
-  .preloader-bar{
-    width:120px;height:4px;display:flex;overflow:hidden;
-    clip-path:inset(0 100% 0 0);
-    animation:preloader-wipe 1.4s cubic-bezier(.16,.84,.44,1) forwards
-  }
-  .preloader-bar i{flex:1}
-  .preloader-bar i:nth-child(1){background:var(--accent)}
-  .preloader-bar i:nth-child(2){background:var(--bad)}
-  .preloader-bar i:nth-child(3){background:oklch(59% 0.19 48)}
-  @keyframes preloader-wipe{
-    0%{clip-path:inset(0 100% 0 0)}
-    60%{clip-path:inset(0 0 0 0)}
-    100%{clip-path:inset(0 0 0 100%)}
-  }
-  body:not(.loading)>.preloader{opacity:0;pointer-events:none}
 </style>
 </head>
 <body class="loading">
+
 <div class="preloader" aria-hidden="true"><div class="preloader-bar"><i></i><i></i><i></i></div></div>
-<div class="preloader" aria-hidden="true"><div class="preloader-bar"><i></i><i></i><i></i></div></div>
+
 <header class="masthead">
-
-
   <div class="head-row">
     <div class="ident">
       <div class="brand">
@@ -1216,118 +258,50 @@
               <svg id="brandWord" viewBox="0 -75 300 85" role="img" aria-label="Adjudant"><path fill="currentColor"/></svg>
               <span class="brand-band" aria-hidden="true"><i></i><i></i><i></i></span>
             </span>
-            <span class="brand-pip" aria-hidden="true">·</span>
-            <span class="brand-feature" id="brandFeature">Bean Board</span>
           </span>
-          <p class="sub" id="boardSub" hidden></p>
-          <h1 class="title" id="boardTitle">Board</h1>
+          <h1 class="title" id="title">Orchestrator</h1>
         </div>
       </div>
+      <p class="sub">
+        <span class="sub-product" id="subtitle"></span>
+        <span class="sub-pip">&middot;</span>
+        <span class="sub-label">ORCHESTRATOR</span>
+      </p>
     </div>
-    <div class="spark" id="spark" hidden></div>
-    <button class="spark-toggle" id="sparkBtn" type="button" aria-expanded="true" aria-controls="spark" aria-label="Fold the activity sheet away" hidden><svg viewBox="0 0 12 8" aria-hidden="true"><path d="M1 6.5 6 1.5l5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg></button>
-  </div>
-
-
-
-  <div class="head-ops">
-    <div class="meta">
-      <span><b id="cardCount">—</b> cards</span>
-      <span class="rule" aria-hidden="true"></span>
-      <span>updated <b id="rev">—</b></span>
-      <button class="metabtn" id="termBtn" type="button" aria-pressed="false" hidden></button>
-    </div>
-    <div class="controls">
-      <input id="q" type="search" placeholder="Filter cards" spellcheck="false" autocomplete="off" aria-label="Filter cards">
-      <details class="docket-menu" id="docketMenu">
-        <summary><span>Menu</span><svg viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1.5 6 6.5l5-5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg></summary>
-        <div class="docket-menu-panel">
-          <button class="pane-btn conn" id="connectBtn" type="button">Persist board edits?</button>
-          <button class="pane-btn swim-toggle" id="swimBtn" type="button" aria-pressed="false">By parent</button>
-          <button class="pane-btn link" id="downloadBtn" type="button">Download</button>
-        </div>
-      </details>
-    </div>
-  </div>
-
-  <div class="rails">
-    <div class="rail-row"><span class="rail-lbl">Type</span><div class="legend" id="legend"></div></div>
-    <div class="rail-row" id="tagRow" hidden><span class="rail-lbl">Tag</span><div class="legend tags" id="tagRail"></div></div>
+    <div class="updated" id="updated"></div>
   </div>
 </header>
-<div class="notice" id="notice" role="alert" hidden>
-  <span id="noticeText"></span>
-  <button id="noticeClose" type="button" aria-label="Dismiss this message">Dismiss</button>
-</div>
-<div id="live" class="sr-only" role="status" aria-live="polite"></div>
-<noscript>
-  <p class="notice bad">This board needs JavaScript. An empty page here is not an empty board:
-  the deck is in <code>board-data.json</code>, next to this file.</p>
-</noscript>
-<main class="board" id="board" aria-label="Board lanes"></main>
-<footer class="colophon" id="colophon">
-  <span class="colophon-mark" aria-label="onnozelaer ops"><svg viewBox="0 0 1452 622" xmlns="http://www.w3.org/2000/svg" style="fill-rule:evenodd;clip-rule:evenodd"><path class="cm-capsule" d="M1447,311c0,168.886-137.114,306-306,306l-830,0c-168.886,0-306-137.114-306-306c0-168.886 137.114-306 306-306l830,0c168.886,0 306,137.114 306,306Z"/><path class="cm-band" d="M47.5,204l9,-19l13,-21l13.5,-15.5l5,-2l341.5,0.5l-15,21l-17.5,17.5l-25,15l-21,6l-302,0l-1.5,-2.5Z"/><path class="cm-band" d="M25.5,291l5,-33l5.5,-18.5l353,-1l4.5,1.5l-26.5,24.5l-25,20l-14,9l-12,4l-290,0l-0.5,-6.5Z"/><path class="cm-band" d="M26.5,332l1.5,-1.5l352.5,0.5l-57.5,48.5l-12,7l-10,2l-264,-1l-8.5,-33.5l-2,-22Z"/><path class="cm-grey" d="M49.5,421l338.5,-0.5l1.5,1.5l-59.5,50.5l-14,6l-230,0l-8.5,-7.5l-8,-11l-15,-26l-5,-13Z"/><path class="cm-fig" d="M435.5,187l43.5,-45.5l58,-44l69,-39l71,-28l51,-10l44,2l26,12l9.5,9.5l10,19l3,13l-2,32l-9,25l-14.5,23.5l-19.5,-23.5l9,-24l0,-15l-5,-12l-10.5,-10.5l-10,-5l-16,-4l-24,-1l-39,9l-59,32l-46,11l-44,16l-51,29l-42,31l-2.5,-2.5Zm147,0l49.5,-25.5l28,-24l20,-10l24,-3l22,1l14,3l16,10l60.5,64.5l3,7l0,28l59,48l2,11l-8.5,13.5l-5,-7l-13,0l-13,6l-17.5,16.5l2.5,4.5l10,1l17,-11l12,-4l-4.5,10.5l0,10l11,16l-21.5,-0.5l-6,2l-33,19l-4.5,7.5l3.5,4.5l6,1l17,-8l16,-4l18,1l8.5,5.5l2,5l-1,10l-19.5,1.5l-4.5,5.5l0,7l8.5,7.5l15,3l6.5,8.5l7,17l-2,21l-2.5,2.5l-127,-1l-2,-2l-21,0l-17,-8l-8.5,-9.5l-7,-14l-20,-70l-6,-12l-7.5,-7.5l-10,-5l-32,-6l-11,-5l-9.5,-14.5l-2,-9l2,-27l6,-13l25,-34l2,-7l-2,-17l-6.5,-10.5l-28,-3l-20,-5l-0.5,-2.5Zm89,74l1.5,5.5l9,1l35,-27l13,-6l30,1l3,3l-26,12l-23.5,23.5l3.5,3.5l18,1l1,-7l14,-9l6,-1l5.5,4.5l3,8l-3,4l1.5,1.5l21,2l-0.5,-19.5l3.5,-4.5l8.5,-1.5l1,-20l6,-12l1,-9l-4.5,-6.5l-72,-2l-20,12l-20.5,21.5l-15,21Zm-207,83l6,-19l12.5,-13.5l18,-7l18,1l21,11l10.5,11.5l7,13l15,10l8,21l13,64l12,30l13.5,12.5l32,12l10.5,12.5l2,18l0,85l-2.5,8.5l-181.5,-1.5l33,-36l24,-43l12,-36l6,-43l2,-5l14,-13l2,-13l-2.5,-6.5l-16,4l-29,-4l-30,-16l-22.5,-24.5l-7,-19l-1,-14Zm19,-3l1,17l10.5,18.5l1.5,-3.5l-3,-8l0,-12l6.5,-9.5l10,0l4.5,4.5l-5,11l0,12l3,6l10.5,8.5l9,1l11,10l6,1l8.5,-4.5l0,-10l-17,-14l2,-18l-5,-11l-7.5,-8.5l-16,-8l-12,0l-11,5l-7.5,12.5Zm207,270l52.5,-54.5l39,-29l52,-26l46,-15l3.5,2.5l-8.5,9.5l-43,28l-24.5,22.5l-17,23l-8,16l-5,22l-2.5,2.5l-69,1l-15.5,-2.5Z" style="fill:#fdf4df"/><path class="cm-fig" d="M819.5,173l93.5,-62.5l48,-24l41,-9l30,-1l35,5l20,9l11.5,9.5l11,16l6,18l1,18l17.5,12.5l16.5,16.5l14,19l11,24l2,16l1,5l4,10l10.5,9.5l61,31l10.5,8.5l2,4l-1,11l-6.5,1.5l-7,-5l-9,3l-12.5,13.5l-1,8l6.5,3.5l14,-12l3.5,3.5l0,13l15,13l1,4l-6.5,-2.5l-11,2l-21,20l-9,4l-4.5,5.5l0,4l3.5,3.5l36,7l6,11l11.5,2.5l3,10l11,11l3,8l1,10l-5,14l-7.5,7.5l-11,5l-43,8l-26,8l-36,21l-17.5,16.5l-15,20l-13,27l-7.5,24.5l-90.5,-0.5l26,-49l28.5,-32.5l37,-24l17,-7l37.5,-9.5l-51.5,-3.5l-22,-6l-14.5,-13.5l-12,-25l-20.5,-24.5l-51,-28l-8.5,-7.5l-5,-9l0,-10l5,-9l42,-44l55.5,-67.5l20,-11l16,-1l13,3l17,0l8.5,-6.5l0,-4l-4.5,-4.5l-19,-6l-28,-5l-21,1l-14,7l-53,47l-52,41l-20.5,21.5l-9,19l0,19l10,20l14.5,13.5l40,27l10.5,11.5l10,18l4,14l1,21l-6,25l-10,21l-28,37l-19.5,18.5l-29,22l-4,2l-75,0l4,-4l38,-16l39,-25l31.5,-32.5l14,-30l2,-33l-6,-21l-15,-22l-31,-30l-8,-12l-7,-18l-1,-27l9,-24l7,-10l66,-66l48,-62l18.5,-18.5l18,-10l8,-2l11,2l8.5,-3.5l-5,-9l-11.5,-11.5l-16,-9l-25,-6l-25,0l-17,3l-32,13l-55,42l-30,15l-15,3l-29,-1l-18,-6l-12.5,-9.5Zm266,121l3.5,5.5l12,-1l25,-20l10,-3l8.5,15.5l-5,5l0.5,2.5l19,2l9,4l1.5,-1.5l-6,-8l-8,-21l6,-8l1,-13l-5.5,2.5l-3.5,-7.5l-7.5,-4.5l-20,7l-40.5,43.5Zm153,103l19.5,-11.5l9,-1l8.5,5.5l2,15l-3.5,2.5l-19,-3l-13,-4l-3.5,-3.5Z"/></svg></span>
-  <span class="colophon-tag">an onnozelaer ops orchestration</span>
-  <span class="brand-ver" id="brandVer"></span>
-</footer>
 
-<dialog class="sheet" id="sheet" aria-labelledby="sheetTitle">
-  <div class="sheet-wrap">
-    <div class="sheet-head">
-      <div class="sheet-type-bar" id="sheetTypeBar" hidden>
-        <i class="sym" id="sheetBarSym" aria-hidden="true"></i>
-        <span id="sheetBarLabel"></span>
-      </div>
-      <div class="sheet-title-row">
-        <i class="sym sheet-sym" id="sheetSym" aria-hidden="true" hidden></i>
-        <h2 class="sheet-title" id="sheetTitle"></h2>
-        <button class="pane-btn sheet-close" id="sheetClose" type="button" aria-label="Close"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 1l8 8M9 1l-8 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"/></svg></button>
-      </div>
-    </div>
-    <div class="sheet-body">
-      <div class="sheet-sec">
-        <p class="sheet-lbl" id="sheetLaneLbl">Lane</p>
-        <div class="rail" id="sheetLanes" role="group" aria-labelledby="sheetLaneLbl"></div>
-      </div>
-      <div class="sheet-sec" id="sheetNoteSec" hidden>
-        <div class="sheet-lbl-row">
-          <p class="sheet-lbl" id="sheetNoteLbl">Note</p>
-          <div class="rail" id="noteView" role="group" aria-labelledby="sheetNoteLbl">
-            <button type="button" data-view="pretty">Pretty</button>
-            <button type="button" data-view="raw">Raw</button>
-          </div>
-          <span id="noteCopy"></span>
-        </div>
-        <div class="sheet-note" id="sheetNote"></div>
-      </div>
-      <div class="sheet-sec" id="sheetTagSec" hidden>
-        <p class="sheet-lbl">Tags</p>
-        <div class="sheet-tags" id="sheetTags"></div>
-      </div>
-      <div class="sheet-sec" id="sheetLinkSec" hidden>
-        <div id="sheetLinks"></div>
-      </div>
-      <div class="sheet-sec">
-        <dl class="sheet-facts" id="sheetFacts"></dl>
-      </div>
-    </div>
+<div class="grid">
+  <div class="card" id="beanSummary">
+    <h2>Bean state</h2>
+    <div class="stat-row" id="beanStats"></div>
   </div>
-</dialog>
+
+  <div class="card" id="sessionsCard">
+    <h2>Active sessions</h2>
+    <ul class="session-list" id="sessionList"></ul>
+  </div>
+
+  <div class="card" id="dispatchCard">
+    <h2>Dispatched work</h2>
+    <ul class="dispatch-list" id="dispatchList"></ul>
+  </div>
+
+  <div class="card" id="progressCard">
+    <h2>Per-session progress</h2>
+    <ul class="progress-list" id="progressList"></ul>
+  </div>
+</div>
+
+<footer class="colophon">
+  <span class="colophon-mark" aria-label="onnozelaer ops"><svg width='100%' height='100%' viewBox='0 0 1452 622' version='1.1' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' xml:space='preserve' xmlns:serif='http://www.serif.com/' style='fill-rule:evenodd;clip-rule:evenodd'><g><path d='M1447,311c0,168.886 -137.114,306 -306,306l-830,0c-168.886,0 -306,-137.114 -306,-306c0,-168.886 137.114,-306 306,-306l830,0c168.886,0 306,137.114 306,306Z' style='fill:#26211a;stroke:#fdf4df;stroke-width:10px;'/><path d='M47.5,204l9,-19l13,-21l13.5,-15.5l5,-2l341.5,0.5l-15,21l-17.5,17.5l-25,15l-21,6l-302,0l-1.5,-2.5Z' style='fill:#7c1b16;'/><path d='M25.5,291l5,-33l5.5,-18.5l353,-1l4.5,1.5l-26.5,24.5l-25,20l-14,9l-12,4l-290,0l-0.5,-6.5Z' style='fill:#bd281c;'/><path d='M26.5,332l1.5,-1.5l352.5,0.5l-57.5,48.5l-12,7l-10,2l-264,-1l-8.5,-33.5l-2,-22Z' style='fill:#dd4d25;'/><path d='M49.5,421l338.5,-0.5l1.5,1.5l-59.5,50.5l-14,6l-230,0l-8.5,-7.5l-8,-11l-15,-26l-5,-13Z' style='fill:#d2d7d8;stroke:#d2d7d8;stroke-width:1px;'/><path d='M435.5,187l43.5,-45.5l58,-44l69,-39l71,-28l51,-10l44,2l26,12l9.5,9.5l10,19l3,13l-2,32l-9,25l-14.5,23.5l-19.5,-23.5l9,-24l0,-15l-5,-12l-10.5,-10.5l-10,-5l-16,-4l-24,-1l-39,9l-59,32l-46,11l-44,16l-51,29l-42,31l-2.5,-2.5Zm147,0l49.5,-25.5l28,-24l20,-10l24,-3l22,1l14,3l16,10l60.5,64.5l3,7l0,28l59,48l2,11l-8.5,13.5l-5,-7l-13,0l-13,6l-17.5,16.5l2.5,4.5l10,1l17,-11l12,-4l-4.5,10.5l0,10l11,16l-21.5,-0.5l-6,2l-33,19l-4.5,7.5l3.5,4.5l6,1l17,-8l16,-4l18,1l8.5,5.5l2,5l-1,10l-19.5,1.5l-4.5,5.5l0,7l8.5,7.5l15,3l6.5,8.5l7,17l-2,21l-2.5,2.5l-127,-1l-2,-2l-21,0l-17,-8l-8.5,-9.5l-7,-14l-20,-70l-6,-12l-7.5,-7.5l-10,-5l-32,-6l-11,-5l-9.5,-14.5l-2,-9l2,-27l6,-13l25,-34l2,-7l-2,-17l-6.5,-10.5l-28,-3l-20,-5l-0.5,-2.5Zm89,74l1.5,5.5l9,1l35,-27l13,-6l30,1l3,3l-26,12l-23.5,23.5l3.5,3.5l18,1l1,-7l14,-9l6,-1l5.5,4.5l3,8l-3,4l1.5,1.5l21,2l-0.5,-19.5l3.5,-4.5l8.5,-1.5l1,-20l6,-12l1,-9l-4.5,-6.5l-72,-2l-20,12l-20.5,21.5l-15,21Zm-207,83l6,-19l12.5,-13.5l18,-7l18,1l21,11l10.5,11.5l7,13l15,10l8,21l13,64l12,30l13.5,12.5l32,12l10.5,12.5l2,18l0,85l-2.5,8.5l-181.5,-1.5l33,-36l24,-43l12,-36l6,-43l2,-5l14,-13l2,-13l-2.5,-6.5l-16,4l-29,-4l-30,-16l-22.5,-24.5l-7,-19l-1,-14Zm19,-3l1,17l10.5,18.5l1.5,-3.5l-3,-8l0,-12l6.5,-9.5l10,0l4.5,4.5l-5,11l0,12l3,6l10.5,8.5l9,1l11,10l6,1l8.5,-4.5l0,-10l-17,-14l2,-18l-5,-11l-7.5,-8.5l-16,-8l-12,0l-11,5l-7.5,12.5Zm207,270l52.5,-54.5l39,-29l52,-26l46,-15l3.5,2.5l-8.5,9.5l-43,28l-24.5,22.5l-17,23l-8,16l-5,22l-2.5,2.5l-69,1l-15.5,-2.5Z' style='fill:#fdf4df;'/><path d='M819.5,173l93.5,-62.5l48,-24l41,-9l30,-1l35,5l20,9l11.5,9.5l11,16l6,18l1,18l17.5,12.5l16.5,16.5l14,19l11,24l2,16l1,5l4,10l10.5,9.5l61,31l10.5,8.5l2,4l-1,11l-6.5,1.5l-7,-5l-9,3l-12.5,13.5l-1,8l6.5,3.5l14,-12l3.5,3.5l0,13l15,13l1,4l-6.5,-2.5l-11,2l-21,20l-9,4l-4.5,5.5l0,4l3.5,3.5l36,7l6,11l11.5,2.5l3,10l11,11l3,8l1,10l-5,14l-7.5,7.5l-11,5l-43,8l-26,8l-36,21l-17.5,16.5l-15,20l-13,27l-7.5,24.5l-90.5,-0.5l26,-49l28.5,-32.5l37,-24l17,-7l37.5,-9.5l-51.5,-3.5l-22,-6l-14.5,-13.5l-12,-25l-20.5,-24.5l-51,-28l-8.5,-7.5l-5,-9l0,-10l5,-9l42,-44l55.5,-67.5l20,-11l16,-1l13,3l17,0l8.5,-6.5l0,-4l-4.5,-4.5l-19,-6l-28,-5l-21,1l-14,7l-53,47l-52,41l-20.5,21.5l-9,19l0,19l10,20l14.5,13.5l40,27l10.5,11.5l10,18l4,14l1,21l-6,25l-10,21l-28,37l-19.5,18.5l-29,22l-4,2l-75,0l4,-4l38,-16l39,-25l31.5,-32.5l14,-30l2,-33l-6,-21l-15,-22l-31,-30l-8,-12l-7,-18l-1,-27l9,-24l7,-10l66,-66l48,-62l18.5,-18.5l18,-10l8,-2l11,2l8.5,-3.5l-5,-9l-11.5,-11.5l-16,-9l-25,-6l-25,0l-17,3l-32,13l-55,42l-30,15l-15,3l-29,-1l-18,-6l-12.5,-9.5Zm266,121l3.5,5.5l12,-1l25,-20l10,-3l8.5,15.5l-5,5l0.5,2.5l19,2l9,4l1.5,-1.5l-6,-8l-8,-21l6,-8l1,-13l-5.5,2.5l-3.5,-7.5l-7.5,-4.5l-20,7l-40.5,43.5Zm153,103l19.5,-11.5l9,-1l8.5,5.5l2,15l-3.5,2.5l-19,-3l-13,-4l-3.5,-3.5Z' style='fill:#fdf4df;'/></g></svg></span>
+  <span class="colophon-tag">an onnozelaer ops orchestration</span>
+  <span class="ver" id="ver"></span>
+</footer>
 
 <script>
 "use strict";
-
-/* ── Board data. The scaffolder replaces this block with the project deck. ── */
-const SEED = /*BOARD_DATA_START*/{
-  "version":1,"boardId":"example","title":"Board","subtitle":"","updated":"",
-  "columns":[{"id":"backlog","name":"Backlog"},{"id":"next","name":"Next"},{"id":"doing","name":"Doing"},{"id":"review","name":"Review"},{"id":"done","name":"Done"},{"id":"icebox","name":"Icebox"}],
-  "categories":["build","docs","infra","chore"],
-  "cards":[
-    {"id":"EX-01","title":"Open this card to read everything it carries","column":"backlog","category":"build","related":["SPEC-000"],"notes":"The face of a card shows its title, the first two lines of its note, and its id. Everything else is in here. Run /adjudant board to replace this deck with your own, or edit board-data.json by hand."},
-    {"id":"EX-02","title":"Drag a card to another lane, or pick a lane inside it","column":"doing","category":"infra","related":["SPEC-000","HANDOFF-1"],"notes":"The lane row above moves a card without a drag, so a phone and a screen reader get the control a mouse already had."},
-    {"id":"EX-03","title":"A lane can carry a work-in-progress limit and a terminal marker","column":"done","category":"docs","related":[],"notes":"This lane is stamped BUILT once, in its heading. A lane with a wip limit turns its count red when it is over."}
-  ]
-}/*BOARD_DATA_END*/;
 
 /* ── The mark ─────────────────────────────────────────────────────────────
    Two figures and two wordmarks. ADJUDANTE is the other one, and she is not
@@ -1402,1514 +376,140 @@ function paintMark(){
   const band=markFigure.band;
   band.forEach((c,i)=>document.documentElement.style.setProperty("--band-"+(i+1),c));
   paintFavicon(band);
-  svg.setAttribute("viewBox","0 -75 "+m.w+" 85");
-  svg.setAttribute("aria-label",m.label);
-  svg.querySelector("path").setAttribute("d",m.d);
-  const ver=document.getElementById("brandVer");
-  if(ver&&ADJUDANT_VERSION){
-    ver.textContent="v"+ADJUDANT_VERSION;
-    ver.title="Scaffolded by adjudant "+ADJUDANT_VERSION;
+}
+
+(function(){
+  "use strict";
+
+  /* ── Data file: dashboard-data.json, next to this file ── */
+  const DATA_FILE = "dashboard-data.json";
+  let state = null;
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
   }
-}
 
-/* category hue palette (OKLCH; assigned by index unless categories carries explicit colors) */
-/* Eight category hues, and the decade's own: aubergine, avocado, burnt orange,
-   petrol, rust rose, teal, harvest gold, brick. The pastels they replace sat at
-   80% lightness because that was the only band one colour could hold on BOTH
-   schemes; it made the board read as a nursery, not a docket.
-
-   These sit at 56 to 59%, which is the crossover where a single value clears
-   the 3:1 graphic floor (SC 1.4.11) against cream AND near-black. Every one is
-   measured against all six surfaces, three per scheme, and the worst case is
-   3.00:1. Index order is unchanged, so the ColorSym symbol each slot carries is
-   unchanged too. */
-const PALETTE=["oklch(59% 0.14 310)","oklch(56% 0.15 125)","oklch(59% 0.19 48)","oklch(56% 0.13 262)","oklch(59% 0.16 5)","oklch(54.5% 0.13 195)","oklch(57% 0.16 88)","oklch(58% 0.18 15)"];
-/* THE BEANS VOCABULARY has a fixed seat, a fixed hue and a fixed mark, so a
-   task is blue with the chevron on every board, whatever order a deck listed
-   its types in (a deck lists them in order of first appearance, which is
-   whichever card came first). Chosen with the user, 2026-09-12: task,
-   feature, bug, epic, milestone; the ordinary work first, the containers
-   last. Task blue, feature green, bug red, epic purple, milestone yellow. A type outside the book takes the next free hue and mark, in deck
-   order, and the marks stay a bijection. */
-const TYPE_BOOK={
-  task:      {c:"oklch(56% 0.13 262)", sym:4},
-  feature:   {c:"oklch(56% 0.15 125)",   sym:3},
-  bug:       {c:"oklch(58% 0.18 15)",    sym:5},
-  epic:      {c:"oklch(59% 0.14 310)",   sym:2},
-  milestone: {c:"oklch(57% 0.16 88)",    sym:1}
-};
-const TYPE_ORDER=Object.keys(TYPE_BOOK);
-/* per-board identity: each project's board namespaces its own browser + disk-handle
-   state, so multiple boards served from the same localhost origin never clobber
-   each other. Falls back to the title for pre-0.9 decks without a boardId. */
-function boardKey(){ return String(SEED.boardId||SEED.title||"default"); }
-const LS_KEY="adjudant-board:"+boardKey();
-const LS_REV=LS_KEY+":rev";   /* pre-0.25 whole-deck mirror; retired on first save */
-const IDB_KEY=boardKey();
-const STAMP={done:["built","BUILT"],icebox:["parked","PARKED"]};
-const MOVES_VERSION=2;
-let state=null, fileHandle=null, catColors={}, catSyms={};
-/* baseDeck = the deck exactly as loaded (disk or SEED), before any override.
-   moves    = the ONLY thing this page persists (see readMoves). */
-let baseJson=null, baseCols=[], moves={};
-/* The open card, held by POSITION in state.cards for the same reason a drag is
-   (a deck may legitimately carry two cards with one id), plus the id it had when
-   it was opened, so a deck replaced under the sheet is detectable. */
-let sheetKey=null, sheetId=null;
-/* view-state only (never persisted): text filter + toggled legend category */
-let filterText="", filterCat=null, filterTag=null;
-/* How a person reads, not a fact about a deck, so it lives per browser beside
-   the note view rather than in board-data.json. */
-const TERM_KEY="adjudant-board:terminal";
-let hideTerminal=false;
-/* The deck's ordinary tags, recomputed each render. Suppressed on the face for
-   the reason the category chip was deleted: board.py defaults `category` to
-   `task`, so a vault board painted an identical `task` chip on every card it
-   had. The threshold is the one the ordinary category already uses — carried by
-   more cards than not — because the two marks answer the same question and a
-   board that suppressed one at a majority and the other only at unanimity
-   would be arbitrary. Measured on a real beans deck: `adjudant` sat on 71 of 92
-   cards, so the informative cards were the 21 without it, and absence is the
-   one thing a chip cannot show. It stays in the rail, where it is a control,
-   and in the sheet, where it is a fact about the one card you opened. */
-let ordinaryTags=new Set();
-const SWIM_KEY="adjudant-board-swimlane";
-let swimMode="status";
-function readSwimMode(){
-  try{ return localStorage.getItem(SWIM_KEY)==="parent"?"parent":"status"; }
-  catch(e){ return "status"; }
-}
-function writeSwimMode(v){
-  try{ localStorage.setItem(SWIM_KEY,v); }catch(e){ console.warn("board: swimlane preference not saved",e); }
-}
-function errText(e){ return String((e&&e.message)||e||"unknown error"); }
-function cardMatches(c){
-  if(filterCat && c.category!==filterCat) return false;
-  if(filterTag && !(c.tags||[]).some(t=>String(t)===filterTag)) return false;
-  if(!filterText) return true;
-  // default every field: undefined must not leak "undefined" into the haystack
-  return [c.id,c.title,c.category,c.notes,c.parent,
-          (c.related||[]).join(" "),(c.tags||[]).join(" "),
-          (c.blockedBy||[]).join(" "),(c.blocking||[]).join(" ")]
-    .map(v=>v==null?"":String(v)).join(" ").toLowerCase().includes(filterText);
-}
-
-/* IndexedDB: persist the file handle across reloads (keyed per board) */
-function idb(){return new Promise((res,rej)=>{const r=indexedDB.open("cf-board",1);r.onupgradeneeded=()=>r.result.createObjectStore("h");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
-async function saveHandle(h){const db=await idb();return new Promise((res,rej)=>{const t=db.transaction("h","readwrite");t.objectStore("h").put(h,IDB_KEY);t.oncomplete=()=>res();t.onerror=()=>rej(t.error);});}
-async function loadHandle(){try{const db=await idb();return await new Promise((res,rej)=>{const t=db.transaction("h","readonly");const rq=t.objectStore("h").get(IDB_KEY);rq.onsuccess=()=>res(rq.result||null);rq.onerror=()=>rej(rq.error);});}catch(e){return null;}}
-async function ensurePerm(h,mode){const o={mode};if((await h.queryPermission(o))==="granted")return true;if((await h.requestPermission(o))==="granted")return true;return false;}
-
-async function connectFile(){
-  if(!window.showOpenFilePicker){alert("This browser has no File System Access API. Use a Chromium browser, or rely on the browser-saved copy + Download.");return;}
-  try{
-    const [h]=await window.showOpenFilePicker({types:[{description:"Board JSON",accept:{"application/json":[".json"]}}],multiple:false});
-    if(!(await ensurePerm(h,"readwrite"))){alert("Write permission denied.");return;}
-    fileHandle=h; await saveHandle(h);
-    const txt=await (await h.getFile()).text();
-    if(txt.trim()){ baseJson=txt; state=deckFrom(txt); }
-    render();
-    const res=await persist();
-    if(!res.ok) notice("Connected, but nothing could be saved: "+res.reason,true); else clearNotice();
-  }catch(e){ if(e&&e.name!=="AbortError") alert("Connect failed: "+errText(e)); }
-}
-/* ── What this page persists ──────────────────────────────────────────────
-   ONLY the moves you made by hand, as {cardId:{from,to}}. Titles, categories,
-   refs and notes always re-render from the deck the scaffolder wrote, so a
-   re-scaffold that renames or re-categorises a card is never masked by a
-   stale browser blob, while the lane you dragged a card into still survives
-   that re-scaffold. `from` is the lane the deck held when you moved the card:
-   when the deck itself later puts that card somewhere else (a reseed, a hand
-   edit, another tab's disk write), the deck wins and the override retires.
-   Storing the whole deck instead is what made a re-seeded title permanently
-   invisible in the browser with no way to recover in the page. */
-/* One-time migration. Boards before this shape stored the whole deck, so the
-   drags are recoverable by diffing that blob against the deck this page ships.
-   The next save replaces it with the moves-only shape. */
-function movesFromLegacyDeck(o){
-  const seed={};
-  (SEED.cards||[]).forEach(c=>{ const id=String(c.id); if(seed[id]===undefined) seed[id]=String(c.column==null?"":c.column); });
-  const out={};
-  (o.cards||[]).forEach(c=>{
-    const id=String(c.id), col=String(c.column==null?"":c.column);
-    if(seed[id]!==undefined&&seed[id]!==col) out[id]={from:seed[id],to:col};
-  });
-  return out;
-}
-function readMoves(){
-  try{
-    const raw=localStorage.getItem(LS_KEY);
-    if(!raw) return {};
-    const o=JSON.parse(raw);
-    if(o&&typeof o==="object"&&o.v!==MOVES_VERSION&&Array.isArray(o.cards)) return movesFromLegacyDeck(o);
-    if(!o||typeof o!=="object"||o.v!==MOVES_VERSION||!o.moves||typeof o.moves!=="object") return {};
-    const out={};
-    Object.keys(o.moves).forEach(k=>{
-      const m=o.moves[k];
-      if(m&&typeof m==="object"&&typeof m.to==="string") out[k]={from:typeof m.from==="string"?m.from:"",to:m.to};
-    });
-    return out;
-  }catch(e){ console.warn("board: saved moves unreadable, starting from the deck",e); return {}; }
-}
-/* Returns {ok,reason}. A storage failure (private mode, a blocked or full
-   origin, an enterprise policy) must be reported, never swallowed: the save
-   button says where a move landed, and the caller rolls the move back when no
-   store confirmed it. */
-function writeMoves(){
-  try{
-    localStorage.setItem(LS_KEY,JSON.stringify({v:MOVES_VERSION,moves:moves}));
-    localStorage.removeItem(LS_REV);
-    return {ok:true,reason:""};
-  }catch(e){
-    console.warn("board: browser storage write failed",e);
-    const why=(e&&e.name==="QuotaExceededError") ? "this browser's storage is full or blocked" : errText(e);
-    return {ok:false,reason:why};
+  function renderBeanStats(beans) {
+    const c = document.getElementById("beanStats");
+    c.innerHTML = "";
+    if (!beans) { c.appendChild(el("div", "empty", "No bean data.")); return; }
+    const pairs = [
+      ["open", beans.open || 0, ""],
+      ["doing", beans.doing || 0, "ok"],
+      ["critical", beans.critical || 0, "bad"],
+      ["bugs", beans.bugs || 0, ""],
+      ["milestones", beans.milestones || 0, "accent"],
+      ["epics", beans.epics || 0, "accent"],
+    ];
+    for (const [label, n, cls] of pairs) {
+      const s = el("div", "stat" + (cls ? " " + cls : ""));
+      s.appendChild(el("div", "n", String(n)));
+      s.appendChild(el("div", "label", label));
+      c.appendChild(s);
+    }
   }
-}
-/* Overrides onto a deck, in place. Returns the surviving set: an override whose
-   `from` no longer matches the deck, or whose target lane is gone, has been
-   overtaken by the deck itself and retires. Touches no global, so a caller can
-   compute a merge it may still decide not to commit. */
-function mergeMoves(deck,mv){
-  const known=new Set(deck.columns.map(c=>String(c.id)));
-  const live={};
-  deck.cards.forEach(c=>{
-    const m=mv[c.id];
-    if(!m||m.from!==c.column||!known.has(m.to)) return;
-    c.column=m.to; live[c.id]=m;
-  });
-  return live;
-}
-/* This deck is now the one every override is expressed against. */
-function adopt(deck){
-  baseCols=deck.cards.map(c=>c.column);
-  moves=mergeMoves(deck,moves);
-  return deck;
-}
-/* `from` is always the lane the CURRENT deck holds for that card, never the
-   lane it held the first time it was moved: once the deck absorbs a move (a
-   disk write, a reseed), a frozen base would stop matching and the next move
-   of that same card would be dropped on the floor. */
-function recordMove(key,card,to){
-  const base=(baseCols[key]===undefined)?card.column:baseCols[key];
-  if(to===base) delete moves[card.id]; else moves[card.id]={from:base,to:to};
-}
-function deckFrom(txt){ return adopt(normalize(JSON.parse(txt))); }
 
-/* Re-read before writing. createWritable() truncates, python reseeds this same
-   file, and another tab may own it too: a blind write of this tab's boot-time
-   snapshot silently drops every card and lane that landed since. */
-async function writeDisk(){
-  if(!fileHandle) return {ok:false,reason:"",skipped:true};
-  try{
-    if(!(await ensurePerm(fileHandle,"readwrite"))) return {ok:false,reason:"write permission for board-data.json was denied"};
-    const txt=await (await fileHandle.getFile()).text();
-    let disk=null;
-    if(txt.trim()){
-      try{ disk=normalize(JSON.parse(txt)); }
-      catch(e){ return {ok:false,reason:"board-data.json on disk is not a readable deck ("+errText(e)+"), nothing written"}; }
+  function renderSessions(sessions) {
+    const c = document.getElementById("sessionList");
+    c.innerHTML = "";
+    if (!sessions || !sessions.length) { c.appendChild(el("li", "empty", "No active sessions.")); return; }
+    for (const s of sessions) {
+      const li = el("li", "session-item");
+      const dot = el("span", "session-dot " + (s.active ? "active" : "idle"));
+      li.appendChild(dot);
+      const name = el("span", "session-name", s.name || s.id || "unknown");
+      li.appendChild(name);
+      if (s.beans && s.beans.length) {
+        const b = el("span", "session-beans", s.beans.join(", "));
+        li.appendChild(b);
+      }
+      if (s.age) {
+        const a = el("span", "session-age", s.age);
+        li.appendChild(a);
+      }
+      c.appendChild(li);
     }
-    let out=state, live=null;
-    if(disk){ live=mergeMoves(disk,moves); out=disk; }
-    const written=JSON.stringify(out,null,2);
-    const w=await fileHandle.createWritable();
-    await w.write(written);
-    await w.close();
-    /* Adopt the reconciled deck only once the write actually landed, and adopt
-       what was WRITTEN: the file now holds the merged columns, so those are the
-       lanes the next override has to be expressed against. */
-    if(disk){ baseJson=written; state=out; baseCols=out.cards.map(c=>c.column); moves=live; }
-    return {ok:true,reason:"",refreshed:!!disk};
-  }catch(e){ console.warn("board: disk write failed",e); return {ok:false,reason:errText(e)}; }
-}
-/* Confirmed by at least one backing store, or it did not happen. */
-async function persist(){
-  const local=writeMoves();
-  const disk=await writeDisk();
-  setConn(disk.ok?"disk":(fileHandle?"reconnect":(local.ok?"local":"unsaved")));
-  const reasons=[];
-  if(!local.ok) reasons.push(local.reason);
-  if(!disk.ok&&!disk.skipped) reasons.push(disk.reason);
-  return {ok:local.ok||disk.ok,reason:reasons.join(" · "),refreshed:!!disk.refreshed};
-}
-/* Pull in a deck another writer put on disk while this tab sat idle. */
-async function refreshFromDisk(){
-  if(!fileHandle) return;
-  try{
-    if((await fileHandle.queryPermission({mode:"readwrite"}))!=="granted") return;
-    const txt=await (await fileHandle.getFile()).text();
-    if(!txt.trim()||txt===baseJson) return;
-    baseJson=txt; state=deckFrom(txt); render();
-    announce("Board refreshed from disk.");
-  }catch(e){ console.warn("board: disk refresh failed",e); }
-}
-
-/* One control, not a badge beside a button repeating it. The label names the
-   action while there is one to take and the state once there is not; the dot
-   carries the same thing without the words. */
-/* The label is the state, and the punctuation carries the mood: unconnected it
-   ASKS, connected it REPORTS. "Connect file" named a mechanism nobody had to
-   care about; this names what you actually get, which is that a drag outlives
-   the tab. */
-const CONN={
-  disk:["Persisting board edits","Edits are written to board-data.json and to this browser."],
-  reconnect:["Resume persisting?","Edits are saved in this browser only. Reconnect board-data.json to write them to disk."],
-  local:["Persist board edits?","Edits are saved in this browser only. Connect board-data.json to write them to disk."],
-  unsaved:["Not persisted","Nothing could be saved. Connect board-data.json to write edits to disk."]
-};
-function setConn(mode){
-  const b=document.getElementById("connectBtn");
-  const pair=CONN[mode]||CONN.local;
-  b.classList.toggle("on",mode==="disk");
-  b.classList.toggle("bad",mode==="unsaved");
-  b.textContent=pair[0];
-  b.setAttribute("aria-label",pair[1]);
-}
-function download(){
-  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
-  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="board-data.json"; a.click(); URL.revokeObjectURL(a.href);
-}
-
-/* A deck's category colour is assigned into a CSS custom property that backs
-   `background:var(--c)`, so an unvetted value lets a deck smuggle a `url()`
-   into a board that is supposed to be fully offline and make it fetch. Take
-   only what the engine itself agrees is a colour, never a value that can
-   fetch. Validator 25 enforces the same offline rule over the whole file. */
-const FETCHING_CSS=/url\s*\(|image-set\s*\(|-webkit-image-set\s*\(|image\s*\(|cross-fade\s*\(|element\s*\(|attr\s*\(|var\s*\(/i;
-function safeColor(v,fallback){
-  if(typeof v!=="string") return fallback;
-  const s=v.trim();
-  if(!s||FETCHING_CSS.test(s)) return fallback;
-  if(window.CSS&&CSS.supports&&!CSS.supports("color",s)) return fallback;
-  return s;
-}
-/* categories may be an array of names (palette by index) or an object {name:color}.
-   Shape is validated here rather than trusted: board-data.json is documented as
-   hand-editable, so a deck missing `cards` or `columns` must not render as a
-   confident, fully-styled, empty board. */
-function normalize(d){
-  if(!d||typeof d!=="object"||Array.isArray(d)) throw new Error("deck root is not a JSON object");
-  d.columns=Array.isArray(d.columns)?d.columns.filter(c=>c&&typeof c==="object"&&c.id!=null):[];
-  if(!d.columns.length) throw new Error("deck has no columns");
-  d.cards=Array.isArray(d.cards)?d.cards.filter(c=>c&&typeof c==="object"):[];
-  d.cards.forEach(c=>{ c.id=(c.id==null?"":String(c.id)); c.column=(c.column==null?"":String(c.column)); });
-  let names, colors={};
-  if(Array.isArray(d.categories)){ names=d.categories.map(String); }
-  else if(d.categories && typeof d.categories==="object"){ names=Object.keys(d.categories); colors=d.categories; }
-  else { names=[]; }
-  /* the book's types take their seats first; the rest follow in deck order */
-  const known=TYPE_ORDER.filter(n=>names.includes(n));
-  const other=names.filter(n=>!TYPE_BOOK[n]);
-  names=known.concat(other);
-  catColors={}; catSyms={};
-  const usedSym=new Set(known.map(n=>TYPE_BOOK[n].sym));
-  const usedHue=new Set(known.map(n=>TYPE_BOOK[n].c));
-  const freeSyms=[1,2,3,4,5,6,7,8].filter(s=>!usedSym.has(s));
-  const freeHues=PALETTE.filter(c=>!usedHue.has(c));
-  known.forEach(n=>{ catColors[n]=safeColor(colors[n],TYPE_BOOK[n].c); catSyms[n]=TYPE_BOOK[n].sym; });
-  other.forEach((n,i)=>{
-    catColors[n]=safeColor(colors[n],freeHues.length?freeHues[i%freeHues.length]:PALETTE[i%PALETTE.length]);
-    catSyms[n]=freeSyms.length?freeSyms[i%freeSyms.length]:(i%PALETTE.length)+1;
-  });
-  d.categoryNames=names;
-  /* The type most of a deck shares is the ordinary one, and ordinary needs no
-     mark: on a board of 78 tasks and 9 epics, the thing you need to see is
-     which nine are epics. A category qualifies as the baseline only when it
-     covers more cards than every other category put together, so an evenly
-     split deck marks all of them rather than picking a winner. */
-  const tally={};
-  d.cards.forEach(c=>{ if(c.category) tally[c.category]=(tally[c.category]||0)+1; });
-  let top=null, topN=0;
-  Object.keys(tally).forEach(k=>{ if(tally[k]>topN){ top=k; topN=tally[k]; } });
-  d.baseCategory=(names.length>1 && topN*2>d.cards.length) ? top : null;
-  const seen=new Set(), dup=new Set();
-  d.cards.forEach(c=>{ if(seen.has(c.id)) dup.add(c.id); seen.add(c.id); });
-  d.duplicateIds=Array.from(dup);
-  return d;
-}
-function catColor(cat){ return catColors[cat] || "var(--border-strong)"; }
-/* the ColorSym mark for a type, 1..8, assigned by index beside its hue */
-function catSym(cat){ return catSyms[cat] || 0; }
-function el(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;}
-function colName(id){ const c=state.columns.find(c=>String(c.id)===String(id)); return c?c.name:String(id); }
-function cardLabel(c){ return (c.id?c.id+", ":"")+(c.title||"untitled card"); }
-
-/* ── Telling the truth about what happened ── */
-function showToast(msg){
-  const t=el("div","toast",msg);
-  document.body.appendChild(t);
-  t.addEventListener("animationend",()=>t.remove());
-}
-function isBlocked(card){
-  if(!card.blockedBy||!card.blockedBy.length) return false;
-  return card.blockedBy.some(bid=>{
-    const blocker=state.cards.find(c=>c.id===bid);
-    return !blocker||!isTerminal(columnById(blocker.column));
-  });
-}
-function announce(msg){
-  const live=document.getElementById("live");
-  if(live){ live.textContent=""; live.textContent=msg; }
-}
-function notice(msg,bad){
-  const n=document.getElementById("notice");
-  if(!n) return;
-  document.getElementById("noticeText").textContent=msg;
-  n.classList.toggle("bad",!!bad);
-  n.hidden=false;
-}
-function clearNotice(){ const n=document.getElementById("notice"); if(n){ n.hidden=true; } }
-/* A deck this page cannot render must say so on the page. Rendering an empty
-   board for a broken file is the one failure mode a reader cannot detect. */
-function fatal(e){
-  console.error("board: deck could not be rendered",e);
-  const board=document.getElementById("board");
-  board.innerHTML="";
-  const box=el("div","fatal"); box.setAttribute("role","alert");
-  box.appendChild(el("b",null,"This board could not be rendered."));
-  box.appendChild(el("p",null,"board-data.json (or the deck built into this page) is not a usable deck: "+errText(e)));
-  box.appendChild(el("p",null,"Re-run /adjudant board to rebuild it, or fix board-data.json by hand."));
-  board.appendChild(box);
-  document.getElementById("cardCount").textContent="—";
-}
-
-/* Cards are addressed by their position in state.cards, never by id: a deck may
-   legitimately carry two cards with the same id (board.py only de-duplicates
-   the tasks path), and resolving a drag with .find(c=>c.id===id) moves the
-   first match rather than the card the user actually dragged. */
-function focusKey(key){
-  const node=document.querySelector('.ticket[data-key="'+key+'"] .ticket-face');
-  if(node) node.focus();
-}
-/* The single mutation path. A move renders optimistically, then rolls back and
-   says so when no backing store confirmed the write. */
-async function applyMove(key,toCol){
-  const card=state.cards[key];
-  if(!card) return false;
-  const from=card.column;
-  const label=cardLabel(card);
-  if(from===toCol){ announce(label+" is already in "+colName(toCol)+"."); return false; }
-  const toColObj=columnById(toCol);
-  if(isBlocked(card)&&toColObj&&!isTerminal(toColObj)&&!laneMuted(toColObj)){
-    const msg="Blocked: resolve dependencies before moving "+label;
-    showToast(msg); announce(msg); return false;
   }
-  const undo=JSON.stringify(moves);
-  card.column=toCol; recordMove(key,card,toCol);
-  render();
-  const res=await persist();
-  if(!res.ok){
-    card.column=from; moves=JSON.parse(undo); render();
-    notice("Not saved: "+res.reason+". "+label+" was put back in "+colName(from)+".",true);
-    announce("Save failed. "+label+" was put back in "+colName(from)+".");
-    /* render() re-renders the open sheet in place, and the card behind it is
-       inert while it is open, so focus stays where the person is working. */
-    if(sheetKey===null) focusKey(key);
-    return false;
+
+  function renderDispatches(dispatches) {
+    const c = document.getElementById("dispatchList");
+    c.innerHTML = "";
+    if (!dispatches || !dispatches.length) { c.appendChild(el("li", "empty", "No dispatches logged.")); return; }
+    for (const d of dispatches.slice(-20).reverse()) {
+      const li = el("li", "dispatch-item");
+      li.appendChild(el("span", "ts", d.ts || ""));
+      const mid = el("div", "");
+      mid.appendChild(el("span", "target", d.target || ""));
+      if (d.bean) mid.appendChild(el("span", "bean", " " + d.bean));
+      li.appendChild(mid);
+      li.appendChild(el("span", "excerpt", d.excerpt || ""));
+      c.appendChild(li);
+    }
   }
-  if(res.refreshed) render();
-  if(res.reason) notice("Saved in this browser, but not to disk: "+res.reason,true); else clearNotice();
-  announce(label+" moved to "+colName(toCol)+".");
-  if(sheetKey===null) focusKey(key);
-  return true;
-}
-/* keyboard capacity: focused ticket + [ / ] moves it one lane left / right */
-function moveByKey(key,delta){
-  const card=state.cards[key];
-  if(!card) return;
-  const cols=state.columns.map(c=>String(c.id));
-  const i=cols.indexOf(String(card.column));
-  const j=i+delta;
-  if(i<0) return;
-  if(j<0||j>=cols.length){ announce(cardLabel(card)+" is already in the "+(delta<0?"first":"last")+" stage."); return; }
-  applyMove(key,cols[j]);
-}
-/* ── The card, opened ─────────────────────────────────────────────────────
-   Everything the face no longer carries lives here: the whole note, every ref,
-   the id, the category, the priority, where the card came from, and the lane
-   row that moves it.
 
-   The lane row is why the board no longer needs an invisible tap-then-tap mode
-   on touch. That mode was the only way to move a card without a mouse or a
-   keyboard, it was registered only on devices matching (pointer: coarse), and
-   nothing on the page showed it existed. A row of lane buttons does the same
-   job on every device, in the open. */
-function sheetEl(){ return document.getElementById("sheet"); }
-const PRIO_CRITICAL={critical:1,highest:1,blocker:1,urgent:1};
-const PRIO_QUIET={low:1,lowest:1,deferred:1,someday:1,minor:1};
-function priorityOf(card){
-  const v=(card.priority==null?"":String(card.priority)).trim().toLowerCase();
-  return (!v||v==="normal") ? "" : v;
-}
-function priorityMark(card){
-  const v=priorityOf(card);
-  if(!v) return null;
-  const icon=el("i","prio-icon");
-  icon.dataset.prio=PRIO_CRITICAL[v]?"critical":v==="high"?"high":v==="low"?"low":PRIO_QUIET[v]?"quiet":"high";
-  icon.setAttribute("aria-hidden","true");
-  icon.title=v;
-  return icon;
-}
-/* An ISO instant reads as machine output. The date and the minute are what a
-   person needs from it; the seconds and the Z are not information here.
-   Anything that is not an ISO instant is shown exactly as the tracker wrote
-   it, rather than guessed at. */
-function stamp(v){
-  const s=(v==null?"":String(v)).trim();
-  const m=/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(s);
-  return m ? m[1]+" "+m[2] : s;
-}
-/* ── A small Markdown reader ───────────────────────────────────────────────
-   A bean's body is Markdown. Shown as one flat run with the syntax still in
-   it, a note is source rather than a note: two lines of a card preview spent
-   on "## " is two lines of punctuation. This reads the subset bodies actually
-   use - headings, emphasis, code, fences, lists, quotes, rules, links.
-
-   It builds DOM nodes and never assembles an HTML string. board-data.json is
-   documented as hand-editable and a body is written by whoever writes beans,
-   so a renderer that went through innerHTML would hand either of them this
-   page. Same reasoning as safeColor(): take the shape, never the markup.
-
-   Raw is one click away and keeps every character, because a reader that
-   quietly drops something a person wrote is worse than no reader. */
-/* Every branch matches through a NEGATED class, never `[\s\S]+?` closed by a
-   backreference. That first shape backtracks catastrophically the moment a
-   delimiter is unpaired, and snake_case is exactly that: one `_` in
-   `created_at` sent the lazy run to the end of the note and failed back, at
-   every start position, on every call. Measured on 92 real bodies it did not
-   finish. Negated classes cannot backtrack, so this is linear.
-
-   The `_` forms also refuse to fire between word characters, so `created_at`
-   and `blocked_by` stay the identifiers they are while `_emphasis_` still
-   reads. `*` needs no such rule; it does not appear inside identifiers. */
-const MD_INLINE_SRC="(`+)([^`]*)\\1"
-  +"|\\[([^\\]]*)\\]\\(([^)\\s]+)\\)"
-  +"|\\*\\*([^*\\n]+)\\*\\*"
-  +"|(?<![A-Za-z0-9])__([^_\\n]+)__(?![A-Za-z0-9])"
-  +"|\\*([^*\\n]+)\\*"
-  +"|(?<![A-Za-z0-9])_([^_\\n]+)_(?![A-Za-z0-9])";
-const MD_LIST=/^\s*([-*+]|\d+[.)])\s+(.*)$/;
-const MD_QUOTE=/^\s*>\s?(.*)$/;
-/* A task item, which is what a tracker actually writes. Beans' whole loop is
-   "keep the bean's todo items current, `- [ ]` -> `- [x]`", so a board that
-   prints the syntax and shows no state is showing the one thing you did not
-   need and hiding the one you did. */
-const MD_TASK=/^\[([ xX])\]\s+(.*)$/;
-/* A relative path or an unknown scheme is shown, never made clickable: this
-   page is opened off a disk and a target it cannot vouch for is text. */
-const MD_SAFE_HREF=/^(?:https?:|mailto:|obsidian:)/i;
-function mdLink(label,href){
-  if(MD_SAFE_HREF.test(href)){
-    const a=document.createElement("a");
-    a.href=href; a.textContent=label||href;
-    a.target="_blank"; a.rel="noopener noreferrer";
-    return a;
-  }
-  return document.createTextNode(label?label+" ("+href+")":href);
-}
-function mdInline(text,into){
-  const s=String(text==null?"":text);
-  /* Walked with lastIndex rather than by slicing off each match, because the
-     `_` rules look at the character BEFORE the delimiter. Slicing throws that
-     character away and `created_at` becomes emphasis again at the seam.
-     Built per call: mdInline recurses, and a shared global regex carries its
-     lastIndex into the nested call. */
-  const rx=new RegExp(MD_INLINE_SRC,"g");
-  let pos=0, guard=0, m;
-  while((m=rx.exec(s))!==null&&guard++<4000){
-    if(m.index>pos) into.appendChild(document.createTextNode(s.slice(pos,m.index)));
-    if(m[1]!==undefined){ const c=document.createElement("code"); c.textContent=m[2]; into.appendChild(c); }
-    else if(m[4]!==undefined){ into.appendChild(mdLink(m[3],m[4])); }
-    else if(m[5]!==undefined||m[6]!==undefined){
-      const b=document.createElement("strong");
-      mdInline(m[5]!==undefined?m[5]:m[6],b); into.appendChild(b);
-    }
-    else {
-      const i=document.createElement("em");
-      mdInline(m[7]!==undefined?m[7]:m[8],i); into.appendChild(i);
-    }
-    pos=m.index+m[0].length;
-    rx.lastIndex=pos;
-  }
-  if(pos<s.length) into.appendChild(document.createTextNode(s.slice(pos)));
-}
-function mdNodes(source){
-  const frag=document.createDocumentFragment();
-  const lines=String(source==null?"":source).replace(/\r\n?/g,"\n").split("\n");
-  const para=[];
-  const flush=()=>{
-    if(!para.length) return;
-    const p=document.createElement("p");
-    mdInline(para.join(" ").trim(),p);
-    frag.appendChild(p); para.length=0;
-  };
-  let i=0;
-  while(i<lines.length){
-    const line=lines[i];
-    const fence=/^\s*(```|~~~)/.exec(line);
-    if(fence){
-      flush(); i++;
-      const buf=[];
-      while(i<lines.length&&!(new RegExp("^\\s*"+fence[1])).test(lines[i])){ buf.push(lines[i]); i++; }
-      i++;                                   /* the closing fence, or the end */
-      const pre=document.createElement("pre"), code=document.createElement("code");
-      code.textContent=buf.join("\n"); pre.appendChild(code); frag.appendChild(pre);
-      continue;
-    }
-    const head=/^\s{0,3}(#{1,6})\s+(.*)$/.exec(line);
-    if(head){
-      flush();
-      const h=document.createElement("h"+Math.min(head[1].length+2,6));
-      mdInline(head[2],h); frag.appendChild(h); i++; continue;
-    }
-    if(/^\s{0,3}([-*_])\s*(?:\1\s*){2,}$/.test(line)){
-      flush(); frag.appendChild(document.createElement("hr")); i++; continue;
-    }
-    const item=MD_LIST.exec(line);
-    if(item){
-      flush();
-      const ordered=/\d/.test(item[1]);
-      const list=document.createElement(ordered?"ol":"ul");
-      while(i<lines.length){
-        const m=MD_LIST.exec(lines[i]);
-        if(!m||/\d/.test(m[1])!==ordered) break;
-        const li=document.createElement("li");
-        const task=ordered?null:MD_TASK.exec(m[2]);
-        if(task){
-          const done=task[1]!==" ";
-          list.classList.add("tasks");
-          li.className="task"+(done?" done":"");
-          /* Drawn, never an <input>. This board does not write bean bodies, so
-             a control that cannot be operated would be a lie about what the
-             page can do. The box is a status light. */
-          const box=el("span","box"); box.setAttribute("aria-hidden","true");
-          box.textContent=done?"\u2713":"";
-          li.appendChild(box);
-          /* the state has to reach the accessibility tree, not just the pixels */
-          li.appendChild(el("span","sr-only",done?"done, ":"to do, "));
-          const body=el("span","txt");
-          mdInline(task[2],body); li.appendChild(body);
-        }else{
-          mdInline(m[2],li);
+  function renderProgress(progress) {
+    const c = document.getElementById("progressList");
+    c.innerHTML = "";
+    if (!progress || !progress.length) { c.appendChild(el("li", "empty", "No session progress tracked.")); return; }
+    for (const p of progress) {
+      const li = el("li", "progress-item");
+      const hdr = el("div", "progress-header");
+      hdr.appendChild(el("span", "progress-session", p.session || "unknown"));
+      hdr.appendChild(el("span", "progress-count", (p.beans || []).length + " beans"));
+      li.appendChild(hdr);
+      if (p.beans && p.beans.length) {
+        const row = el("div", "progress-beans");
+        for (const b of p.beans) {
+          row.appendChild(el("span", "progress-bean", b));
         }
-        list.appendChild(li); i++;
+        li.appendChild(row);
       }
-      frag.appendChild(list); continue;
+      c.appendChild(li);
     }
-    if(MD_QUOTE.test(line)){
-      flush();
-      const quote=document.createElement("blockquote"), buf=[];
-      while(i<lines.length){
-        const m=MD_QUOTE.exec(lines[i]);
-        if(!m) break;
-        buf.push(m[1]); i++;
-      }
-      mdInline(buf.join(" ").trim(),quote); frag.appendChild(quote); continue;
+  }
+
+  function render() {
+    if (!state) return;
+    document.getElementById("title").textContent = state.title || "Orchestrator";
+    document.getElementById("subtitle").textContent = state.subtitle || "";
+    document.getElementById("updated").textContent = state.updated ? "Updated " + state.updated : "";
+    document.getElementById("ver").textContent = state.version || "";
+    renderBeanStats(state.beans);
+    renderSessions(state.sessions);
+    renderDispatches(state.dispatches);
+    renderProgress(state.progress);
+  }
+
+  function boot() {
+    paintMark();
+    const m = markFigure;
+    if (m) {
+      document.getElementById("subtitle").textContent = m.label;
+      const sub_label = document.querySelector(".sub-label");
+      if (sub_label) sub_label.textContent = m.label === "Adjudante" ? "ORCHESTRATRICE" : "ORCHESTRATOR";
     }
-    if(!line.trim()){ flush(); i++; continue; }
-    para.push(line.trim()); i++;
-  }
-  flush();
-  return frag;
-}
-/* The card face wants the note's text, not its shape, and it runs once per
-   card on every render - so this strips rather than parses. */
-function mdText(source){
-  return String(source==null?"":source)
-    .replace(/```[\s\S]*?```/g," ")
-    .replace(/`([^`]*)`/g,"$1")
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g,"$1")
-    .replace(/^\s{0,3}#{1,6}\s+/gm,"")
-    .replace(/^\s*>\s?/gm,"")
-    .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gm,"")
-    /* after the bullet, never before it: the marker only starts the line once
-       the bullet in front of it is gone */
-    .replace(/^\[[ xX]\]\s*/gm,"")
-    .replace(/\*\*([^*\n]+)\*\*/g,"$1")
-    .replace(/(?<![A-Za-z0-9])__([^_\n]+)__(?![A-Za-z0-9])/g,"$1")
-    .replace(/\*([^*\n]+)\*/g,"$1")
-    .replace(/(?<![A-Za-z0-9])_([^_\n]+)_(?![A-Za-z0-9])/g,"$1")
-    .replace(/\s+/g," ")
-    .trim();
-}
-/* One preference for every board this browser opens, not one per board: it is
-   how a person likes to read, not a fact about a deck. */
-const NOTE_VIEW_KEY="adjudant-board:notes";
-let noteView="pretty";
-function readNoteView(){
-  try{ return localStorage.getItem(NOTE_VIEW_KEY)==="raw"?"raw":"pretty"; }
-  catch(e){ console.warn("board: note view preference unreadable",e); return "pretty"; }
-}
-function writeNoteView(v){
-  try{ localStorage.setItem(NOTE_VIEW_KEY,v); }
-  catch(e){ console.warn("board: note view preference not saved",e); }
-}
-/* Painted at boot as well as on every sheet, so the pair never sits in the
-   accessibility tree as two unpressed buttons before the first card opens. */
-function paintNoteToggle(){
-  document.querySelectorAll("#noteView button").forEach(b=>{
-    b.setAttribute("aria-pressed",b.dataset.view===noteView?"true":"false");
-  });
-}
-function sourceName(card){
-  if(card.source==="beans") return "beans";
-  if(card.source==="task") return "a task note";
-  return card.source ? String(card.source) : "";
-}
-function openSheet(key){
-  const card=state.cards[key];
-  if(!card) return;
-  const d=sheetEl();
-  if(!d.showModal){ notice("This browser cannot open a card. It has no dialog support.",true); return; }
-  sheetKey=key; sheetId=card.id;
-  /* Opened before it is filled, not after: a dialog that is still display:none
-     measures every width as zero, and the rail's scroll-into-view was doing its
-     arithmetic against that. Both calls are in one task, so nothing paints in
-     between and there is no flash of an empty sheet. */
-  /* Under impeccable live the sheet opens without the top layer: a modal
-     dialog sits above the picker and cannot be picked, so nothing inside it
-     could ever be put through a round. The injected script tag is the only
-     signal, and a shipped board never carries one. */
-  if(!d.open){ if(livePreview()) d.show(); else d.showModal(); }
-  renderSheet();
-}
-/* asked at open time, not at load: the tag is injected at the end of the body */
-function livePreview(){ return !!document.querySelector('script[src*="/live.js?"]'); }
-/* Every close converges here, and the bookkeeping happens here rather than on
-   the dialog's `close` event, because that event is a queued element task: a
-   throttled or hidden page may never deliver it, which leaves sheetKey stale
-   and drops focus inside a dialog that is no longer on screen. Measured, not
-   assumed - in an embedded browser a brand-new dialog did not fire `close` at
-   all. The `close` listener below stays as a net for any other route. */
-function closeSheet(){
-  const key=sheetKey;
-  sheetKey=null; sheetId=null;
-  const d=sheetEl();
-  if(d.open) d.close();
-  if(key!==null) focusKey(key);
-}
-/* Called at the end of every render, so it covers a move, a disk refresh and
-   another tab alike. A refresh or another tab replaces state wholesale, and the
-   card at that position may now be a different card: the sheet closes rather
-   than quietly relabelling itself as something else. */
-function syncSheet(){
-  if(sheetKey===null) return;
-  const card=(state&&state.cards)?state.cards[sheetKey]:null;
-  if(!card||card.id!==sheetId){
-    sheetKey=null; sheetId=null;
-    const d=sheetEl(); if(d.open) d.close();
-    announce("The card that was open is no longer on the board. It was closed.");
-    return;
-  }
-  renderSheet();
-}
-function renderSheet(){
-  const card=state.cards[sheetKey];
-  if(!card) return;
-  document.getElementById("sheetTitle").textContent=card.title||"Untitled card";
-  const sym=document.getElementById("sheetSym");
-  sym.hidden=true;
-  if(card.category){ sym.dataset.sym=String(catSym(card.category)); sym.style.setProperty("--c",catColor(card.category)); }
-  const typeBar=document.getElementById("sheetTypeBar");
-  const barSym=document.getElementById("sheetBarSym");
-  const barLabel=document.getElementById("sheetBarLabel");
-  typeBar.hidden=!card.category;
-  if(card.category){
-    typeBar.style.setProperty("--c",catColor(card.category));
-    barSym.dataset.sym=String(catSym(card.category));
-    barSym.style.setProperty("--c",catColor(card.category));
-    barLabel.textContent=card.category;
+    if (ADJUDANT_VERSION) {
+      const v = document.getElementById("ver");
+      if (v) v.textContent = "v" + ADJUDANT_VERSION;
+    }
+    setTimeout(() => document.body.classList.remove("loading"), 1400);
   }
 
-  const lanes=document.getElementById("sheetLanes");
-  /* the move that just happened was made from one of these buttons, and render()
-     is about to destroy it, so put focus back on the lane the card now sits in */
-  const hadFocus=lanes.contains(document.activeElement);
-  lanes.innerHTML="";
-  state.columns.forEach(col=>{
-    const here=String(col.id)===String(card.column);
-    const b=el("button",null,col.name); b.type="button";
-    if(here) b.setAttribute("aria-current","true");
-    b.setAttribute("aria-label",here?col.name+", the lane this card is in":"Move to "+col.name);
-    b.addEventListener("click",()=>{ if(sheetKey!==null) applyMove(sheetKey,String(col.id)); });
-    lanes.appendChild(b);
-  });
-  const here=lanes.querySelector('[aria-current="true"]');
-  if(here){
-    /* The rail scrolls, so the lane a card is actually in must not sit off the
-       end of it. Left to the browser rather than computed here: the arithmetic
-       version needed a laid-out clientWidth, and the first render of a sheet
-       does not always have one. `nearest` on both axes moves the minimum, so it
-       will not drag the sheet body around underneath it. */
-    if(here.scrollIntoView) here.scrollIntoView({block:"nearest",inline:"nearest"});
-    if(hadFocus) here.focus();
-  }
-
-  const noteBox=document.getElementById("sheetNote");
-  noteBox.innerHTML="";
-  noteBox.classList.toggle("raw",noteView==="raw");
-  if(card.notes){
-    noteBox.appendChild(noteView==="raw"
-      ? document.createTextNode(card.notes)
-      : mdNodes(card.notes));
-  }
-  document.getElementById("sheetNoteSec").hidden=!card.notes;
-  /* The RAW body, whichever view is showing. Pretty is a reading convenience;
-     what you paste into a `beans update` has to be the source the tracker
-     holds, not this page's rendering of it. */
-  const noteCopy=document.getElementById("noteCopy"); noteCopy.innerHTML="";
-  if(card.notes) noteCopy.appendChild(copyButton("Copy",()=>card.notes,"Note"));
-  paintNoteToggle();
-
-  const tags=document.getElementById("sheetTags"); tags.innerHTML="";
-  (card.tags||[]).forEach(t=>tags.appendChild(el("span",null,String(t))));
-  document.getElementById("sheetTagSec").hidden=!(card.tags&&card.tags.length);
-
-  /* Every relation this card has, each under its own name. A parent, a
-     blocker and a plain cross-link are different facts, and one undifferentiated
-     list of ids made them look like the same one. */
-  const links=document.getElementById("sheetLinks"); links.innerHTML="";
-  const linkRow=(label,ids)=>{
-    const list=(ids||[]).map(v=>String(v).trim()).filter(Boolean);
-    if(!list.length) return;
-    links.appendChild(el("p","sheet-lbl",label));
-    const row=el("div","sheet-refs");
-    list.forEach(v=>row.appendChild(el("span",null,v)));
-    links.appendChild(row);
-  };
-  linkRow("Parent",card.parent?[card.parent]:[]);
-  linkRow("Blocked by",card.blockedBy);
-  linkRow("Blocking",card.blocking);
-  linkRow("References",card.related);
-  document.getElementById("sheetLinkSec").hidden=!links.childNodes.length;
-
-  const facts=document.getElementById("sheetFacts"); facts.innerHTML="";
-  const fact=(label,value,mono,dim)=>{
-    if(value==null||value==="") return;
-    const row=el("div","sheet-fact");
-    row.appendChild(el("dt",dim?"dim":null,label));
-    row.appendChild(el("dd",(mono?"mono":"")+(dim?" dim":""),String(value)));
-    facts.appendChild(row);
-  };
-  if(card.id){
-    const row=el("div","sheet-fact");
-    row.appendChild(el("dt",null,"Id"));
-    const dd=el("dd","mono with-copy");
-    dd.appendChild(el("span",null,String(card.id)));
-    dd.appendChild(copyButton("Copy",()=>card.id,"Id"));
-    row.appendChild(dd); facts.appendChild(row);
-  }
-  if(card.category){
-    const row=el("div","sheet-fact");
-    row.appendChild(el("dt",null,"Category"));
-    const dd=el("dd","sheet-cat");
-    dd.style.setProperty("--c",catColor(card.category));
-    const swatch=el("i","sym"); swatch.dataset.sym=String(catSym(card.category)); swatch.setAttribute("aria-hidden","true");
-    dd.appendChild(swatch); dd.appendChild(document.createTextNode(card.category));
-    row.appendChild(dd); facts.appendChild(row);
-  }
-  if(priorityOf(card)){
-    const row=el("div","sheet-fact");
-    row.appendChild(el("dt",null,"Priority"));
-    const dd=el("dd","sheet-prio");
-    const pi=priorityMark(card); if(pi) dd.appendChild(pi);
-    dd.appendChild(document.createTextNode(priorityOf(card)));
-    row.appendChild(dd); facts.appendChild(row);
-  }
-  fact("From",sourceName(card),false);
-  fact("Created",stamp(card.createdAt),false);
-  fact("Updated",stamp(card.updatedAt),false);
-  fact("Slug",card.slug,true,true);
-  fact("File",card.beanPath,true,true);
-  fact("Etag",card.beansEtag,true,true);
-  fact("Task status",card.taskStatus,false);
-  /* The one thing about this card that is true in the browser and not yet on
-     disk. Saying it here beats making someone diff the file to find it. */
-  const mv=moves[card.id];
-  if(mv&&mv.to===card.column) fact("Moved here from",colName(mv.from),false);
-}
-
-/* Every tag in the deck with the number of cards carrying it. The rail is
-   ordered by that count, so the tag worth filtering by is the one nearest the
-   left, and a tag on two cards does not sit above a tag on sixty. */
-function deckTagCounts(){
-  const n=new Map();
-  (state.cards||[]).forEach(c=>(c.tags||[]).forEach(t=>{
-    const k=String(t).trim();
-    if(k) n.set(k,(n.get(k)||0)+1);
-  }));
-  return n;
-}
-/* Every tag on more than half the deck. A two-card deck suppresses nothing:
-   there is no ordinary in a pair, only two cards. */
-function deckOrdinaryTags(counts){
-  const total=(state.cards||[]).length;
-  const out=new Set();
-  if(total<3) return out;
-  counts.forEach((n,tag)=>{ if(n*2>total) out.add(tag); });
-  return out;
-}
-
-/* Two paths, because this board is opened both ways. Served from board.py it
-   is a secure context and navigator.clipboard exists; opened straight off disk
-   as file:// it is not, and the async API is simply absent. execCommand is
-   deprecated and still the only thing that works there, so it is the fallback
-   rather than the first choice. Returns a promise of true/false: a copy that
-   silently failed is worse than one that says so. */
-function copyText(text){
-  const str=String(text==null?"":text);
-  if(navigator.clipboard&&navigator.clipboard.writeText){
-    return navigator.clipboard.writeText(str).then(()=>true,err=>{
-      console.warn("board: clipboard write refused",err);
-      return legacyCopy(str);
+  fetch(DATA_FILE)
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(d => { state = d; render(); boot(); })
+    .catch(() => {
+      state = {
+        title: "Orchestrator",
+        subtitle: "No dashboard data found. Run: python3 board.py dashboard",
+        beans: null, sessions: [], dispatches: [], progress: []
+      };
+      render(); boot();
     });
-  }
-  return Promise.resolve(legacyCopy(str));
-}
-function legacyCopy(str){
-  const ta=document.createElement("textarea");
-  ta.value=str;
-  /* off-screen but focusable: display:none cannot be selected */
-  ta.setAttribute("readonly","");
-  ta.style.cssText="position:fixed;top:-1000px;left:-1000px;opacity:0";
-  document.body.appendChild(ta);
-  let ok=false;
-  try{
-    ta.select(); ta.setSelectionRange(0,str.length);
-    ok=document.execCommand("copy");
-  }catch(e){ console.warn("board: legacy copy failed",e); }
-  document.body.removeChild(ta);
-  return ok;
-}
-/* The button says what happened, then goes back to saying what it does. A
-   failure has to reach the label too, or the page claims a copy it did not
-   make. */
-function copyButton(label,getText,announceAs){
-  const b=el("button","pane-btn copy",label); b.type="button";
-  b.addEventListener("click",()=>{
-    if(b.dataset.busy) return;
-    b.dataset.busy="1";
-    const was=b.textContent;
-    copyText(getText()).then(ok=>{
-      b.textContent=ok?"Copied":"Failed";
-      b.classList.toggle("bad",!ok);
-      announce(ok?announceAs+" copied":announceAs+" could not be copied");
-      setTimeout(()=>{
-        b.textContent=was; b.classList.remove("bad"); delete b.dataset.busy;
-      },1400);
-    });
-  });
-  return b;
-}
-
-/* ── Terminal lanes ───────────────────────────────────────────────────────
-   A lane is terminal when it carries a stamp, which is deck data and not two
-   hardcoded ids: `completed` and `scrapped` declare theirs on a beans deck,
-   `done` and `icebox` inherit theirs from STAMP on a vault deck. One rule,
-   both shapes, and a lane renamed from `done` to `shipped` keeps working. */
-function isTerminal(col){ return !!laneStamp(col); }
-function readHideTerminal(){
-  try{ return localStorage.getItem(TERM_KEY)==="1"; }
-  catch(e){ console.warn("board: lane preference unreadable",e); return false; }
-}
-function writeHideTerminal(v){
-  try{ localStorage.setItem(TERM_KEY,v?"1":"0"); }
-  catch(e){ console.warn("board: lane preference unsaved",e); }
-}
-/* The ledger folds away on a chevron. Per browser, like the other reading
-   preferences: how a person reads is not a fact about a deck. */
-const LEDGER_KEY="adjudant-board:ledger";
-/* Folded until asked for. The cards are the product; the ledger is a glance,
-   and a glance is opened, not walked past. */
-let ledgerFolded=true;
-function readLedgerFolded(){
-  try{ return localStorage.getItem(LEDGER_KEY)!=="open"; }
-  catch(e){ console.warn("board: ledger preference unreadable",e); return true; }
-}
-function writeLedgerFolded(v){
-  try{ localStorage.setItem(LEDGER_KEY,v?"folded":"open"); }
-  catch(e){ console.warn("board: ledger preference unsaved",e); }
-}
-function paintLedgerFold(){
-  const btn=document.getElementById("sparkBtn");
-  if(!btn) return;
-  document.querySelector("header.masthead").classList.toggle("ledger-folded",ledgerFolded);
-  btn.setAttribute("aria-expanded",ledgerFolded?"false":"true");
-  btn.setAttribute("aria-label",ledgerFolded?"Show the activity sheet":"Fold the activity sheet away");
-  btn.title=ledgerFolded?"Show activity":"Hide activity";
-}
-
-/* ── The activity card ───────────────────────────────────────────────────
-   A time sheet, not a histogram. Two panels of the same six weeks, TOUCHED
-   and FILED, seven day-rows and a column per week, a cell per day tinted by
-   how many cards. Bars binned by a unit that changed with the deck's age
-   answered "how much" and never "when do we work on this"; a calendar does.
-   Both fields at once, so there is no switch and no mode to remember.
-   Chosen from three readings under live.
-
-   createdAt is when work was FILED, updatedAt is when the file last CHANGED.
-   Different questions, so each panel is captioned with the one it plots. */
-const DAY=86400000;
-const SPARK_WEEKS=6;
-function sparkDays(cards,field){
-  const days=new Map(); let total=0, max=0;
-  cards.forEach(c=>{
-    const v=c&&c[field];
-    if(!v) return;
-    const t=Date.parse(v);
-    if(isNaN(t)) return;
-    const d=new Date(t).toISOString().slice(0,10);
-    const n=(days.get(d)||0)+1;
-    days.set(d,n); total++; if(n>max) max=n;
-  });
-  /* A day holding more than half the deck is an import or a sweep. Say so
-     rather than letting it read as a day somebody touched eighty cards. */
-  const bulk=d=>{ const n=days.get(d)||0; return n>total/2 && total>8; };
-  return {days:days, total:total, max:max, bulk:bulk};
-}
-/* The window ends today and starts on the Monday SPARK_WEEKS-1 weeks back,
-   so a column is always a whole week and the last column is this one. */
-function sparkRange(weeks){
-  const today=new Date(); today.setUTCHours(0,0,0,0);
-  const end=today.getTime();
-  const dow=(new Date(end).getUTCDay()+6)%7;
-  /* `last` is the Sunday closing this week: the grid pads to it, no further */
-  return {start:end-dow*DAY-(weeks-1)*7*DAY, end:end, today:end, last:end+(6-dow)*DAY};
-}
-function sparkPanel(label,field,cards,range){
-  const A=sparkDays(cards,field);
-  const pan=el("div","panel");
-  pan.appendChild(el("span","cap",label));
-  const g=el("div","punch");
-  g.setAttribute("role","list");
-  g.setAttribute("aria-label",A.total+" cards "+label.toLowerCase()+" over "+SPARK_WEEKS+" weeks, busiest day "+A.max);
-  const months=el("div","months"); let lastM="";
-  for(let t=range.start; t<=range.last; t+=DAY){
-    const d=new Date(t).toISOString().slice(0,10), n=A.days.get(d)||0;
-    const c=el("i");
-    if(t>range.end){
-      /* the rest of this week, so the column stays a column */
-      c.className="pad"; c.setAttribute("aria-hidden","true");
-    } else {
-      if(n){
-        c.dataset.l=String(Math.max(1,Math.ceil(n/A.max*4)));
-        if(A.bulk(d)) c.classList.add("bulk");
-        /* Said in the tooltip and to a screen reader, never swapped into the
-           label: a readout that changed width on hover moved the whole
-           masthead every time the pointer crossed a cell. */
-        const note=d+": "+n+(n===1?" card":" cards")+(A.bulk(d)?" (bulk write)":"");
-        c.setAttribute("role","listitem"); c.tabIndex=0;
-        c.title=note; c.setAttribute("aria-label",note);
-      } else c.setAttribute("aria-hidden","true");
-      if(t===range.today) c.classList.add("today");
-    }
-    g.appendChild(c);
-    if(((t-range.start)/DAY)%7===0){
-      const m=new Date(t).toLocaleString("en",{month:"short",timeZone:"UTC"});
-      months.appendChild(el("b",null,m===lastM?"":m)); lastM=m;
-    }
-  }
-  pan.appendChild(g); pan.appendChild(months);
-  return pan;
-}
-
-/* Drawn from the CARDS THE BOARD IS SHOWING, so it answers the filter rather
-   than ignoring it. Filter to one tag and the card is that tag's time sheet. */
-function paintSpark(shownCards){
-  const box=document.getElementById("spark");
-  if(!box) return;
-  box.innerHTML="";
-  const stamped=shownCards.filter(c=>c&&(c.updatedAt||c.createdAt)).length;
-  /* the fold tab goes with the sheet: nothing to fold, nothing to pull */
-  const tab=document.getElementById("sparkBtn");
-  if(stamped<2){ box.hidden=true; if(tab) tab.hidden=true; return; }
-  box.hidden=false; if(tab) tab.hidden=false;
-  const head=el("div","spark-head");
-  head.appendChild(el("span","lbl",shownCards.length+" cards, "+SPARK_WEEKS+" weeks"));
-  box.appendChild(head);
-  const panels=el("div","panels");
-  const range=sparkRange(SPARK_WEEKS);
-  panels.appendChild(sparkPanel("Touched","updatedAt",shownCards,range));
-  panels.appendChild(sparkPanel("Filed","createdAt",shownCards,range));
-  box.appendChild(panels);
-}
-
-function ticketNode(card,key){
-  const t=el("div","ticket"); t.draggable=true; t.dataset.id=card.id; t.dataset.key=String(key);
-  t.setAttribute("role","listitem");
-  t.style.setProperty("--c",catColor(card.category));
-  /* One node cannot be both a listitem and a button, so the wrapper keeps the
-     list semantics and the drag while the face takes the activation. Still one
-     tab stop per card. */
-  const face=el("button","ticket-face"); face.type="button";
-  face.setAttribute("aria-haspopup","dialog");
-  face.setAttribute("aria-keyshortcuts","[ ]");
-  /* Computed before the label, because the label has to say them. An aria-label
-     REPLACES the button's contents for a screen reader, so a tag rendered
-     inside the face and left out of the label is a tag only sighted people
-     get. */
-  const shownTags=(card.tags||[]).map(t=>String(t).trim())
-    .filter(t=>t&&!ordinaryTags.has(t));
-  face.setAttribute("aria-label",cardLabel(card)+(card.category?", "+card.category:"")
-    +(shownTags.length?", tagged "+shownTags.join(", "):"")
-    +", in "+colName(card.column));
-  /* Title first. The sentence is what a person reads to decide; the id is what
-     they quote back afterwards, so it sits at the foot of the card. */
-  face.appendChild(el("div","t-title",card.title));
-  /* clamped to two lines in CSS. The whole note is one click away, which is
-     what stops a long one from making its card three times taller than its
-     neighbours and pushing the rest of the lane out of view. */
-  if(card.notes) face.appendChild(el("div","t-note",mdText(card.notes)));
-  /* Between the note and the id: the id is what you quote back afterwards, so
-     it stays last. Three, then a count, so a heavily tagged card is the same
-     height as a bare one. */
-  if(shownTags.length){
-    const tw=el("div","t-tags");
-    shownTags.slice(0,3).forEach(t=>tw.appendChild(el("span",null,t)));
-    if(shownTags.length>3){
-      const more=el("span","more","+"+(shownTags.length-3));
-      more.setAttribute("aria-hidden","true");
-      tw.appendChild(more);
-    }
-    face.appendChild(tw);
-  }
-  const foot=el("div","t-foot");
-  if(card.category){
-    const sw=el("i","sym t-sym"); sw.dataset.sym=String(catSym(card.category)); sw.setAttribute("aria-hidden","true");
-    sw.style.setProperty("--c",catColor(card.category));
-    foot.appendChild(sw);
-  }
-  foot.appendChild(el("span","t-id",card.id));
-  if(isBlocked(card)) foot.appendChild(el("span","t-lock","■"));
-  const prio=priorityMark(card);
-  if(prio) foot.appendChild(prio);
-  face.appendChild(foot);
-  if(card.live) t.appendChild(el("span","t-live"));
-  t.appendChild(face);
-  face.addEventListener("click",()=>openSheet(key));
-  face.addEventListener("keydown",ev=>{
-    if(ev.key==="[") { ev.preventDefault(); moveByKey(key,-1); }
-    else if(ev.key==="]") { ev.preventDefault(); moveByKey(key,1); }
-  });
-  /* body class, not just the ticket's: the lanes that can take this card light
-     up and the rest step back, which is the whole of the drag feedback. render()
-     clears it too, because a dropped node is detached before dragend fires. */
-  t.addEventListener("dragstart",ev=>{ev.dataTransfer.setData("text/plain",String(key));ev.dataTransfer.effectAllowed="move";t.classList.add("dragging");document.body.classList.add("dragging-now");});
-  t.addEventListener("dragend",()=>{t.classList.remove("dragging");document.body.classList.remove("dragging-now");});
-  return t;
-}
-
-/* Terminal-lane treatment is deck data, not two hardcoded ids: merge_deck goes
-   out of its way to preserve renamed and added lanes across a reseed, and a
-   lane renamed from `done` to `shipped` used to silently lose its stamp and its
-   muted treatment. A column may carry {"stamp":"SHIPPED"} (or false to drop it),
-   {"stampTone":"built"|"parked"} and {"muted":true|false}; the two legacy ids
-   still supply the defaults for decks written before those keys existed. */
-function columnById(id){ return state.columns.find(c=>String(c.id)===String(id))||null; }
-function laneStamp(col){
-  if(!col) return null;
-  if(col.stamp===false||col.stamp==="") return null;
-  if(typeof col.stamp==="string"&&col.stamp) return [col.stampTone==="parked"?"parked":"built",col.stamp];
-  return STAMP[col.id]||null;
-}
-function laneMuted(col){ return typeof col.muted==="boolean" ? col.muted : (col.id==="done"||col.id==="icebox"); }
-
-function drawDependencies(){
-  const board=document.getElementById("board");
-  const old=board.querySelector(".dep-overlay");
-  if(old) old.remove();
-  const pairs=[];
-  state.cards.forEach(card=>{
-    if(!card.blockedBy||!card.blockedBy.length) return;
-    card.blockedBy.forEach(bid=>{
-      const fromEl=board.querySelector('.ticket[data-id="'+bid+'"]');
-      const toEl=board.querySelector('.ticket[data-id="'+card.id+'"]');
-      if(fromEl&&toEl) pairs.push([fromEl,toEl]);
-    });
-  });
-  if(!pairs.length) return;
-  const bRect=board.getBoundingClientRect();
-  const ns="http://www.w3.org/2000/svg";
-  const svg=document.createElementNS(ns,"svg");
-  svg.setAttribute("class","dep-overlay");
-  svg.style.width=board.scrollWidth+"px";
-  svg.style.height=board.scrollHeight+"px";
-  const defs=document.createElementNS(ns,"defs");
-  const marker=document.createElementNS(ns,"marker");
-  marker.setAttribute("id","arrowhead"); marker.setAttribute("markerWidth","8"); marker.setAttribute("markerHeight","6");
-  marker.setAttribute("refX","8"); marker.setAttribute("refY","3"); marker.setAttribute("orient","auto");
-  const poly=document.createElementNS(ns,"polygon");
-  poly.setAttribute("points","0 0, 8 3, 0 6");
-  marker.appendChild(poly); defs.appendChild(marker); svg.appendChild(defs);
-  pairs.forEach(([from,to])=>{
-    const fr=from.getBoundingClientRect();
-    const tr=to.getBoundingClientRect();
-    const x1=fr.right-bRect.left+board.scrollLeft;
-    const y1=fr.top+fr.height/2-bRect.top+board.scrollTop;
-    const x2=tr.left-bRect.left+board.scrollLeft;
-    const y2=tr.top+tr.height/2-bRect.top+board.scrollTop;
-    const line=document.createElementNS(ns,"line");
-    line.setAttribute("x1",x1); line.setAttribute("y1",y1);
-    line.setAttribute("x2",x2); line.setAttribute("y2",y2);
-    line.setAttribute("marker-end","url(#arrowhead)");
-    svg.appendChild(line);
-  });
-  board.appendChild(svg);
-}
-
-function render(){
-  /* A dropped ticket is detached before its dragend fires, so the body class
-     would survive the drag that ended. Every render clears it. */
-  document.body.classList.remove("dragging-now");
-  const titleTxt=state.title||"Board";
-  document.getElementById("boardTitle").textContent=titleTxt;
-  /* the tab is how you find this board among a portfolio of them */
-  document.title=titleTxt;
-  /* A subtitle that repeats the title is not a subtitle. The default deck used
-     to carry "Work-order board" in both fields and print it twice. */
-  const isBeans=(state.tracker==="beans");
-  const bf=document.getElementById("brandFeature");
-  const bp=document.querySelector(".brand-pip");
-  if(bf) bf.hidden=!isBeans;
-  if(bp) bp.hidden=!isBeans;
-  document.getElementById("cardCount").textContent=state.cards.length;
-  document.getElementById("rev").textContent=state.updated||"—";
-  const lg=document.getElementById("legend"); lg.innerHTML="";
-  (state.categoryNames||[]).forEach(cat=>{
-    /* a real button: a bare span with a click handler is unreachable by
-       keyboard, and this is a control, not a colour key */
-    const k=el("button","k"+(filterCat===cat?" on":(filterCat?" off":"")));
-    k.type="button";
-    k.setAttribute("aria-pressed",filterCat===cat?"true":"false");
-    k.style.setProperty("--c",catColor(cat));
-    const m=el("i","sym"); m.dataset.sym=String(catSym(cat)); m.setAttribute("aria-hidden","true");
-    k.appendChild(m); k.appendChild(document.createTextNode(cat));
-    k.addEventListener("click",()=>{ filterCat = (filterCat===cat) ? null : cat; render(); });
-    lg.appendChild(k);
-  });
-
-  /* ── The tag rail ───────────────────────────────────────────────────────
-     A tracker's tags are the one classification the board used to throw away:
-     `_beans.py` carried them into every card and only the sheet ever read
-     them. The rail renders nothing on a deck with no tags, so a board that
-     never had them pays no chrome for the ones it does not have. */
-  const counts=deckTagCounts();
-  ordinaryTags=deckOrdinaryTags(counts);
-  /* A deck swap can retire the tag being filtered by, and a filter matching
-     nothing reads as an empty board rather than as a stale filter. */
-  if(filterTag && !counts.has(filterTag)) filterTag=null;
-  const rail=document.getElementById("tagRail"); rail.innerHTML="";
-  /* the row, not the rail: the label lives beside the keys and has to go with them */
-  document.getElementById("tagRow").hidden=(counts.size===0);
-  if(counts.size){
-    const RAIL_MAX=12;
-    const ordered=Array.from(counts.entries())
-      .sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
-    /* The tag being filtered by is always in the rail, even when its count puts
-       it past the cap: the control that turned the filter on has to be the one
-       that turns it off. */
-    let head=ordered.slice(0,RAIL_MAX);
-    if(filterTag && !head.some(e=>e[0]===filterTag)){
-      const hit=ordered.find(e=>e[0]===filterTag);
-      if(hit) head=head.slice(0,RAIL_MAX-1).concat([hit]);
-    }
-    head.forEach(([tag,count])=>{
-      const k=el("button","k"+(filterTag===tag?" on":(filterTag?" off":"")));
-      k.type="button";
-      k.setAttribute("aria-pressed",filterTag===tag?"true":"false");
-      k.setAttribute("aria-label",tag+", "+count+(count===1?" card":" cards"));
-      k.appendChild(document.createTextNode(tag));
-      k.appendChild(el("b",null,String(count)));
-      k.addEventListener("click",()=>{ filterTag = (filterTag===tag) ? null : tag; render(); });
-      rail.appendChild(k);
-    });
-    /* Said rather than hidden. A rail that silently drops the tag you were
-       looking for teaches you the tag does not exist. */
-    const rest=ordered.length-head.length;
-    if(rest>0) rail.appendChild(el("span","rail-more","+"+rest+" more, use the filter box"));
-  }
-
-  const filtering = !!(filterText || filterCat || filterTag);
-  const board=document.getElementById("board"); board.innerHTML="";
-  let laneSeq=0;
-  const laneNode=(col, entries, opts)=>{
-    const shown=entries.filter(e=>cardMatches(e.card));
-    const droppable=!!(opts&&opts.droppable);
-    const lane=el("div","lane"+(laneMuted(col)?" muted":"")+((opts&&opts.cls)||""));
-    lane.dataset.col=col.id;
-    lane.setAttribute("role","group");
-    const headId="lane-"+(laneSeq++)+"-nm";
-    const head=el("div","lane-head");
-    const nm=el("span","nm",col.name);
-    nm.id=headId; nm.setAttribute("role","heading"); nm.setAttribute("aria-level","2");
-    head.appendChild(nm);
-    /* Said once for the lane. It used to be printed on every card sitting in
-       the lane, restating the heading above them. */
-    const st=laneStamp(col);
-    if(st) head.appendChild(el("span","stamp "+st[0],st[1]));
-    lane.setAttribute("aria-labelledby",headId);
-    // count: `shown of total` while filtering; over-limit (col.wip) shown in red
-    const over = Number.isFinite(col.wip) && entries.length>col.wip;
-    const ctTxt = filtering
-      ? shown.length+" of "+entries.length
-      : String(entries.length) + (Number.isFinite(col.wip)?(" / "+col.wip):"");
-    const ct=el("span","ct"+(over?" over":""),ctTxt);
-    ct.setAttribute("aria-label",(filtering?shown.length+" of "+entries.length+" cards shown":entries.length+" cards")
-      +(Number.isFinite(col.wip)?(over?", over the limit of "+col.wip:", limit "+col.wip):""));
-    head.appendChild(ct);
-    lane.appendChild(head);
-    const body=el("div","lane-body");
-    body.setAttribute("role","list");
-    body.setAttribute("aria-labelledby",headId);
-    /* An empty lane is an invitation, and it is also the drop target: the old
-       48px strip was hard to hit and said nothing. A lane that refuses drops
-       says so rather than inviting one. */
-    if(!shown.length) body.appendChild(el("div","lane-empty",
-      filtering&&entries.length ? "Nothing matches the filter"
-        : droppable ? "Drop a card here" : "Nothing here"));
-    shown.forEach(e=>body.appendChild(ticketNode(e.card,e.key)));
-    lane.appendChild(body);
-    if(droppable){
-      lane.addEventListener("dragover",ev=>{ev.preventDefault();ev.dataTransfer.dropEffect="move";lane.classList.add("drop");});
-      lane.addEventListener("dragleave",ev=>{ if(!lane.contains(ev.relatedTarget)) lane.classList.remove("drop"); });
-      lane.addEventListener("drop",ev=>{
-        ev.preventDefault(); lane.classList.remove("drop");
-        const key=Number(ev.dataTransfer.getData("text/plain"));
-        if(Number.isInteger(key)) applyMove(key,col.id);
-      });
-      const addBtn=el("div","lane-add","+ Add");
-      const addForm=el("div","add-form"); addForm.hidden=true;
-      const addInput=document.createElement("input"); addInput.type="text"; addInput.placeholder="Title";
-      const addType=document.createElement("select");
-      ["task","bug","feature"].forEach(t=>{const o=document.createElement("option");o.value=t;o.textContent=t;addType.appendChild(o);});
-      const addActions=el("div","add-actions");
-      const addCancel=el("button",null,"Cancel");
-      const addSubmit=el("button","primary","Add");
-      addActions.appendChild(addCancel); addActions.appendChild(addSubmit);
-      addForm.appendChild(addInput); addForm.appendChild(addType); addForm.appendChild(addActions);
-      addBtn.addEventListener("click",()=>{addBtn.hidden=true;addForm.hidden=false;addInput.focus();});
-      addCancel.addEventListener("click",()=>{addBtn.hidden=false;addForm.hidden=true;addInput.value="";});
-      addSubmit.addEventListener("click",()=>{
-        const title=addInput.value.trim();
-        if(!title){addInput.focus();return;}
-        const newCard={id:"new-"+Date.now(),title:title,category:addType.value,column:col.id,notes:"",tags:[],_new:true};
-        state.cards.push(newCard); render(); persist();
-        addBtn.hidden=false;addForm.hidden=true;addInput.value="";
-      });
-      addInput.addEventListener("keydown",ev=>{if(ev.key==="Enter"){ev.preventDefault();addSubmit.click();}if(ev.key==="Escape"){addCancel.click();}});
-      lane.appendChild(addBtn); lane.appendChild(addForm);
-    }
-    board.appendChild(lane);
-  };
-  const swimBtn=document.getElementById("swimBtn");
-  swimBtn.setAttribute("aria-pressed",swimMode==="parent"?"true":"false");
-  swimBtn.textContent=swimMode==="parent"?"By status":"By parent";
-
-  if(swimMode==="parent"){
-    const groups=new Map();
-    state.cards.forEach((card,key)=>{
-      const p=card.parent||"__ungrouped";
-      if(!groups.has(p)) groups.set(p,[]);
-      groups.get(p).push({card,key});
-    });
-    const parentTitle=(pid)=>{
-      if(pid==="__ungrouped") return "Ungrouped";
-      const pc=state.cards.find(c=>c.id===pid);
-      return pc?pc.title:pid;
-    };
-    groups.forEach((entries,pid)=>{
-      laneNode({id:pid,name:parentTitle(pid),muted:false,stamp:false},entries,{droppable:true});
-    });
-  } else {
-  const buckets=new Map();
-  state.columns.forEach(c=>buckets.set(String(c.id),[]));
-  const orphans=[];
-  state.cards.forEach((card,key)=>{
-    const b=buckets.get(String(card.column));
-    (b||orphans).push({card:card,key:key});
-  });
-  /* Terminal lanes are dropped from the BOARD, never from the deck: the card
-     keeps its column, the sheet's lane row still lists every lane, and the
-     count below says what went. A deck of nothing but terminal lanes shows
-     them anyway, because hiding the whole board is not a view. */
-  const terminal=state.columns.filter(isTerminal);
-  const hiding = hideTerminal && terminal.length>0 && terminal.length<state.columns.length;
-  const shownCols = hiding ? state.columns.filter(c=>!isTerminal(c)) : state.columns;
-  shownCols.forEach(col=>laneNode(col,buckets.get(String(col.id)),{droppable:true}));
-
-  const termBtn=document.getElementById("termBtn");
-  if(terminal.length && terminal.length<state.columns.length){
-    const hidCards=terminal.reduce((a,c)=>a+(buckets.get(String(c.id))||[]).length,0);
-    termBtn.hidden=false;
-    termBtn.setAttribute("aria-pressed",hiding?"true":"false");
-    termBtn.textContent = hiding
-      ? "show "+terminal.length+" closed lane"+(terminal.length>1?"s":"")+" ("+hidCards+")"
-      : "hide closed";
-    termBtn.setAttribute("aria-label",hiding
-      ? "Show the "+terminal.length+" closed lanes, holding "+hidCards+" cards"
-      : "Hide the "+terminal.length+" closed lanes, holding "+hidCards+" cards");
-  }else{
-    termBtn.hidden=true;
-  }
-
-  /* The histogram answers the board in front of you, filters and hidden lanes
-     included, so it is never describing cards you cannot see. */
-  const sparkCards=[];
-  shownCols.forEach(c=>(buckets.get(String(c.id))||[]).forEach(e=>{
-    if(cardMatches(e.card)) sparkCards.push(e.card);
-  }));
-  paintSpark(sparkCards);
-  // Safety lane: cards whose column matches no lane (deck edited by hand,
-  // column removed) must never be invisible. It takes no drops, so it also
-  // registers no dragover: painting an accept outline over a target that then
-  // refuses the drop is a lie about being live.
-  if(orphans.length) laneNode({id:"__unfiled",name:"Unfiled",muted:false,stamp:false},orphans,{droppable:false,cls:" unfiled"});
-  } /* end status mode */
-
-  /* Attribution, and only where it is true: the deck records which tracker
-     owns these items. The href is set HERE rather than written into the markup
-     because validator 24 fails the build on any off-machine href in the
-     template TEXT, and rightly so: this page is served off a disk and fetches
-     nothing. A link is not a fetch, and mdLink already builds http anchors the
-     same way for the same reason. */
-  const colo=document.getElementById("colophon");
-  if(colo) colo.hidden=false;
-  /* last, so the sheet reflects the deck that was just drawn */
-  syncSheet();
-  requestAnimationFrame(drawDependencies);
-}
-
-async function boot(){
-  try{
-    let diskTxt=null;
-    try{
-      const h=await loadHandle();
-      if(h){ fileHandle=h;
-        if((await h.queryPermission({mode:"readwrite"}))==="granted"){
-          const txt=await (await h.getFile()).text();
-          if(txt.trim()) diskTxt=txt;
-        }
-      }
-    }catch(e){ console.warn("board: handle restore failed",e); }
-    moves=readMoves();
-    if(diskTxt){
-      try{ baseJson=diskTxt; state=deckFrom(diskTxt); }
-      catch(e){
-        baseJson=null; state=null;
-        console.warn("board: deck on disk unreadable",e);
-        notice("board-data.json on disk is not a readable deck ("+errText(e)+"). Showing the deck built into this page instead.",true);
-      }
-    }
-    if(!state){ baseJson=JSON.stringify(SEED); state=deckFrom(baseJson); }
-    setConn(fileHandle?"reconnect":"local");
-    render();
-    if(state.duplicateIds.length){
-      notice("This deck has duplicate card ids ("+state.duplicateIds.join(", ")+"). Cards are tracked by position so a drag still moves the card you dragged, but the ids no longer identify one.",false);
-    }
-  }catch(e){ fatal(e); }
-  setTimeout(()=>{document.body.classList.remove("loading");requestAnimationFrame(()=>requestAnimationFrame(()=>{const b=document.querySelector(".brand");if(b)b.classList.add("brand-anim")}))},1400);
-}
-document.getElementById("connectBtn").addEventListener("click",connectFile);
-document.getElementById("downloadBtn").addEventListener("click",download);
-document.getElementById("noticeClose").addEventListener("click",clearNotice);
-const q=document.getElementById("q");
-q.addEventListener("input",()=>{ filterText=q.value.trim().toLowerCase(); render(); });
-q.addEventListener("keydown",ev=>{
-  if(ev.key==="Escape"){ q.value=""; filterText=""; filterCat=null; filterTag=null; render(); q.blur(); }
-});
-document.getElementById("sheetClose").addEventListener("click",closeSheet);
-paintMark();
-if(DARK_SCHEME.addEventListener) DARK_SCHEME.addEventListener("change",paintMark);
-(function(){
-  const brand=document.querySelector(".brand");
-  if(!brand||window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  brand.addEventListener("mouseenter",()=>{
-    const word=brand.querySelector(".brand-word svg");
-    const band=brand.querySelector(".brand-band");
-    if(!word||!band) return;
-    word.style.animation="none"; band.style.animation="none";
-    void word.offsetWidth;
-    word.style.animation=""; band.style.animation="";
-  });
 })();
-(function(){
-  const brand=document.querySelector(".brand");
-  if(!brand||window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  brand.addEventListener("mouseenter",()=>{
-    const word=brand.querySelector(".brand-word svg");
-    const band=brand.querySelector(".brand-band");
-    if(!word||!band) return;
-    word.style.animation="none"; band.style.animation="none";
-    void word.offsetWidth;
-    word.style.animation=""; band.style.animation="";
-  });
-})();
-hideTerminal=readHideTerminal();
-swimMode=readSwimMode();
-document.getElementById("swimBtn").addEventListener("click",()=>{
-  swimMode=(swimMode==="parent")?"status":"parent";
-  writeSwimMode(swimMode); render();
-  announce(swimMode==="parent"?"Grouped by parent":"Grouped by status");
-});
-document.getElementById("termBtn").addEventListener("click",()=>{
-  hideTerminal=!hideTerminal; writeHideTerminal(hideTerminal); render();
-  announce(hideTerminal?"closed lanes hidden":"closed lanes shown");
-});
-ledgerFolded=readLedgerFolded();
-paintLedgerFold();
-document.getElementById("sparkBtn").addEventListener("click",()=>{
-  ledgerFolded=!ledgerFolded; writeLedgerFolded(ledgerFolded); paintLedgerFold();
-  announce(ledgerFolded?"activity sheet folded away":"activity sheet shown");
-});
-/* The docket menu is a <details>, so it opens and closes on its own and the
-   summary is a tab stop for free. Three habits it does not get for free: it
-   closes after a choice, on Escape, and on a click anywhere else. */
-(function(){
-  const menu=document.getElementById("docketMenu");
-  if(!menu) return;
-  menu.addEventListener("click",ev=>{ if(ev.target.closest(".docket-menu-panel button")) menu.open=false; });
-  menu.addEventListener("keydown",ev=>{
-    if(ev.key==="Escape"&&menu.open){ ev.preventDefault(); menu.open=false; menu.querySelector("summary").focus(); }
-  });
-  document.addEventListener("pointerdown",ev=>{ if(menu.open&&!menu.contains(ev.target)) menu.open=false; });
-})();
-noteView=readNoteView();
-paintNoteToggle();
-document.getElementById("noteView").addEventListener("click",ev=>{
-  const b=ev.target.closest("button[data-view]");
-  if(!b) return;
-  noteView=(b.dataset.view==="raw")?"raw":"pretty";
-  writeNoteView(noteView);
-  if(sheetKey!==null) renderSheet();
-});
-/* Esc, routed through closeSheet rather than left to the dialog's own cancel.
-   A keydown is delivered as user input, so it lands even where a queued task
-   would not. */
-sheetEl().addEventListener("keydown",ev=>{
-  if(ev.key==="Escape"){ ev.preventDefault(); closeSheet(); }
-});
-/* The net: a close by any other route still clears the bookkeeping. */
-sheetEl().addEventListener("close",()=>{
-  if(sheetKey===null) return;
-  const key=sheetKey;
-  sheetKey=null; sheetId=null;
-  focusKey(key);
-});
-/* the backdrop belongs to the dialog element itself, so a click that lands on
-   the dialog rather than on the panel inside it is a click outside */
-sheetEl().addEventListener("click",ev=>{ if(ev.target===sheetEl()) closeSheet(); });
-/* Another tab on the same board is another writer. Adopt its moves instead of
-   letting whichever tab saves last silently win. */
-window.addEventListener("storage",ev=>{
-  if(ev.key&&ev.key!==LS_KEY) return;
-  const before=JSON.stringify(moves);
-  moves=readMoves();
-  if(JSON.stringify(moves)===before) return;
-  try{ state=deckFrom(baseJson); render(); announce("Board updated in another tab."); }
-  catch(e){ console.warn("board: could not adopt another tab's state",e); }
-});
-document.addEventListener("visibilitychange",()=>{ if(!document.hidden) refreshFromDisk(); });
-boot();
 </script>
 </body>
 </html>

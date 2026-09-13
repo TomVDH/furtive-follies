@@ -34,6 +34,15 @@ try:
 except Exception:  # pragma: no cover - defensive
     pass
 
+def _mark_vault_write(session_id: str = "") -> None:
+    """Cosmetic signal for the statusline. Never raises, never blocks."""
+    try:
+        from _vault_walk import mark_vault_write
+        mark_vault_write(session_id)
+    except Exception:
+        pass
+
+
 try:
     from _render import render
     _RENDERER = True
@@ -202,6 +211,39 @@ def commit_verified(repo_dir: str, subject: str) -> bool:
     return r.stdout.strip() == subject.strip()
 
 
+def branch_of(repo_dir: str) -> str:
+    """The branch HEAD is on, or '' (detached, no repo, no git, timeout).
+
+    Called only after `commit_verified` said yes, so it costs one subprocess
+    per commit that landed and nothing per Bash call. The branch rule puts
+    feature work on `feature/<bean-id>` in a worktree; the session note
+    naming the branch is how a reader later tells which line a commit
+    belongs to. Never raises.
+    """
+    if not repo_dir:
+        return ""
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(repo_dir), "symbolic-ref", "--short", "-q", "HEAD"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, timeout=3, check=False)
+    except Exception:
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def branch_suffix(branch: str) -> str:
+    """` (on feature/x)` for a non-default branch, '' for main/master/none.
+
+    A branch name is author-controlled text like a subject, so it goes
+    through the same neutralizer before it lands in a wikilink-bearing note.
+    """
+    b = (branch or "").strip()
+    if not b or b in ("main", "master"):
+        return ""
+    return f" (on {log_safe(b)})"
+
+
 def _messages_from_tokens(tokens: list) -> list:
     """Collect message arguments: -m, bundled forms like -am, --message[=X]."""
     msgs = []
@@ -304,10 +346,10 @@ def main() -> int:
         return 0  # editor-driven or amend-no-edit commit: no subject to log
     # Authoritative gate: ask git whether HEAD is actually this commit. The
     # payload check above is only a cheap pre-filter.
-    if not commit_verified(
-            repo_dir_for(command, cmd, os.environ.get("CLAUDE_PROJECT_DIR", "")),
-            subject):
+    repo_dir = repo_dir_for(command, cmd, os.environ.get("CLAUDE_PROJECT_DIR", ""))
+    if not commit_verified(repo_dir, subject):
         return 0
+    on_branch = branch_suffix(branch_of(repo_dir))
 
     # --- Vault resolution, same 5-step chain as the verbs and other hooks ---
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
@@ -366,8 +408,9 @@ def main() -> int:
                 break
     if session_file.exists():
         try:
+            _mark_vault_write(payload.get("session_id") or "")
             with session_file.open("a") as f:
-                f.write(f"- {ts} · commit: {log_safe(subject)}\n")
+                f.write(f"- {ts} · commit: {log_safe(subject)}{on_branch}\n")
         except OSError:
             pass  # log-write failure must not block the release scaffold
 

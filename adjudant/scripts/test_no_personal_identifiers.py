@@ -74,6 +74,10 @@ ALLOWLIST = {
     ".claude-plugin/plugin.json",
     "README.md",
     "GUIDE.md",
+    # Brand identity in shipped surfaces: the ops mark and its tagline carry
+    # the product name, which is the point of embedding them.
+    "skills/adjudant/templates/board.html",
+    "skills/adjudant/templates/dashboard.html",
 }
 
 # A run of seven or more digits standing alone. An account, portal or object

@@ -544,6 +544,11 @@ class TestApplyContract(unittest.TestCase):
             self.assertIn("> Track the garden irrigation build.", agents)
             self.assertNotIn("{Project Name}", agents)
             self.assertNotIn("{slug}", agents)
+            # The branch rule ships with every provisioned AGENTS.md, so a
+            # project connected today already states where feature work goes.
+            self.assertIn("## Git practice", agents)
+            self.assertIn("feature/<bean-id>", agents)
+            self.assertIn(".worktrees/<bean-id>", agents)
             brief = (vault / "projects" / "active" / "proj" / "brief.md").read_text()
             # v3 dropped status: from the brief; the zone folder is the status.
             self.assertNotIn("status:", brief)

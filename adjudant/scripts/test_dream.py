@@ -4,6 +4,7 @@ import contextlib
 import datetime as dt
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -1054,3 +1055,69 @@ class TestTheCapDoesNotUndoTheFix(unittest.TestCase):
             # come back empty just because another category scores higher.
             self.assertTrue(self._unacted(report),
                             "unacted_decisions was starved to zero by the cap")
+
+
+class TestBeansScan(unittest.TestCase):
+    """Tests for dream.scan_beans — the beans hygiene scanner."""
+
+    def _make_bean(self, beans_dir: Path, bid: str, status: str, typ: str = "task",
+                   body: str = "", extra_fm: str = "") -> Path:
+        beans_dir.mkdir(parents=True, exist_ok=True)
+        f = beans_dir / f"{bid}--{bid}-slug.md"
+        fm = f"---\ntitle: {bid}\nstatus: {status}\ntype: {typ}\n{extra_fm}---\n\n{body}\n"
+        f.write_text(fm)
+        return f
+
+    def test_dead_blocker(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            self._make_bean(root / ".beans", "block-a", "completed")
+            self._make_bean(root / ".beans", "dep-b", "todo",
+                            extra_fm="blockedBy: block-a\n")
+            findings = dream.scan_beans(root)
+            issues = [f for f in findings if f["issue"] == "dead_blocker"]
+            self.assertEqual(len(issues), 1)
+            self.assertEqual(issues[0]["bean_id"], "dep-b")
+
+    def test_empty_checklist(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            self._make_bean(root / ".beans", "wip-1", "in-progress",
+                            body="- [ ] First task\n- [ ] Second task\n")
+            findings = dream.scan_beans(root)
+            issues = [f for f in findings if f["issue"] == "empty_checklist"]
+            self.assertEqual(len(issues), 1)
+
+    def test_partially_checked_is_not_empty(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            self._make_bean(root / ".beans", "wip-2", "in-progress",
+                            body="- [x] Done\n- [ ] Todo\n")
+            findings = dream.scan_beans(root)
+            issues = [f for f in findings if f["issue"] == "empty_checklist"]
+            self.assertEqual(len(issues), 0)
+
+    def test_stale_bean(self):
+        import time
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            f = self._make_bean(root / ".beans", "old-1", "todo")
+            old_ts = time.time() - (35 * 86400)
+            os.utime(f, (old_ts, old_ts))
+            findings = dream.scan_beans(root)
+            issues = [f for f in findings if f["issue"] == "stale_bean"]
+            self.assertEqual(len(issues), 1)
+
+    def test_no_beans_dir(self):
+        with tempfile.TemporaryDirectory() as t:
+            self.assertEqual(dream.scan_beans(Path(t)), [])
+
+    def test_healthy_beans_produce_no_findings(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            self._make_bean(root / ".beans", "ok-1", "todo",
+                            body="- [ ] A task\n")
+            self._make_bean(root / ".beans", "ok-2", "in-progress",
+                            body="- [x] Done\n- [ ] Next\n")
+            findings = dream.scan_beans(root)
+            self.assertEqual(len(findings), 0)

@@ -1054,7 +1054,10 @@ class TestRepoBrief(unittest.TestCase):
         import subprocess
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+            # GIT_* stripped first: a hook's GIT_INDEX_FILE would otherwise
+            # send this fixture's `git add` into the real index (found regenerating the twin)
+            env = {**{k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+                   "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
                    "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
             run = lambda *a: subprocess.run(["git", "-C", str(root), *a],
                                             capture_output=True, env=env)
@@ -1875,3 +1878,255 @@ class TestLegacyBreadcrumbIsReported(unittest.TestCase):
                                 today="2026-09-01", sync=False)
             self.assertEqual([e for e in report["wrong_now"]
                               if e["signal"] == "legacy-breadcrumb"], [])
+
+
+class TestGitPractice(unittest.TestCase):
+    """The branch rule, observed: feature beans on `feature/<id>` in a
+    worktree, main checkout on main. Every finding is a report; nothing here
+    can block a commit, and any git failure degrades to {present: False}.
+
+    Real repositories, real worktrees. The rule is about what git says, so
+    mocking git would test the mock.
+    """
+
+    def _repo(self, root):
+        import subprocess
+        env = {**{k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+               "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+
+        def run(*a, at=root):
+            return subprocess.run(["git", "-C", str(at), *a],
+                                  capture_output=True, text=True, env=env)
+        run("init", "-q", "-b", "main")
+        _write(root / "a.txt", "one\n")
+        run("add", "-A"); run("commit", "-qm", "first commit")
+        _write(root / ".gitignore", ".worktrees/\n")
+        run("add", "-A"); run("commit", "-qm", "ignore worktrees")
+        return run
+
+    @staticmethod
+    def _bean(bid, typ="feature", st="in-progress"):
+        return {"id": bid, "type": typ, "status": st}
+
+    @staticmethod
+    def _signals(info):
+        return [d["signal"] for d in info["drift"]]
+
+    def test_absent_without_repo(self):
+        self.assertFalse(status._git_practice(None, [])["present"])
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertFalse(status._git_practice(Path(tmp), [])["present"])
+
+    def test_git_failure_degrades_to_absent(self):
+        # A .git that git cannot read is a broken repo, not a crash.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".git").write_text("not a gitdir pointer\n")
+            self.assertFalse(status._git_practice(root, [])["present"])
+
+    def test_clean_main_with_no_open_features_reports_no_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._repo(root)
+            info = status._git_practice(root, [self._bean("x", "task"),
+                                               self._bean("y", st="completed")])
+            self.assertTrue(info["present"])
+            self.assertEqual(info["main_branch"], "main")
+            self.assertEqual(info["main_dirty"], 0)
+            self.assertEqual(info["beans"], "used")
+            self.assertEqual(info["drift"], [])
+
+    def test_main_checkout_off_main_is_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = self._repo(root)
+            run("switch", "-qc", "feature/demo-abcd")
+            info = status._git_practice(root, [])
+            self.assertIn("git-main-off-main", self._signals(info))
+            hit = next(d for d in info["drift"] if d["signal"] == "git-main-off-main")
+            self.assertIn("git switch main", hit["detail"])
+
+    def test_in_progress_feature_without_branch_is_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._repo(root)
+            info = status._git_practice(root, [self._bean("demo-abcd")])
+            self.assertEqual(self._signals(info), ["git-branch-missing"])
+            self.assertIn("git worktree add .worktrees/demo-abcd -b feature/demo-abcd",
+                          info["drift"][0]["detail"])
+
+    def test_in_progress_feature_with_worktree_is_clean(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = self._repo(root)
+            run("worktree", "add", "-q", str(root / ".worktrees" / "demo-abcd"),
+                "-b", "feature/demo-abcd")
+            info = status._git_practice(root, [self._bean("demo-abcd")])
+            self.assertEqual(info["drift"], [])
+            self.assertEqual(info["practice_branches"], ["feature/demo-abcd"])
+            self.assertEqual(len(info["worktrees"]), 2)
+            self.assertEqual(info["worktrees"][1]["bean_id"], "demo-abcd")
+
+    def test_task_bug_and_epic_beans_never_ask_for_a_branch(self):
+        # Epics are containers; tasks and bugs ride main or their parent's
+        # branch. None of them owns a branch, so none can be missing one.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._repo(root)
+            rows = [self._bean("e", "epic"), self._bean("t", "task"),
+                    self._bean("b", "bug")]
+            self.assertEqual(status._git_practice(root, rows)["drift"], [])
+
+    def test_worktree_on_a_completed_bean_is_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = self._repo(root)
+            run("worktree", "add", "-q", str(root / ".worktrees" / "demo-abcd"),
+                "-b", "feature/demo-abcd")
+            info = status._git_practice(root, [self._bean("demo-abcd", st="completed")])
+            self.assertEqual(self._signals(info), ["git-worktree-stale"])
+            self.assertIn("git worktree remove", info["drift"][0]["detail"])
+            self.assertIn("git branch -d feature/demo-abcd", info["drift"][0]["detail"])
+
+    def test_branch_without_worktree_is_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = self._repo(root)
+            run("branch", "feature/demo-abcd")
+            info = status._git_practice(root, [self._bean("demo-abcd")])
+            self.assertEqual(self._signals(info), ["git-branch-no-worktree"])
+            self.assertIn("git worktree add .worktrees/demo-abcd feature/demo-abcd",
+                          info["drift"][0]["detail"])
+
+    def test_branch_outliving_its_bean_is_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = self._repo(root)
+            run("branch", "feature/demo-abcd")
+            info = status._git_practice(root, [self._bean("demo-abcd", st="scrapped")])
+            self.assertEqual(self._signals(info), ["git-branch-stale"])
+            self.assertIn("scrapped", info["drift"][0]["detail"])
+
+    def test_dirty_main_with_a_feature_in_progress_is_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = self._repo(root)
+            run("worktree", "add", "-q", str(root / ".worktrees" / "demo-abcd"),
+                "-b", "feature/demo-abcd")
+            _write(root / "stray.txt", "oops\n")
+            info = status._git_practice(root, [self._bean("demo-abcd")])
+            self.assertEqual(self._signals(info), ["git-dirty-main"])
+            self.assertIn("1 uncommitted change ", info["drift"][0]["detail"])
+            self.assertIn(".worktrees/demo-abcd", info["drift"][0]["detail"])
+            # and a dirty main with nothing in progress is just a dirty main
+            self.assertEqual(status._git_practice(root, [])["drift"], [])
+
+    def test_judges_the_main_checkout_when_run_from_a_worktree(self):
+        # Inside the worktree HEAD is the feature branch. That is the rule
+        # being followed, not broken, so the probe must look at the main
+        # checkout and not at the cwd.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = self._repo(root)
+            wt = root / ".worktrees" / "demo-abcd"
+            run("worktree", "add", "-q", str(wt), "-b", "feature/demo-abcd")
+            _write(wt / "work.txt", "in the worktree\n")
+            info = status._git_practice(wt, [self._bean("demo-abcd")])
+            self.assertTrue(info["present"])
+            self.assertEqual(info["main_branch"], "main")
+            self.assertEqual(Path(info["main_path"]).resolve(), root.resolve())
+            # the worktree's own dirt is not main's dirt
+            self.assertEqual(info["main_dirty"], 0)
+            self.assertEqual(info["drift"], [])
+
+    def test_without_beans_only_git_facts_are_checked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            run = self._repo(root)
+            run("branch", "feature/demo-abcd")
+            _write(root / "stray.txt", "oops\n")
+            info = status._git_practice(root, None)
+            self.assertEqual(info["beans"], "unavailable")
+            self.assertEqual(self._signals(info), ["git-branch-no-worktree"])
+
+    def test_repo_brief_carries_the_practice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._repo(root)
+            info = _repo_brief(root, [self._bean("demo-abcd")])
+            self.assertEqual(info["practice"]["beans"], "used")
+            self.assertEqual([d["signal"] for d in info["practice"]["drift"]],
+                             ["git-branch-missing"])
+            self.assertEqual(_repo_brief(root)["practice"]["beans"], "unavailable")
+
+    def test_parse_worktrees_reads_porcelain(self):
+        text = ("worktree /r\nHEAD abc\nbranch refs/heads/main\n\n"
+                "worktree /r/.worktrees/x\nHEAD def\nbranch refs/heads/feature/x\n\n"
+                "worktree /r/.worktrees/d\nHEAD 123\ndetached\n\n")
+        wts = status._parse_worktrees(text)
+        self.assertEqual([w["path"] for w in wts],
+                         ["/r", "/r/.worktrees/x", "/r/.worktrees/d"])
+        self.assertEqual([w["branch"] for w in wts], ["main", "feature/x", None])
+        self.assertEqual(status._parse_worktrees(""), [])
+
+
+class TestGitDriftBands(unittest.TestCase):
+    """Where each git signal lands. Never wrong_now: the vault claims nothing
+    about branches, so nothing here is a false claim."""
+
+    @staticmethod
+    def _orient(*signals):
+        return {"repo": {"present": True, "practice": {
+            "present": True,
+            "drift": [{"signal": s, "detail": s} for s in signals]}}}
+
+    def test_stale_git_signals_land_in_going_stale(self):
+        bands = status._bands({"project": {"present": True}},
+                              self._orient("git-worktree-stale", "git-branch-stale"),
+                              [], None)
+        self.assertEqual([e["signal"] for e in bands["going_stale"]],
+                         ["git-worktree-stale", "git-branch-stale"])
+        self.assertEqual([e for e in bands["wrong_now"] if e["signal"].startswith("git-")], [])
+
+    def test_other_git_signals_land_in_worth_a_look(self):
+        bands = status._bands({"project": {"present": True}},
+                              self._orient("git-main-off-main", "git-branch-missing",
+                                           "git-branch-no-worktree", "git-dirty-main"),
+                              [], None)
+        got = [e["signal"] for e in bands["worth_a_look"] if e["signal"].startswith("git-")]
+        self.assertEqual(got, ["git-main-off-main", "git-branch-missing",
+                               "git-branch-no-worktree", "git-dirty-main"])
+        self.assertEqual([e for e in bands["going_stale"] if e["signal"].startswith("git-")], [])
+
+    def test_no_practice_block_means_no_git_entries(self):
+        bands = status._bands({"project": {"present": True}},
+                              {"repo": {"present": False}}, [], None)
+        for band in bands.values():
+            self.assertEqual([e for e in band if e["signal"].startswith("git-")], [])
+
+
+class TestRunFetchesBeansOnce(unittest.TestCase):
+    """The mirror and the git-practice check read one row list. Two fetches
+    cost a second CLI round trip and could disagree with each other."""
+
+    def test_run_fetches_beans_once(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pdir = root / "vault" / "projects" / "active" / "demo"
+            _write(pdir / "brief.md", _CLEAN_BRIEF)
+            code = root / "code"
+            (code / ".claude").mkdir(parents=True)
+            (code / ".claude" / "adjudant").write_text("slug: demo\ntracker: beans\n")
+            rows = [{"id": "demo-abcd", "type": "feature", "status": "in-progress",
+                     "title": "x"}]
+            with mock.patch.object(status._beans, "owns", return_value=True), \
+                 mock.patch.object(status._beans, "unreachable_reason", return_value=""), \
+                 mock.patch.object(status._beans, "list_beans",
+                                   return_value=status._beans.Result(True, value=rows)) as lb, \
+                 mock.patch.object(status._beans, "write_mirror", return_value=True):
+                report = status.run(pdir, root / "vault", code_root=code,
+                                    today="2026-09-01", sync=True)
+            self.assertEqual(lb.call_count, 1)
+            self.assertEqual(report["synced"]["steps"]["beans"]["total"], 1)

@@ -955,6 +955,119 @@ def _project_type(files: list[VaultFile]) -> Optional[str]:
 
 
 # ============================================================
+# Beans scanner
+# ============================================================
+
+
+def _read_bean_frontmatter(path: Path) -> dict[str, str]:
+    try:
+        text = path.read_text(errors="replace")
+    except OSError:
+        return {}
+    if not text.startswith("---"):
+        return {}
+    end = text.find("---", 3)
+    if end < 0:
+        return {}
+    fm: dict[str, str] = {}
+    for line in text[3:end].splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            fm[k.strip()] = v.strip()
+    return fm
+
+
+def _read_bean_body(path: Path) -> str:
+    try:
+        text = path.read_text(errors="replace")
+    except OSError:
+        return ""
+    if not text.startswith("---"):
+        return text
+    end = text.find("---", 3)
+    if end < 0:
+        return text
+    return text[end + 3:].strip()
+
+
+def scan_beans(project_root: Path) -> list[dict[str, str]]:
+    """Scan .beans/*.md for common issues. Returns a list of findings."""
+    beans_dir = project_root / ".beans"
+    if not beans_dir.is_dir():
+        return []
+
+    beans: dict[str, dict] = {}
+    for f in beans_dir.glob("*.md"):
+        bid = f.stem.split("--")[0]
+        fm = _read_bean_frontmatter(f)
+        body = _read_bean_body(f)
+        beans[bid] = {"path": f, "fm": fm, "body": body}
+
+    findings: list[dict[str, str]] = []
+
+    for bid, b in beans.items():
+        fm = b["fm"]
+        body = b["body"]
+        status = fm.get("status", "")
+
+        # Dead blockers: blocked by a completed/scrapped bean
+        blocked_by = fm.get("blockedBy", "") or fm.get("blocked_by", "")
+        if blocked_by and status in ("todo", "in-progress", "draft"):
+            for blocker_id in re.split(r"[,\s]+", blocked_by):
+                blocker_id = blocker_id.strip()
+                if blocker_id in beans:
+                    bst = beans[blocker_id]["fm"].get("status", "")
+                    if bst in ("completed", "scrapped"):
+                        findings.append({
+                            "bean_id": bid,
+                            "issue": "dead_blocker",
+                            "detail": f"Blocked by {blocker_id} which is {bst}",
+                        })
+
+        # In-progress with only unchecked items
+        if status == "in-progress":
+            checked = body.count("- [x]") + body.count("- [X]")
+            unchecked = body.count("- [ ]")
+            if unchecked > 0 and checked == 0:
+                findings.append({
+                    "bean_id": bid,
+                    "issue": "empty_checklist",
+                    "detail": f"{unchecked} unchecked items, 0 checked, status is in-progress",
+                })
+
+        # Stale beans: older than 30 days with no activity
+        try:
+            mtime = b["path"].stat().st_mtime
+            import time as _time
+            age_days = (_time.time() - mtime) / 86400
+            if age_days > 30 and status in ("todo", "in-progress", "draft"):
+                findings.append({
+                    "bean_id": bid,
+                    "issue": "stale_bean",
+                    "detail": f"Last modified {int(age_days)} days ago, status is {status}",
+                })
+        except OSError:
+            pass
+
+        # File references in body that don't exist
+        if status in ("todo", "in-progress", "draft"):
+            for m in re.finditer(r'(?:^|\s)([a-zA-Z][\w/.-]+\.\w{1,5})(?:\s|$|[,;)])',
+                                 body, re.MULTILINE):
+                ref = m.group(1)
+                if "/" in ref and not ref.startswith("http"):
+                    candidate = project_root / ref
+                    if not candidate.exists():
+                        findings.append({
+                            "bean_id": bid,
+                            "issue": "missing_file_ref",
+                            "detail": f"References {ref} which does not exist",
+                        })
+                        break
+
+    return findings
+
+
+# ============================================================
 # CLI
 # ============================================================
 
@@ -977,6 +1090,8 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
                         "(e.g. 'decisions'); the report header states the scope")
     parser.add_argument("--estimate-only", action="store_true",
                         help="Print only the cost block (stat-only walk) and exit")
+    parser.add_argument("--beans", action="store_true",
+                        help="Scan .beans/*.md for common issues instead of vault content")
     args = parser.parse_args(argv)
 
     today: Optional[_dt.date] = None
@@ -985,6 +1100,18 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
         if today is None:
             print(f"error: --today not a valid YYYY-MM-DD: {args.today}", file=sys.stderr)
             return 1
+
+    if args.beans:
+        project_root = Path(args.project_dir).expanduser().resolve()
+        findings = scan_beans(project_root)
+        payload = json.dumps({"findings": findings}, indent=2)
+        if args.out:
+            Path(args.out).expanduser().write_text(payload + "\n")
+            print(f"[dream] wrote beans scan to {args.out}", file=sys.stderr)
+        else:
+            print(payload)
+        print(f"[dream] beans: {len(findings)} findings", file=sys.stderr)
+        return 0
 
     try:
         project_dir, vault_hint = smart_project_dir(args.project_dir)

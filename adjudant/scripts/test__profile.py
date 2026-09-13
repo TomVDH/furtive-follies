@@ -10,6 +10,7 @@ already holds.
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -113,7 +114,11 @@ class TestTheThresholdIsStatedOnce(unittest.TestCase):
                 continue
             if f.suffix not in (".py", ".md", ".sh", ".json"):
                 continue
-            if default in f.read_text(errors="replace"):
+            # A digit-boundary match, not a substring: the twin's threshold is
+            # 10000 and a substring check flagged the 1000000 that converts
+            # tokens to millions in the statusline. Main never saw it at 30000.
+            if re.search(rf"(?<![\d.]){re.escape(default)}(?![\d.])",
+                         f.read_text(errors="replace")):
                 offenders.append(str(f.relative_to(PLUGIN_ROOT)))
         self.assertEqual(
             offenders, [],

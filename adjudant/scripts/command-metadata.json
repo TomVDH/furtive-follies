@@ -42,7 +42,7 @@
       "name": "board",
       "audience": "all",
       "blurb": "runs a self-hosted kanban",
-      "description": "Scaffold a self-hosted kanban seeded from tasks/: drag to move, saved to disk. Re-seeding keeps your dragged cards. Use --project SLUG or --all.",
+      "description": "Scaffold a self-hosted kanban seeded from tasks/ or beans: drag to move, open a card for the rest. Re-seeding keeps your dragged cards.",
       "argumentHint": "[scaffold|serve|status] [--project SLUG|--all] [--from-tasks] [--force]",
       "reference": "reference/board.md",
       "weight": "light"

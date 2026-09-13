@@ -24,6 +24,43 @@ that is older than the staleness threshold (default 30 days by mtime) is flagged
 as a stale plan. The fix is to mark it complete or archive it — an archival move
 is deliberate structural work (`clean --deep` reports it), not a mechanical fix.
 
+### Git practice
+
+Where the code for a work item goes is decided by the bean's type. The rule
+is stated once per session by the session-start banner, provisioned into
+every linked project by `connect` (the `## Git practice` section of
+`templates/AGENTS.md`), and observed by `status` through the six `git-*`
+signals in `status.md`. Instruct and observe: nothing blocks a commit. The
+report is the guard.
+
+1. Run `git pull --ff-only` on `main` before starting work. The other machine
+   is often ahead.
+2. A `feature` bean gets its own branch, named `feature/<bean-id>`. An `epic`
+   is a container and gets no branch: it is never worked on directly, so a
+   branch for it would hold nothing.
+3. That branch is always checked out in a linked worktree at
+   `.worktrees/<bean-id>` (`git worktree add .worktrees/<bean-id> -b
+   feature/<bean-id>`). The main checkout stays on `main` and is never
+   `git switch`ed. Keep `.worktrees/` in `.gitignore`; the rule must land on
+   `main` before the first worktree exists.
+4. The breadcrumb `.claude/adjudant` is usually git-ignored, so a fresh
+   worktree has none of its own. It does not need one: the worktree's `.git`
+   file names the main checkout, the statusline reads the breadcrumb from
+   there, and the session-start hook links it in
+   (`.worktrees/<bean-id>/.claude/adjudant -> <main>/.claude/adjudant`) so
+   every other reader finds it where it expects. Nothing to copy.
+5. A `task` or `bug` bean with no in-progress feature parent commits on
+   `main`. One under an in-progress feature commits on that feature's branch,
+   in its worktree. Neither owns a branch of its own.
+6. Merge-back is a pull request: `git push -u origin feature/<bean-id>`,
+   `gh pr create`, merge on GitHub. Then `git worktree remove
+   .worktrees/<bean-id>`, `git branch -d feature/<bean-id>`, and
+   `git pull --ff-only` on `main`. A worktree removed on the other machine
+   leaves a dangling entry here; `git worktree prune` clears it.
+7. Conventional Commits. The bean file lands in the same commit as the code
+   it describes. A version bump happens on the feature branch, through the
+   script below, and reaches `main` through the PR.
+
 ## Marketplace layer (marketplace.json present)
 
 ### Version coherence
@@ -33,7 +70,9 @@ Every plugin listed in `.claude-plugin/marketplace.json` must declare the same
 gated at commit time by `scripts/check_marketplace_versions.py`; `check repo`
 surfaces the same signal read-only and never "fixes" it (the pre-commit gate
 owns repair by blocking drift). Use `python3 scripts/bump_plugin_version.py
-<plugin> <X.Y.Z>` to move a version — never hand-edit.
+<plugin> <X.Y.Z>` to move a version — never hand-edit. Run it on the feature
+branch; the bump lands on `main` with the PR, so `main` only ever carries
+released versions.
 
 ### Symlink integrity
 

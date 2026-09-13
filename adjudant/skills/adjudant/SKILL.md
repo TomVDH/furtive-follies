@@ -24,7 +24,7 @@ Pairs with hookify for universal drift-defense hooks.
 | `status` | `reference/status.md` | Make derived state current (brief date, handoff, index row), then report in three bands: what is wrong now, what is going stale, and what is worth a look. |
 | `clean` | `reference/clean.md` | Cleanup sweep: indexes, wikilink form, updated dates, off-schema frontmatter. Previews then applies, and never creates a vault file. --deep adds the structural pass. [vault\|repo\|all] adds repo symlinks. |
 | `dream` | `reference/dream.md` | Semantic refresh, the deepest tier: surfaces stale, superseded, redundant, or orphaned content as scored candidates you judge before anything changes. --folder scopes the walk to one subtree. |
-| `board` | `reference/board.md` | Scaffold a self-hosted kanban seeded from tasks/: drag to move, saved to disk. Re-seeding keeps your dragged cards. Use --project SLUG or --all. |
+| `board` | `reference/board.md` | Scaffold a self-hosted kanban seeded from tasks/ or beans: drag to move, open a card for the rest. Re-seeding keeps your dragged cards. |
 | _(internals)_ | `reference/internals.md` | Not a verb. Hook wiring, verb-to-helper map, environment probes. Load only when the question is about adjudant's own machinery |
 <!-- VERBS:ROUTER:END -->
 

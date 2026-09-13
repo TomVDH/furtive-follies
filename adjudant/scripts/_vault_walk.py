@@ -1054,6 +1054,32 @@ def file_lock(target: Path, timeout: float = 5.0, poll: float = 0.005) -> Iterat
                 pass
 
 
+def mark_vault_write(session_id: str = "") -> None:
+    """Record that adjudant just wrote to the vault. Best-effort, never raises.
+
+    The statusline reads this and shows one glyph in front of the vault bolt
+    for a few seconds after. It exists because "a write is happening right now"
+    is not observable: a hook's write finishes in milliseconds and a statusline
+    paints once per turn, so the honest signal is "adjudant just documented
+    something", which is a timestamp plus a linger window on the reader's side.
+
+    Session-keyed when the caller knows its id, so one session's write does not
+    light up another's line. The unkeyed path stays for callers that have no id.
+
+    Silent on every failure. A statusline nicety must never be able to break a
+    vault write, and a read-only or full TMPDIR is not an error worth surfacing.
+    """
+    import tempfile
+
+    root = os.environ.get("TMPDIR") or tempfile.gettempdir()
+    name = f"adjudant-vault-write-{session_id}" if session_id else "adjudant-vault-write"
+    try:
+        with open(os.path.join(root, name), "w") as fh:
+            fh.write(str(int(time.time())))
+    except OSError:
+        pass
+
+
 def atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
     """Write `text` to `path` via a same-directory temp file + `os.replace`.
 

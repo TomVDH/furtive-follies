@@ -536,3 +536,37 @@ class TestFutureSessionFallback(_CommitLogCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBranchInTheLogLine(_CommitLogCase):
+    """A commit on a feature branch says so in the session note. The branch
+    rule puts feature work on `feature/<bean-id>` in a worktree; a reader of
+    the note must be able to tell which line a commit landed on."""
+
+    def test_commit_on_a_branch_names_the_branch(self):
+        self._git("switch", "-qc", "feature/demo-ab12")
+        self._land("feat(demo): on a branch")
+        rc = self._run(self._payload('git commit -m "feat(demo): on a branch"'))
+        self.assertEqual(rc, 0)
+        text = self.session_note.read_text()
+        self.assertRegex(text, r"· commit: feat\(demo\): on a branch \(on feature/demo-ab12\)\n")
+
+    def test_commit_on_main_names_no_branch(self):
+        self._land("feat(demo): on main")
+        self._run(self._payload('git commit -m "feat(demo): on main"'))
+        text = self.session_note.read_text()
+        self.assertIn("· commit: feat(demo): on main\n", text)
+        self.assertNotIn("(on ", text)
+
+    def test_branch_suffix_is_neutralized_like_a_subject(self):
+        # A branch name is author-controlled text like a subject: a wikilink
+        # in it must not become a live link in the note.
+        self.assertEqual(commit_log.branch_suffix("feature/[[x]]"), " (on feature/[ [x] ])")
+        self.assertEqual(commit_log.branch_suffix("main"), "")
+        self.assertEqual(commit_log.branch_suffix("master"), "")
+        self.assertEqual(commit_log.branch_suffix(""), "")
+
+    def test_branch_of_never_raises(self):
+        self.assertEqual(commit_log.branch_of(""), "")
+        self.assertEqual(commit_log.branch_of("/nonexistent/path/xyz"), "")
+        self.assertEqual(commit_log.branch_of(str(self.project)), "main")

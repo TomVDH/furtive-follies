@@ -163,6 +163,36 @@ def _gitignore_has_breadcrumb(project_root: Path) -> bool:
     return any(line.strip() == ".claude/adjudant" for line in gi.read_text().splitlines())
 
 
+def _tracker_offer(project_root: Path) -> dict[str, Any]:
+    """What to ask the user about work-item ownership, and why.
+
+    `current` is what the breadcrumb already says, and it always wins on a
+    re-connect: a person who set `tracker: vault` in a beans repo made a
+    choice, and re-running connect must not quietly undo it.
+
+    `beans_project` is a fact about the repo. `beans_installed` is a fact about
+    this machine. Both are reported because the answer differs: a repo can be
+    worth pointing at beans on a machine that cannot currently read it.
+    """
+    import _beans
+
+    current = _beans._breadcrumb_tracker(project_root)
+    found = _beans._config_reachable(project_root)
+    return {
+        "current": current or None,
+        "beans_project": found,
+        "beans_installed": _beans.available(),
+        "options": ["vault", "beans"] if found else ["vault"],
+        "default": current or "vault",
+        "ask": (
+            "This repo has a beans project. Should beans own the work items, "
+            "or the vault? Choosing beans means the board seeds from `beans "
+            "list` and a drag writes back to a bean; tasks/ stops being used "
+            "here."
+        ) if found and not current else None,
+    }
+
+
 def build_contract(
     project_root: Path,
     vault_path: Optional[Path],
@@ -206,6 +236,11 @@ def build_contract(
         ],
         "state": detect_state(project_root, vault_path, slug),
         "zone": zone_of(vault_proj) if vault_proj is not None else "",
+        # WHO OWNS THE WORK ITEMS is offered, never decided here. Finding a
+        # beans project is evidence, not consent: a repo may carry one and
+        # still want its cards in the vault. The skill puts this on the
+        # confirmation card and passes the answer back as --tracker.
+        "tracker": _tracker_offer(project_root),
     }
 
 
@@ -276,8 +311,9 @@ def write_breadcrumb(
     vault_path: Path,
     vault_name: str,
     slug: str,
+    chosen_tracker: Optional[str] = None,
 ) -> str:
-    """Write the .claude/adjudant breadcrumb (six canonical keys).
+    """Write the .claude/adjudant breadcrumb (seven canonical keys).
 
     Every other key already in the file is carried through untouched. It used
     to be a hardcoded allowlist (audit 2026-07-27 finding 16), so a key added
@@ -289,8 +325,17 @@ def write_breadcrumb(
     existing = parse_breadcrumb(project_root) or {}
     cwt = existing.get("cost_warn_tokens", str(DEFAULT_WARN_TOKENS))
     sad = existing.get("stale_after_days", "30")
+    # Which store owns this repo's WORK ITEMS. A hand-set value always wins:
+    # `tracker: vault` in a repo that has beans is the documented escape hatch,
+    # and a re-connect that overrode it would take the choice away silently.
+    # The caller's choice, else what is already written, else the vault. Never
+    # inferred from what is on disk: finding beans is evidence, not consent,
+    # and connect is idempotent so a re-run must not switch a repo silently.
+    tracker = (chosen_tracker or existing.get("tracker") or "").strip().lower()
+    if tracker not in ("vault", "beans"):
+        tracker = "vault"
     canonical = {"vault_path", "vault_name", "slug", "mode",
-                 "cost_warn_tokens", "stale_after_days"}
+                 "cost_warn_tokens", "stale_after_days", "tracker"}
     extra = "".join(f"{k}: {v}\n" for k, v in existing.items()
                     if k not in canonical)
     content = (
@@ -300,6 +345,7 @@ def write_breadcrumb(
         f"mode: project\n"
         f"cost_warn_tokens: {cwt}\n"
         f"stale_after_days: {sad}\n"
+        f"tracker: {tracker}\n"
         + extra
     )
     bc = project_root / ".claude" / "adjudant"
@@ -666,8 +712,13 @@ def run_connect(
     now_hhmm: str,
     initial_status: str = "active",
     purpose: Optional[str] = None,
+    chosen_tracker: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Idempotent connect. Returns summary dict."""
+    """Idempotent connect. Returns summary dict.
+
+    `chosen_tracker` is the answer to the contract's tracker question. None
+    means "leave whatever is written", which is what makes a re-connect safe.
+    """
     summary: dict[str, Any] = {
         "project_root": str(project_root),
         "vault_path": str(vault_path),
@@ -685,7 +736,7 @@ def run_connect(
 
     # Step 1
     summary["steps"]["breadcrumb"] = write_breadcrumb(
-        project_root, vault_path, vault_name, slug)
+        project_root, vault_path, vault_name, slug, chosen_tracker)
 
     # Step 2
     summary["steps"]["context_files"] = provision_context_files(
@@ -732,6 +783,9 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--slug", help="Project slug (kebab-case)")
     parser.add_argument("--project-type", choices=VALID_PROJECT_TYPES)
     parser.add_argument("--project-name", help="Human-readable display name")
+    parser.add_argument("--tracker", choices=("vault", "beans"),
+                        help="Who owns the work items. Offered on the contract "
+                             "card; omit to keep whatever the breadcrumb says.")
     parser.add_argument("--detect-only", action="store_true",
                         help="Print state ('fresh' | 'partial' | 'connected') and exit")
     parser.add_argument("--contract", action="store_true",
@@ -831,6 +885,7 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
         now_hhmm=now_hhmm,
         initial_status=initial_status,
         purpose=args.purpose,
+        chosen_tracker=args.tracker,
     )
 
     print(f"[connect] state: {detect_state(project_root, vault_path, slug)}", file=sys.stderr)

@@ -156,6 +156,208 @@ class TestSessionStartHook(unittest.TestCase):
             self.assertLess(len(line) // 4, 120,
                             f"advisor banner is ~{len(line) // 4} tok, budget 120")
 
+    def test_beans_banner_appears_when_the_repo_tracks_in_beans(self):
+        # `tracker: beans` is a fact about the repo, so an agent that starts a
+        # session in one must be told before it reaches for a todo list.
+        with tempfile.TemporaryDirectory() as tmp:
+            project, home = self._project(
+                Path(tmp), "vault_path: {vault}\nslug: demo\ntracker: beans\n")
+            out = _run("session-start.sh", project, home).stdout
+            self.assertIn("Beans:", out)
+            # It routes to the tracker's own guide rather than restating it.
+            # `beans prime` is generated from the project's .beans.yml, so a
+            # copy pasted into adjudant would be stale for beans and wrong for
+            # any project configured differently.
+            self.assertIn("beans prime", out)
+
+    def test_beans_banner_silent_for_a_vault_tracked_repo(self):
+        for crumb in ("vault_path: {vault}\nslug: demo\n",
+                      "vault_path: {vault}\nslug: demo\ntracker: vault\n"):
+            with tempfile.TemporaryDirectory() as tmp:
+                project, home = self._project(Path(tmp), crumb)
+                out = _run("session-start.sh", project, home).stdout
+                self.assertNotIn("Beans:", out)
+
+    def test_beans_banner_runs_no_subprocess(self):
+        # Validator 27 keeps the binary off every hook path. The banner reads
+        # the breadcrumb it already reads and nothing else, so it costs the
+        # same whether beans is installed, missing, or slow.
+        text = (Path(__file__).resolve().parents[1]
+                / "hooks" / "scripts" / "session-start.sh").read_text()
+        self.assertNotIn("import _beans", text)
+        # `beans prime` reaches the session as printed text for the agent to
+        # run. It is never a command this hook runs itself.
+        banner = next(l for l in text.splitlines() if "- Beans:" in l)
+        self.assertTrue(banner.strip().startswith("printf"), banner)
+        # and the knob is read from the breadcrumb, not from the tracker
+        i = text.index("tracker_knob=$(sed")
+        self.assertIn('"$breadcrumb"', text[i:i + 200])
+
+    def test_beans_banner_stays_within_its_token_budget(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project, home = self._project(
+                Path(tmp), "vault_path: {vault}\nslug: demo\ntracker: beans\n")
+            out = _run("session-start.sh", project, home).stdout
+            line = next(l for l in out.splitlines() if "Beans:" in l)
+            self.assertLess(len(line) // 4, 120,
+                            f"beans banner is ~{len(line) // 4} tok, budget 120")
+
+    def test_git_banner_appears_for_a_beans_repo_with_a_git_dir(self):
+        # The branch rule is keyed on bean type, so it rides the beans knob
+        # and only speaks where there is a repository to branch in.
+        with tempfile.TemporaryDirectory() as tmp:
+            project, home = self._project(
+                Path(tmp), "vault_path: {vault}\nslug: demo\ntracker: beans\n")
+            (project / ".git").mkdir()
+            out = _run("session-start.sh", project, home).stdout
+            line = next(l for l in out.splitlines() if "- Git:" in l)
+            self.assertIn("feature/<bean-id>", line)
+            self.assertIn("ff-only", line)
+            self.assertIn("PR", line)
+
+    def test_git_banner_speaks_inside_a_linked_worktree(self):
+        # In a linked worktree `.git` is a file holding a gitdir pointer, not
+        # a directory. The gate is -e so the rule reaches the place it is
+        # meant to be followed.
+        with tempfile.TemporaryDirectory() as tmp:
+            project, home = self._project(
+                Path(tmp), "vault_path: {vault}\nslug: demo\ntracker: beans\n")
+            (project / ".git").write_text("gitdir: /elsewhere/.git/worktrees/x\n")
+            out = _run("session-start.sh", project, home).stdout
+            self.assertIn("- Git:", out)
+
+    def test_a_linked_worktree_is_linked_to_the_main_checkouts_breadcrumb(self):
+        # .claude/adjudant is git-ignored, so a worktree never carries one and
+        # adjudant went quiet there. The worktree's .git file names the main
+        # checkout; the hook symlinks the breadcrumb in, and the same run then
+        # reads it and speaks. A link, so a later `connect` on main flows through.
+        with tempfile.TemporaryDirectory() as tmp:
+            main, home = self._project(
+                Path(tmp), "vault_path: {vault}\nslug: demo\ntracker: beans\n")
+            (main / ".git" / "worktrees" / "x").mkdir(parents=True)
+            wt = Path(tmp) / "code" / ".worktrees" / "x"
+            wt.mkdir(parents=True)
+            (wt / ".git").write_text(f"gitdir: {main}/.git/worktrees/x\n")
+            out = _run("session-start.sh", wt, home).stdout
+            link = wt / ".claude" / "adjudant"
+            self.assertTrue(link.is_symlink(), "the breadcrumb was not linked in")
+            self.assertEqual(link.resolve(), (main / ".claude" / "adjudant").resolve())
+            self.assertIn("- Vault:", out)
+            self.assertIn("- Git:", out)
+
+    def test_a_worktree_with_its_own_breadcrumb_is_left_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            main, home = self._project(
+                Path(tmp), "vault_path: {vault}\nslug: demo\ntracker: beans\n")
+            wt = Path(tmp) / "code" / ".worktrees" / "x"
+            (wt / ".claude").mkdir(parents=True)
+            (wt / ".claude" / "adjudant").write_text("vault_path: {vault}\nslug: own\ntracker: beans\n".format(vault=home / "vault"))
+            (wt / ".git").write_text(f"gitdir: {main}/.git/worktrees/x\n")
+            _run("session-start.sh", wt, home)
+            self.assertFalse((wt / ".claude" / "adjudant").is_symlink())
+            self.assertIn("slug: own", (wt / ".claude" / "adjudant").read_text())
+
+    def test_a_submodule_pointer_is_not_a_worktree(self):
+        # A submodule also uses a .git file, with the pointer under /modules/.
+        # It is not a worktree of anything and gets no breadcrumb from anywhere.
+        with tempfile.TemporaryDirectory() as tmp:
+            main, home = self._project(
+                Path(tmp), "vault_path: {vault}\nslug: demo\ntracker: beans\n")
+            sub = Path(tmp) / "code" / "lib"
+            sub.mkdir(parents=True)
+            (sub / ".git").write_text(f"gitdir: {main}/.git/modules/lib\n")
+            _run("session-start.sh", sub, home)
+            self.assertFalse((sub / ".claude" / "adjudant").exists())
+
+    def test_git_banner_silent_without_a_git_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project, home = self._project(
+                Path(tmp), "vault_path: {vault}\nslug: demo\ntracker: beans\n")
+            out = _run("session-start.sh", project, home).stdout
+            self.assertNotIn("- Git:", out)
+
+    def test_git_banner_silent_for_a_vault_tracked_repo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project, home = self._project(
+                Path(tmp), "vault_path: {vault}\nslug: demo\ntracker: vault\n")
+            (project / ".git").mkdir()
+            out = _run("session-start.sh", project, home).stdout
+            self.assertNotIn("- Git:", out)
+
+    def test_git_banner_runs_no_subprocess(self):
+        # A stat on .git, then printf. No `git` invocation on the session
+        # start path: the hook must cost the same in a repo with a slow
+        # filesystem as in one without.
+        text = (Path(__file__).resolve().parents[1]
+                / "hooks" / "scripts" / "session-start.sh").read_text()
+        banner = next(l for l in text.splitlines() if "- Git:" in l)
+        self.assertTrue(banner.strip().startswith("printf"), banner)
+        i = text.index(banner)
+        gate = text[max(0, i - 200):i]
+        self.assertIn('[ -e "$project_dir/.git" ]', gate)
+        self.assertNotIn("$(git ", text)
+
+    def test_git_banner_stays_within_its_token_budget(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project, home = self._project(
+                Path(tmp), "vault_path: {vault}\nslug: demo\ntracker: beans\n")
+            (project / ".git").mkdir()
+            out = _run("session-start.sh", project, home).stdout
+            line = next(l for l in out.splitlines() if "- Git:" in l)
+            self.assertLess(len(line) // 4, 120,
+                            f"git banner is ~{len(line) // 4} tok, budget 120")
+            # Self-imposed cap: one sentence per party, nothing more.
+            self.assertLess(len(line) // 4, 45,
+                            f"git banner is ~{len(line) // 4} tok, cap 45")
+
+    def test_session_start_writes_the_statusline_pointer(self):
+        # The shim at ~/.claude/statusline-v2.sh execs whatever this file
+        # names. It is refreshed from the hook's own location so a plugin
+        # update moves the bar on the next session start.
+        with tempfile.TemporaryDirectory() as tmp:
+            project, home = self._project(Path(tmp), "vault_path: {vault}\nslug: demo\n")
+            (home / ".claude").mkdir(exist_ok=True)
+            r = _run("session-start.sh", project, home)
+            self.assertEqual(r.returncode, 0)
+            pointer = home / ".claude" / "adjudant-statusline-path"
+            self.assertTrue(pointer.is_file())
+            target = Path(pointer.read_text().strip())
+            self.assertEqual(target.resolve(), (PLUGIN_ROOT / "statusline" / "statusline.sh").resolve())
+            self.assertTrue(target.is_file())
+            # Silent: no banner line mentions it.
+            self.assertNotIn("statusline", r.stdout)
+
+    def test_statusline_pointer_is_written_before_the_breadcrumb_gate(self):
+        # Machine-wide, so a project with no breadcrumb still refreshes it.
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"; (home / ".claude").mkdir(parents=True)
+            project = Path(tmp) / "code"; project.mkdir()
+            _run("session-start.sh", project, home)
+            self.assertTrue((home / ".claude" / "adjudant-statusline-path").is_file())
+
+    def test_statusline_pointer_rewritten_only_when_it_differs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project, home = self._project(Path(tmp), "vault_path: {vault}\nslug: demo\n")
+            (home / ".claude").mkdir(exist_ok=True)
+            pointer = home / ".claude" / "adjudant-statusline-path"
+            pointer.write_text("/stale/statusline.sh\n")
+            _run("session-start.sh", project, home)
+            first = pointer.stat().st_mtime_ns
+            self.assertNotIn("/stale/", pointer.read_text())
+            import time; time.sleep(0.02)
+            _run("session-start.sh", project, home)
+            self.assertEqual(pointer.stat().st_mtime_ns, first)
+
+    def test_no_dot_claude_means_no_pointer(self):
+        # The hook never creates ~/.claude; a HOME without one is not a
+        # Claude Code machine and gets nothing written.
+        with tempfile.TemporaryDirectory() as tmp:
+            project, home = self._project(Path(tmp), "vault_path: {vault}\nslug: demo\n")
+            if (home / ".claude").exists():
+                (home / ".claude").rmdir()
+            _run("session-start.sh", project, home)
+            self.assertFalse((home / ".claude" / "adjudant-statusline-path").exists())
+
     def test_colon_breadcrumb_resolves(self):
         with tempfile.TemporaryDirectory() as tmp:
             project, home = self._project(Path(tmp), "vault_path: {vault}\nslug: demo\n")
@@ -508,7 +710,7 @@ class TestUserPromptReminder(unittest.TestCase):
             r = _run("user-prompt-reminder.sh", project, home,
                      stdin=self._payload("note this decision in the vault"))
             self.assertEqual(r.returncode, 0)
-            self.assertIn("Vault not linked", r.stdout)
+            self.assertIn("No vault linked", r.stdout)
 
     def test_silent_on_unrelated_prompt(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -533,13 +735,13 @@ class TestUserPromptReminder(unittest.TestCase):
             project, home = self._unlinked_project(Path(tmp))
             r1 = _run("user-prompt-reminder.sh", project, home,
                       stdin=self._payload("vault please", session_id="s-once"))
-            self.assertIn("Vault not linked", r1.stdout)
+            self.assertIn("No vault linked", r1.stdout)
             r2 = _run("user-prompt-reminder.sh", project, home,
                       stdin=self._payload("vault again", session_id="s-once"))
             self.assertEqual(r2.stdout, "")  # suppressed for the same session
             r3 = _run("user-prompt-reminder.sh", project, home,
                       stdin=self._payload("vault anew", session_id="s-other"))
-            self.assertIn("Vault not linked", r3.stdout)  # new session fires
+            self.assertIn("No vault linked", r3.stdout)  # new session fires
 
 
 class TestZoneAwareness(unittest.TestCase):

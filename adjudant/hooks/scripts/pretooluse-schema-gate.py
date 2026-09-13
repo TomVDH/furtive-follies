@@ -102,9 +102,7 @@ def _voice_verdict(content: str, rel) -> int:
     if not hits:
         return 0
     named = ", ".join(repr(h) for h in hits[:4])
-    print(f"adjudant voice gate: {rel} carries {named}.", file=sys.stderr)
-    print("  Vault prose has no openers, closers or glazing. State the thing "
-          "and stop. See reference/voice.md.", file=sys.stderr)
+    print(f"adjudant: {rel} — {named}. Remove. (reference/voice.md)", file=sys.stderr)
     return 2
 
 
@@ -172,11 +170,8 @@ def main() -> int:
                          / "skills" / "adjudant" / "templates")
             if not templates.is_dir() or not any(templates.glob("*.md")):
                 if _targets_the_vault(raw):
-                    print("adjudant schema gate: the templates directory is "
-                          f"missing or empty at {templates}, so there is no "
-                          "schema to judge this write against. Restore the "
-                          "plugin files, or unlink the project. Refusing "
-                          "rather than letting an unjudged write look clean.",
+                    print(f"adjudant: templates missing at {templates}. "
+                          "No schema, no write. Restore the plugin or unlink.",
                           file=sys.stderr)
                     return 2
         except Exception:
@@ -237,13 +232,11 @@ def main() -> int:
         except Exception:
             broken = []
         if broken:
-            print(f"adjudant schema gate: {rel} declares `type: {declared}`, "
-                  "but that kind is missing from the schema because a template "
-                  "did not parse:", file=sys.stderr)
+            print(f"adjudant: {rel} says type `{declared}` but the template is broken:",
+                  file=sys.stderr)
             for e in broken:
                 print(f"  - {e}", file=sys.stderr)
-            print("  Fix the template, then write again. The gate refuses "
-                  "rather than let an unjudged write look clean.", file=sys.stderr)
+            print("  Fix the template first.", file=sys.stderr)
             return 2
         return _voice_verdict(content, rel)
 
@@ -254,12 +247,12 @@ def main() -> int:
     if drift.get("type_conflict"):
         hard.append("both `type:` and `node_type:` are set; keep `type:` only")
     if hard:
-        print(f"adjudant schema gate: {rel} (type: {ftype}) "
-              f"does not match the vault schema.", file=sys.stderr)
+        print(f"adjudant: {rel} (type: {ftype}) breaks the schema.",
+              file=sys.stderr)
         for h in hard:
             print(f"  - {h}", file=sys.stderr)
-        print("  Fix the frontmatter and write again. "
-              "See reference/vault-standards.md.", file=sys.stderr)
+        print("  Fix the frontmatter. (reference/vault-standards.md)",
+              file=sys.stderr)
         return 2
     # Everything else in `drift` (unknown fields, status values) is clean's and
     # check's territory. Saying so here would go to /dev/null on an exit 0.

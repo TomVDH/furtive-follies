@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Adjudant board — scaffold a self-hosted work-order kanban board for a project.
+"""Adjudant board — scaffold a self-hosted kanban board for a project.
 
 Generates `board-data.json` (the deck) + a self-contained `board.html`
 (drag-to-move, auto-saves to disk via the File System Access API). The deck can
@@ -58,7 +58,9 @@ from _vault_walk import (
 )
 
 TEMPLATE = Path(__file__).resolve().parent.parent / "skills" / "adjudant" / "templates" / "board.html"
+DASHBOARD_TEMPLATE = Path(__file__).resolve().parent.parent / "skills" / "adjudant" / "templates" / "dashboard.html"
 MARK_RE = re.compile(r"/\*BOARD_DATA_START\*/.*?/\*BOARD_DATA_END\*/", re.DOTALL)
+VERSION_RE = re.compile(r"/\*ADJ_VERSION_START\*/.*?/\*ADJ_VERSION_END\*/", re.DOTALL)
 
 DECK_VERSION = 1
 # Deck backups live in a dot-dir beside the board, one timestamped file per
@@ -69,7 +71,15 @@ BACKUP_DIR_NAME = ".bak"
 BACKUP_KEEP = 5
 from _template_schema import load_schema
 
-DEFAULT_SUBTITLE = "Work-order board"
+# No default subtitle. It used to be "Work-order board", which the template's
+# own title fell back to as well, so a board with no title of its own printed
+# the same sentence twice, one under the other. A project that wants a subtitle
+# sets one; the rest get a heading and nothing under it.
+DEFAULT_SUBTITLE = ""
+# The retired default, still sitting in every deck written before this. It is
+# treated as absent on re-seed rather than preserved, so an old board stops
+# repeating itself the first time it is refreshed.
+LEGACY_SUBTITLE = "Work-order board"
 DEFAULT_CATEGORIES = ["build", "docs", "infra", "chore"]
 
 # One status per lane, and the lanes come from the task template. Nothing here
@@ -341,6 +351,87 @@ def sync_deck_to_tasks(project_dir: Path, deck: dict[str, Any]) -> list[dict[str
     return changed
 
 
+def cards_from_beans(code_root: Path) -> list[dict[str, Any]]:
+    """Cards from `beans list --json`, or [] when Beans cannot answer.
+
+    The Beans twin of `cards_from_tasks`. Empty on failure rather than raising:
+    the caller decides whether an empty answer licenses a write, and for a
+    Beans-owned repo it never does — see `beans_block` at every write site.
+    """
+    import _beans
+
+    res = _beans.cards(code_root)
+    return res.value if res.ok else []
+
+
+def beans_block(code_root: Optional[Path]) -> str:
+    """Why a write must not proceed for this repo right now, or ''.
+
+    A Beans-owned repo whose CLI is unreachable REFUSES. It does not fall back
+    to `tasks/`, which is empty by design there: a fallback would reseed the
+    board from nothing and replace a deck of real beans with an empty board,
+    and the work would look like it had vanished.
+    """
+    import _beans
+
+    return _beans.unreachable_reason(code_root)
+
+
+def sync_deck_to_beans(code_root: Path, deck: dict[str, Any]) -> list[dict[str, Any]]:
+    """Push dragged lanes back into Beans. Returns one row per bean moved.
+
+    The Beans twin of `sync_deck_to_tasks`, and a stronger one. That function
+    needs an ancestor snapshot to tell a drag from a hand edit, because task
+    notes offer nothing better. Beans hands us `--if-match`, so divergence is
+    resolved by the store itself: a stale etag means the bean changed elsewhere
+    and this drag loses, which is a real answer rather than a guess.
+
+    A card with no etag is skipped. That is a deck seeded before the etag
+    existed, or a card added by hand on the board, and an unattended write path
+    with no preview and no backup does not guess at either.
+    """
+    import _beans
+
+    # What Beans says RIGHT NOW, read once. Without this the loop below called
+    # `beans update --status` on every card on every run, whether or not the
+    # lane had moved, which rewrote every bean file and bumped every
+    # `updated_at`. On a repo of 89 beans that is 89 subprocesses and 89 dirty
+    # files per session end, for nothing, and it destroys `updated_at` as a
+    # signal. One `list` is cheaper than one `update`, let alone N of them.
+    # A read that fails leaves `current` empty, and an empty map skips nothing,
+    # so the worst case is the old behaviour rather than a lost move.
+    current: dict[str, str] = {}
+    listing = _beans.list_beans(code_root)
+    if listing.ok:
+        for row in listing.value or []:
+            if isinstance(row, dict) and row.get("id"):
+                current[str(row["id"])] = str(row.get("status") or "").strip().lower()
+
+    moved: list[dict[str, Any]] = []
+    for card in deck.get("cards", []) or []:
+        if not isinstance(card, dict) or card.get("source") != "beans":
+            continue
+        bid = str(card.get("id") or "").strip()
+        etag = str(card.get("beansEtag") or "").strip()
+        target = str(card.get("column") or "").strip().lower()
+        if not bid or not etag or target not in _beans.STATUSES:
+            continue
+        # Already there. Writing it again would only churn the file.
+        if current.get(bid) == target:
+            continue
+        res = _beans.set_status(code_root, bid, target, etag)
+        if res.ok:
+            new = res.value if isinstance(res.value, dict) else {}
+            card["beansEtag"] = str(new.get("etag") or etag)
+            moved.append({"id": bid, "to": target, "ok": True, "reason": ""})
+        else:
+            # Reported, never swallowed. A stale etag is the interesting case:
+            # the bean moved somewhere else and the caller must re-seed rather
+            # than keep showing a lane the store rejected.
+            moved.append({"id": bid, "to": target, "ok": False, "reason": res.reason})
+    return moved
+
+
 def build_deck(
     project_dir: Path,
     *,
@@ -348,24 +439,41 @@ def build_deck(
     title: str,
     subtitle: str = DEFAULT_SUBTITLE,
     board_id: Optional[str] = None,
+    code_root: Optional[Path] = None,
 ) -> dict[str, Any]:
-    cards = cards_from_tasks(project_dir) if from_tasks else []
+    """The deck for a project. `code_root` is the CODE repo, when the caller
+    knows it: Beans lives beside the code, not in the vault, so a board over a
+    Beans-owned repo cannot be built from the vault path alone."""
+    import _beans
+
+    beans_owned = _beans.owns(code_root)
+    if beans_owned:
+        cards = cards_from_beans(code_root)  # type: ignore[arg-type]
+        columns = [dict(c) for c in _beans.COLUMNS]
+    else:
+        cards = cards_from_tasks(project_dir) if from_tasks else []
+        columns = DEFAULT_COLUMNS
     cats: list[str] = []
     for c in cards:
         if c["category"] and c["category"] not in cats:
             cats.append(c["category"])
     if not cats:
         cats = list(DEFAULT_CATEGORIES)
-    return {
+    deck: dict[str, Any] = {
         "version": DECK_VERSION,
         "boardId": board_id or project_dir.name,
         "title": title,
         "subtitle": subtitle,
         "updated": _today(),
-        "columns": DEFAULT_COLUMNS,
+        "columns": columns,
         "categories": cats,
         "cards": cards,
     }
+    if beans_owned:
+        # Recorded in the deck so a reader (and the html) can tell a Beans
+        # board from a vault board without re-reading the breadcrumb.
+        deck["tracker"] = "beans"
+    return deck
 
 
 def enumerate_projects(vault: Path) -> list[tuple[str, Path]]:
@@ -443,7 +551,11 @@ def merge_deck(existing: dict[str, Any], fresh: dict[str, Any]) -> dict[str, Any
             ancestor = ec.get("taskStatus")
             if ancestor is None or ancestor == fc.get("taskStatus"):
                 fc["column"] = ec.get("column", fc.get("column"))
-            if ec.get("notes"):
+            # A beans-seeded card's note IS the bean's body, and Beans owns
+            # it. Preserving the on-disk copy would pin an edited body to
+            # whatever the board last saw. A task-seeded card keeps its
+            # board-local note, which no other writer supplies.
+            if ec.get("notes") and fc.get("source") != "beans":
                 fc["notes"] = ec["notes"]
         merged.append(fc)
     for cid, ec in ex_ordered:
@@ -473,7 +585,7 @@ def merge_deck(existing: dict[str, Any], fresh: dict[str, Any]) -> dict[str, Any
     out["categories"] = categories
     if existing.get("title"):
         out["title"] = existing["title"]
-    if existing.get("subtitle"):
+    if existing.get("subtitle") and existing["subtitle"] != LEGACY_SUBTITLE:
         out["subtitle"] = existing["subtitle"]
     if existing.get("columns"):
         # Columns are user-ownable deck data (added/renamed lanes) — a re-seed
@@ -634,6 +746,19 @@ def _board_html_current(html_path: Path) -> bool:
     return f"{_TEMPLATE_STAMP_PREFIX}{current} -->" in html
 
 
+def plugin_version() -> str:
+    """This plugin's version from its own plugin.json, or "" when unreadable.
+
+    A board must still render for someone running the template straight out of
+    a checkout, so every failure here is empty-string, never an exception.
+    """
+    try:
+        manifest = Path(__file__).resolve().parents[1] / ".claude-plugin" / "plugin.json"
+        return str(json.loads(manifest.read_text()).get("version") or "")
+    except Exception:
+        return ""
+
+
 def render_template(deck: dict[str, Any]) -> str:
     """The full board.html text with the deck injected. Raises before any file
     is written when the template is missing/markerless, so a failed render
@@ -648,6 +773,14 @@ def render_template(deck: dict[str, Any]) -> str:
     payload_json = json.dumps(deck, indent=2).replace("<", "\\u003c")
     payload = "/*BOARD_DATA_START*/" + payload_json + "/*BOARD_DATA_END*/"
     rendered = MARK_RE.sub(lambda _m: payload, tpl, count=1)
+    # Stamp WHICH adjudant drew this page. The file is static once written, so
+    # a board scaffolded by 4.1.9 must keep saying 4.1.9 after the plugin moves
+    # on; reading the version at page load would make the stamp a guess about
+    # what is installed now, not a fact about what produced this file.
+    ver = json.dumps(plugin_version())
+    rendered = VERSION_RE.sub(
+        lambda _m: "/*ADJ_VERSION_START*/" + ver + "/*ADJ_VERSION_END*/",
+        rendered, count=1)
     # Stamp which template produced this page, so the ambient path can
     # re-emit html-only when a plugin upgrade ships a new template.
     stamp = template_hash()
@@ -744,6 +877,7 @@ def scaffold_one(
     vault_root: Optional[Path] = None,
     dest_explicit: bool = False,
     kanban: bool = False,
+    code_root: Optional[Path] = None,
 ) -> int:
     """Scaffold a single board into ``dest``. Returns a process exit code.
 
@@ -777,7 +911,16 @@ def scaffold_one(
 
     # `--force` alone over an existing board would rebuild an EMPTY starter
     # deck on top of it — total loss of cards, notes, and drag state. Refuse.
-    if force and data_path.is_file() and not from_tasks and not data:
+    #
+    # A Beans-owned repo is the exception, and the reason is in `build_deck`:
+    # it ignores `from_tasks` entirely and reads `beans list`, so there is no
+    # empty deck to protect against and `--from-tasks` names a source that is
+    # never consulted. Refusing here sent Beans users to `--force --from-tasks`,
+    # a command whose name says tasks/ and whose effect is beans.
+    import _beans
+
+    if (force and data_path.is_file() and not from_tasks and not data
+            and not _beans.owns(code_root)):
         print("error: --force without --from-tasks (or --data) would overwrite "
               "the existing board with an empty deck — refusing. "
               "Add --from-tasks to rebuild from tasks/.", file=sys.stderr)
@@ -833,13 +976,15 @@ def scaffold_one(
                 # state in first, then merge current task state into the deck
                 existing = _apply_kanban_placement(
                     existing, dest / KANBAN_FILE, data_path)
-                fresh = build_deck(project_dir, from_tasks=True, title=resolved_title, board_id=bid)
+                fresh = build_deck(project_dir, from_tasks=True, title=resolved_title,
+                                   board_id=bid, code_root=code_root)
                 deck = merge_deck(existing, fresh)
             else:
                 deck = existing            # keep the user's deck untouched
                 deck.setdefault("boardId", bid)   # backfill id for pre-0.9 decks
         else:
-            deck = build_deck(project_dir, from_tasks=from_tasks, title=resolved_title, board_id=bid)
+            deck = build_deck(project_dir, from_tasks=from_tasks, title=resolved_title,
+                              board_id=bid, code_root=code_root)
 
         # Render FIRST: a missing/markerless template must fail before any write,
         # never leaving board-data.json and board.html out of sync.
@@ -873,7 +1018,7 @@ def scaffold_one(
                           f"&file={quote(str(rel), safe='')}", file=sys.stderr)
                 except ValueError:
                     pass
-    print(f"[board] {dest}/board.html  ({len(deck.get('cards', []))} cards, {len(deck.get('columns', []))} stages)", file=sys.stderr)
+    print(f"[board] {dest}/board.html  ({len(deck.get('cards', []))} cards, {len(deck.get('columns', []))} lanes)", file=sys.stderr)
     print(str(dest / "board.html"))
     return 0
 
@@ -884,7 +1029,8 @@ def _same_deck(a: dict[str, Any], b: dict[str, Any]) -> bool:
             == {k: v for k, v in b.items() if k != "updated"})
 
 
-def ensure_board(project_dir: Path, vault_dir: Optional[Path] = None) -> str:
+def ensure_board(project_dir: Path, vault_dir: Optional[Path] = None,
+                 code_root: Optional[Path] = None) -> str:
     """Board birth + reseed for ambient callers (hooks, session-end bridge).
 
     A thin composition of the existing scaffold machinery, no new write path:
@@ -906,13 +1052,30 @@ def ensure_board(project_dir: Path, vault_dir: Optional[Path] = None) -> str:
     write (RuntimeError wrapping scaffold_one's exit code), so no caller can
     claim an effect that did not happen.
     """
-    if not cards_from_tasks(project_dir):
+    import _beans
+
+    # REFUSE AND REPORT. A Beans-owned repo whose CLI is unreachable writes
+    # nothing: `tasks/` is empty there by design, so falling back would reseed
+    # the board from nothing and make real work look like it had vanished.
+    blocked = beans_block(code_root)
+    if blocked:
+        print(f"[board] {blocked}", file=sys.stderr)
+        return "tracker-unreachable"
+
+    beans_owned = _beans.owns(code_root)
+    # The birth gate asks the owning store, not always the vault. A Beans repo
+    # has no task notes and must still get a board.
+    if beans_owned:
+        if not cards_from_beans(code_root):
+            return "no-tasks"
+    elif not cards_from_tasks(project_dir):
         return "no-tasks"
     dest = project_dir / "board"
     data_path = dest / "board-data.json"
     if not data_path.is_file():
         rc = scaffold_one(project_dir, dest, from_tasks=True, data=None,
-                          force=False, title=None, board_id=None)
+                          force=False, title=None, board_id=None,
+                          code_root=code_root)
         if rc != 0:
             raise RuntimeError(f"board scaffold failed for {project_dir} (rc {rc})")
         return "created"
@@ -935,17 +1098,30 @@ def ensure_board(project_dir: Path, vault_dir: Optional[Path] = None) -> str:
             existing, dest / KANBAN_FILE, data_path)
         fresh = build_deck(project_dir, from_tasks=True,
                            title=project_dir.name.replace("-", " ").title(),
-                           board_id=project_dir.name)
+                           board_id=project_dir.name, code_root=code_root)
         if _same_deck(merge_deck(existing, fresh), on_disk):
             # The deck is settled, but a lane a card was DRAGGED into may
             # still be unrepresented in tasks/. Reporting "no-change" while
             # the note stays stale is the lie this closes.
-            synced = sync_deck_to_tasks(project_dir, on_disk)
-            if synced:
-                for row in synced:
-                    print(f"[board] {row['file']}: status {row['from']} -> {row['to']} "
-                          f"(from the board)", file=sys.stderr)
-                return "tasks-synced"
+            if beans_owned:
+                moved = sync_deck_to_beans(code_root, on_disk)
+                if moved:
+                    for row in moved:
+                        if row["ok"]:
+                            print(f"[board] {row['id']}: status -> {row['to']} "
+                                  f"(from the board)", file=sys.stderr)
+                        else:
+                            print(f"[board] {row['id']}: NOT moved to {row['to']} "
+                                  f"— {row['reason']}", file=sys.stderr)
+                    if any(r["ok"] for r in moved):
+                        return "tasks-synced"
+            else:
+                synced = sync_deck_to_tasks(project_dir, on_disk)
+                if synced:
+                    for row in synced:
+                        print(f"[board] {row['file']}: status {row['from']} -> {row['to']} "
+                              f"(from the board)", file=sys.stderr)
+                    return "tasks-synced"
             html_path = dest / "board.html"
             if _board_html_current(html_path):
                 return "no-change"
@@ -961,17 +1137,81 @@ def ensure_board(project_dir: Path, vault_dir: Optional[Path] = None) -> str:
                 return "no-change"
             return "html-refreshed"
     rc = scaffold_one(project_dir, dest, from_tasks=True, data=None,
-                      force=False, title=None, board_id=None, vault_root=vault_dir)
+                      force=False, title=None, board_id=None, vault_root=vault_dir,
+                      code_root=code_root)
     if rc != 0:
         raise RuntimeError(f"board reseed failed for {project_dir} (rc {rc})")
     # A reseed can carry a drag too (a kanban move folded in above, or a
     # browser move on a card whose note also changed): the written deck is
     # the truth to push back into tasks/.
     try:
-        sync_deck_to_tasks(project_dir, json.loads(data_path.read_text()))
+        written = json.loads(data_path.read_text())
+        _apply_live_markers(written, project_dir)
+        _process_quick_adds(written, data_path, code_root)
+        if beans_owned:
+            sync_deck_to_beans(code_root, written)
+        else:
+            sync_deck_to_tasks(project_dir, written)
     except (OSError, json.JSONDecodeError):
         pass  # the reseed itself succeeded; a failed push-back is next run's
     return "reseeded"
+
+
+def _apply_live_markers(deck: dict, project_dir: Path) -> None:
+    """Mark cards whose bean-id appears in .adjudant-live as live."""
+    live_file = project_dir / ".adjudant-live"
+    if not live_file.is_file():
+        return
+    try:
+        live_ids = set(
+            line.strip() for line in live_file.read_text().splitlines()
+            if line.strip()
+        )
+    except OSError:
+        return
+    if not live_ids:
+        return
+    for card in deck.get("cards", []):
+        card["live"] = str(card.get("id", "")) in live_ids
+
+
+def _process_quick_adds(
+    deck: dict, data_path: Path, code_root: Optional[Path]
+) -> bool:
+    """Create beans for cards with _new flag, replace temp IDs."""
+    if code_root is None:
+        return False
+    new_cards = [c for c in deck.get("cards", []) if c.get("_new")]
+    if not new_cards:
+        return False
+    import subprocess
+    changed = False
+    for card in new_cards:
+        title = card.get("title", "Untitled")
+        cat = card.get("category", "task")
+        col = card.get("column", "todo")
+        try:
+            result = subprocess.run(
+                ["beans", "create", title, "-t", cat, "-s", col],
+                capture_output=True, text=True, timeout=10,
+                cwd=str(code_root),
+            )
+            if result.returncode == 0:
+                parts = result.stdout.strip().split()
+                if parts:
+                    card["id"] = parts[0]
+                    card.pop("_new", None)
+                    changed = True
+            else:
+                card.pop("_new", None)
+        except (OSError, subprocess.TimeoutExpired):
+            card.pop("_new", None)
+    if changed:
+        try:
+            data_path.write_text(json.dumps(deck, indent=2))
+        except OSError:
+            pass
+    return changed
 
 
 def _serve_hint(dest: Path) -> None:
@@ -979,6 +1219,20 @@ def _serve_hint(dest: Path) -> None:
 
 
 def cmd_scaffold(args: argparse.Namespace) -> int:
+    # The CODE root, so `build_deck` can see a Beans-owned repo. Every ambient
+    # caller already passed this; the verb a person types did not, so
+    # `/adjudant board` rebuilt a Beans project from tasks/ and silently
+    # replaced a deck of beans with a deck of task notes.
+    #
+    # `--all` and `--project` may target a project this cwd is not linked to,
+    # and that project's code root is not this one. Hand the root over only
+    # when the breadcrumb names the same slug.
+    import _beans
+
+    code_root = _beans.code_root_from(
+        Path(args.project_dir) if getattr(args, "project_dir", None) else None)
+    crumb_slug = _beans.breadcrumb_slug(code_root)
+
     # ── Mode: --all / --project both operate at the vault level ──
     if args.all or args.project:
         vault = _resolve_vault_root(args)
@@ -1001,7 +1255,8 @@ def cmd_scaffold(args: argparse.Namespace) -> int:
             try:
                 if scaffold_one(pdir, pdir / "board", from_tasks=args.from_tasks,
                                 data=None, force=args.force, title=None, board_id=slug,
-                                vault_root=vault, kanban=args.kanban) == 0:
+                                vault_root=vault, kanban=args.kanban,
+                                code_root=code_root if slug == crumb_slug else None) == 0:
                     ok += 1
                 else:
                     rc = 1
@@ -1024,7 +1279,8 @@ def cmd_scaffold(args: argparse.Namespace) -> int:
         rc = scaffold_one(pdir, dest, from_tasks=args.from_tasks, data=args.data,
                           force=args.force, title=args.title, board_id=args.project,
                           vault_root=vault, dest_explicit=bool(args.dest),
-                          kanban=args.kanban)
+                          kanban=args.kanban,
+                          code_root=code_root if args.project == crumb_slug else None)
         if rc == 0:
             _serve_hint(dest)
         return rc
@@ -1039,7 +1295,7 @@ def cmd_scaffold(args: argparse.Namespace) -> int:
     rc = scaffold_one(project_dir, dest, from_tasks=args.from_tasks, data=args.data,
                       force=args.force, title=args.title, board_id=None,
                       vault_root=vault_hint, dest_explicit=bool(args.dest),
-                      kanban=args.kanban)
+                      kanban=args.kanban, code_root=code_root)
     if rc == 0:
         _serve_hint(dest)
     return rc
@@ -1052,9 +1308,14 @@ def cmd_serve(args: argparse.Namespace) -> int:
     import socketserver
     directory = str(Path(args.dir).expanduser())
 
-    class _ReuseServer(socketserver.TCPServer):
+    class _ReuseServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         # Survive TIME_WAIT restarts instead of dying with a raw traceback.
         allow_reuse_address = True
+        # One thread per connection. A plain TCPServer serves one socket at a
+        # time, and a browser keeps its socket open between requests, so a
+        # second tab (or a second browser) waited on the first one forever:
+        # the board "would not load" while a Playwright tab was parked on it.
+        daemon_threads = True
 
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=directory)
     try:
@@ -1169,8 +1430,10 @@ def cmd_ensure(argv: list[str]) -> int:
     except VaultUnresolvableError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
+    import _beans
     try:
-        verdict = ensure_board(project_dir, vault_hint)
+        verdict = ensure_board(project_dir, vault_hint,
+                               code_root=_beans.code_root_from(Path(args.project_dir)))
     except Exception as e:  # a broken template/deck must not traceback at hook time
         print(f"error: {e}", file=sys.stderr)
         return 1
@@ -1182,7 +1445,7 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
     args_in = sys.argv[1:] if argv is None else argv
     if "--ensure" in args_in:
         return cmd_ensure(args_in)
-    parser = argparse.ArgumentParser(prog="board.py", description="Adjudant board — scaffold/serve a work-order kanban board.")
+    parser = argparse.ArgumentParser(prog="board.py", description="Adjudant board — scaffold/serve a kanban board.")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sc = sub.add_parser("scaffold", help="write board-data.json + a self-contained board.html")
@@ -1214,8 +1477,161 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
     st.add_argument("--dest", help="board dir (default: {project}/board)")
     st.set_defaults(func=cmd_status)
 
+    db = sub.add_parser("dashboard", help="scaffold an orchestrator dashboard")
+    db.add_argument("--project-dir", default=".", help="project root (breadcrumb-resolved; default cwd)")
+    db.add_argument("--vault", help="vault root")
+    db.add_argument("--dest", help="output dir (default: {project}/board)")
+    db.set_defaults(func=cmd_dashboard)
+
     args = parser.parse_args(args_in)
     return args.func(args)
+
+
+def cmd_dashboard(args) -> int:
+    """Scaffold the orchestrator dashboard."""
+    if not DASHBOARD_TEMPLATE.is_file():
+        print(f"dashboard template missing: {DASHBOARD_TEMPLATE}", file=sys.stderr)
+        return 1
+    code_root = Path(args.project_dir).resolve()
+    crumb = code_root / ".claude" / "adjudant"
+    vault_path = None
+    slug = None
+    if crumb.is_file():
+        for line in crumb.read_text().splitlines():
+            if line.startswith("vault_path:"):
+                vault_path = Path(line.split(":", 1)[1].strip())
+            elif line.startswith("slug:"):
+                slug = line.split(":", 1)[1].strip()
+    if not vault_path or not slug:
+        try:
+            vault_path = resolve_vault(args.vault, code_root)
+        except VaultUnresolvableError:
+            print("cannot resolve vault; pass --vault", file=sys.stderr)
+            return 1
+        if not slug:
+            slug = code_root.name
+    dest = Path(args.dest) if args.dest else None
+    if dest is None:
+        for zone in ("active", "paused", "finished", "archive", ""):
+            if zone:
+                cand = vault_path / "projects" / zone / slug
+            else:
+                cand = vault_path / "projects" / slug
+            if cand.is_dir():
+                dest = cand / "board"
+                break
+        if dest is None:
+            dest = vault_path / "projects" / "active" / slug / "board"
+    dest.mkdir(parents=True, exist_ok=True)
+    html_path = dest / "dashboard.html"
+    data_path = dest / "dashboard-data.json"
+    import shutil
+    shutil.copy2(DASHBOARD_TEMPLATE, html_path)
+    beans_data = _collect_bean_summary(code_root)
+    sessions_data = _collect_sessions(dest.parent)
+    dispatches_data = _collect_dispatches(dest.parent)
+    progress_data = _collect_progress(sessions_data, beans_data)
+    dashboard_state = {
+        "title": f"{slug} orchestrator",
+        "subtitle": "Fleet dashboard",
+        "updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "version": "",
+        "beans": beans_data,
+        "sessions": sessions_data,
+        "dispatches": dispatches_data,
+        "progress": progress_data,
+    }
+    data_path.write_text(json.dumps(dashboard_state, indent=2))
+    print(str(html_path))
+    return 0
+
+
+def _collect_bean_summary(project_dir: Path) -> dict:
+    """Read bean counts from .beans/ for the dashboard."""
+    beans_cfg = None
+    d = project_dir
+    while d != d.parent:
+        if (d / ".beans.yml").is_file():
+            beans_cfg = d / ".beans.yml"
+            break
+        d = d.parent
+    if not beans_cfg:
+        return {"open": 0, "doing": 0, "critical": 0, "bugs": 0, "milestones": 0, "epics": 0}
+    beans_dir = beans_cfg.parent / ".beans"
+    counts = {"open": 0, "doing": 0, "critical": 0, "bugs": 0, "milestones": 0, "epics": 0}
+    if not beans_dir.is_dir():
+        return counts
+    for f in beans_dir.glob("*.md"):
+        fm, _ = parse_frontmatter(f.read_text())
+        st = fm.fields.get("status", "")
+        ty = fm.fields.get("type", "")
+        pr = fm.fields.get("priority", "")
+        if st in ("todo", "in-progress", "draft"):
+            counts["open"] += 1
+            if st == "in-progress":
+                counts["doing"] += 1
+            if pr == "critical":
+                counts["critical"] += 1
+            if ty == "bug":
+                counts["bugs"] += 1
+            if ty == "milestone":
+                counts["milestones"] += 1
+            if ty == "epic":
+                counts["epics"] += 1
+    return counts
+
+
+def _collect_sessions(project_vault: Path) -> list:
+    """Read .adjudant-live files and session notes for active session list."""
+    sessions = []
+    live_file = project_vault / ".adjudant-live"
+    if live_file.is_file():
+        for line in live_file.read_text().splitlines():
+            line = line.strip()
+            if line:
+                sessions.append({"id": line, "name": line, "active": True, "beans": [], "age": ""})
+    sess_dir = project_vault / "sessions"
+    if sess_dir.is_dir():
+        today = datetime.now().strftime("%Y-%m-%d")
+        for f in sorted(sess_dir.glob(f"{today}*.md"), reverse=True):
+            name = f.stem
+            if not any(s["name"] == name for s in sessions):
+                sessions.append({"id": name, "name": name, "active": False, "beans": [], "age": "today"})
+    return sessions
+
+
+def _collect_dispatches(project_vault: Path) -> list:
+    """Read the orchestrator session log for dispatch entries."""
+    dispatches = []
+    sess_dir = project_vault / "sessions"
+    if not sess_dir.is_dir():
+        return dispatches
+    today = datetime.now().strftime("%Y-%m-%d")
+    orch_file = sess_dir / f"{today}-orchestrator.md"
+    if not orch_file.is_file():
+        return dispatches
+    import re as _re
+    content = orch_file.read_text()
+    for match in _re.finditer(r"- ts: \"(.+?)\"\s+target: \"(.+?)\"\s+(?:bean: \"(.+?)\"\s+)?excerpt: \"(.+?)\"", content):
+        dispatches.append({
+            "ts": match.group(1),
+            "target": match.group(2),
+            "bean": match.group(3) or "",
+            "excerpt": match.group(4),
+        })
+    return dispatches
+
+
+def _collect_progress(sessions: list, beans: dict) -> list:
+    """Build per-session progress from session data."""
+    progress = []
+    for s in sessions:
+        if s.get("active"):
+            progress.append({
+                "session": s["name"],
+                "beans": s.get("beans", []),
+            })
+    return progress
 
 
 if __name__ == "__main__":

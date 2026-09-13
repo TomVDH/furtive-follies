@@ -6,20 +6,15 @@ reads `last_assistant_message` on Stop and records whether it did.
 
 The value is that the rule is trivial. A model that stops honouring a one-word
 instruction it was given minutes ago has stopped honouring instructions
-generally, and everything else it says this session is worth less.
+generally, and everything else it says this session is worth less. That is the
+moment to start fresh, and nothing else tells you it has arrived.
 
-It records and says nothing. This hook emits no output on any path, and the
-per-turn hook carries no canary code at all. Both halves used to speak to the
-model: a block on the first miss, then a line every turn afterwards telling it
-to wrap up and start fresh. Both were wrong for the same reason. A reading that
-reaches the model is a reading the model acts on, so the session wound itself
-down before the user had decided anything - and coercing compliance
-manufactures the appearance of health in the one measurement built to detect
-its absence. The reading is for a person. A person decides what to do with it.
-
-`streak` is what makes the record readable. One miss among hits is noise: a
-turn that ended in a tool call, a reply the harness truncated. A run of misses
-is drift. The totals alone cannot tell them apart, so the run is counted too.
+Block once, then report. The first miss blocks and asks the model to re-read
+its instructions; every later miss is only recorded, because coercing
+compliance past that point manufactures the appearance of health. The miss is
+counted either way: if a block makes the retry succeed and the miss were
+forgotten, the counter would read clean through the degradation it exists to
+catch.
 """
 
 from __future__ import annotations
@@ -72,12 +67,12 @@ def main() -> int:
     state["turns"] = int(state.get("turns", 0)) + 1
     if present:
         state["hits"] = int(state.get("hits", 0)) + 1
-        state["streak"] = 0
     else:
         state["misses"] = int(state.get("misses", 0)) + 1
-        streak = int(state.get("streak", 0)) + 1
-        state["streak"] = streak
-        state["max_streak"] = max(int(state.get("max_streak", 0)), streak)
+
+    should_block = (not present) and not state.get("blocked")
+    if should_block:
+        state["blocked"] = True
 
     try:
         tmp = path + ".tmp"
@@ -87,6 +82,11 @@ def main() -> int:
     except OSError:
         pass                           # a full TMPDIR must not surface as a failure
 
+    if should_block:
+        print(json.dumps({
+            "decision": "block",
+            "reason": f"{word} missing. Last line, every message. Said once.",
+        }))
     return 0
 
 

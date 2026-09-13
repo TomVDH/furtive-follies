@@ -121,7 +121,7 @@ class TestIntentNag(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmpp = Path(tmp)
             self._run(tmpp)
-            self.assertIn("Intent line", self._run(tmpp))
+            self.assertIn("intent line", self._run(tmpp))
 
     def test_self_extinguishes_once_the_intent_is_written(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -134,7 +134,7 @@ class TestIntentNag(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmpp = Path(tmp)
             self._run(tmpp)
-            self.assertIn("Intent line", self._run(tmpp))
+            self.assertIn("intent line", self._run(tmpp))
             self.assertEqual(self._run(tmpp), "")
 
     def test_silent_when_no_session_note_was_resolved(self):

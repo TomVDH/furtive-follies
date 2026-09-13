@@ -39,7 +39,7 @@ zone_project_dir() {
 # Rare nouns that do not occur in technical prose. ELLIPSIS and its kind are
 # excluded deliberately: a word that can appear naturally would mask a real
 # lapse, which is the one thing this must never do.
-CANARY_WORDS="GRAMERCY QUINCUNX SPANDREL COLOPHON TREBUCHET PALIMPSEST ORRERY CLEPSYDRA CARTOUCHE SCRIPTORIUM INCUNABULA MARGINALIA PORTCULLIS BARBICAN ASTROLABE THEODOLITE VELLUM FIRKIN GAMBREL SALTIRE ZEUGMA MANTICORE"
+CANARY_WORDS="GRAMERCY QUINCUNX SPANDREL COLOPHON TREBUCHET PALIMPSEST ORRERY CLEPSYDRA CARTOUCHE SCRIPTORIUM INCUNABULA MARGINALIA PORTCULLIS BARBICAN ASTROLABE THEODOLITE VELLUM FIRKIN GAMBREL SALTIRE ZEUGMA MANTICORE CLERESTORY FINIAL LUNETTE PENDENTIVE NARTHEX TRANSEPT TYMPANUM QUOIN GNOMON ATHANOR PELORUS ARMILLARY SAMITE TABARD BALDRIC GAMBESON HAUBERK BEZANT CHIASMUS SYNECDOCHE HENDIADYS TMESIS COCKATRICE HIPPOGRIFF AMPHISBAENA SACKBUT PSALTERY REBEC THURIBLE REREDOS MISERICORD RELIQUARY MONSTRANCE KILDERKIN HOGSHEAD BEZOAR HARUSPEX WYVERN ESCUTCHEON OUBLIETTE POMANDER PAULDRON GORGET BALDACHIN CALTROP MERLON RUBRICATION PORTOLAN RHUMB CUCURBIT GARDEROBE MACHICOLATION CRENEL BATTLEMENT LANCET OGIVE VOUSSOIR TRACERY PARGETING TERRAZZO GIRANDOLE ASTRAGAL OEILLADE CENACLE PHYLACTERY SCRIPTURA SEDILIA CATHEDRA TONSURE REFECTORY BREVIARY PARDONER SENESCHAL DESTRIER CAPARISON JESSES GAUNTLET VAMBRACE SURCOAT PAVISE APSE CHANCEL CORBEL CUPOLA PILASTER SOFFIT CARYATID DONJON EMBRASURE RAVELIN GLACIS BAILEY LOGGIA PERISTYLE IMPLUVIUM HYPOCAUST PHYSICK STILLROOM HERBARIUM TRENCHER POSSET SYLLABUB MARCHPANE COMFIT PAVANE GALLIARD SALTARELLO ESTAMPIE CHASUBLE DALMATIC SURPLICE AMBO TIERCEL CREANCE EYASS MEWS DEMESNE VILLEIN FEALTY ASSIZES SCONCE COFFER EWER POSTERN GARNITURE CABOCHON INTAGLIO NIELLO CLOISONNE REPOUSSE VERDIGRIS KENNING CAESURA ENJAMBMENT VILLANELLE SESTINA GHAZAL DACTYL SPONDEE BOWSPRIT CAPSTAN HAWSER BOLLARD BINNACLE TAFFRAIL GUNWALE CARAVEL FELUCCA XEBEC PINNACE ADIT STOPE WINZE DORTER GARTH LAVABO CELLARER SHAWM CRUMHORN VIELLE CITOLE TABOR NAKER DULCIAN THEORBO FAIENCE MAJOLICA SAGGAR SENDAL FUSTIAN KERSEY BUCKRAM PILCROW OBELUS MANICULE HEDERA HALBERD GLAIVE FALCHION FLAMBERGE ARBALEST BASCINET SALLET MORION RONDEL BARDICHE QUILLON CHANFRON PEYTRAL OSSUARY CATAFALQUE CENOTAPH DOLMEN MENHIR CROMLECH CALDARIUM TEPIDARIUM FRIGIDARIUM WAINSCOT ACANTHUS SERAGLIO TRILITHON PASSANT GULES FESS VOULGE PARTISAN EPHEMERIS PLANISPHERE ADZE COIF KIRTLE POTTAGE CAUDLE ASHLAR SGRAFFITO MINARET MUQARNAS ELECTUARY THERIAC DECOCTION CATAPLASM NOSTRUM TREFOIL QUATREFOIL CINQUEFOIL CROCKET VOLUTE ABACUS ACROTERION ANTEFIX DENTIL METOPE TRIGLYPH ARCHITRAVE ENTABLATURE PLINTH STYLOBATE CREPIDOMA NAOS PRONAOS OPISTHODOMOS OCULUS LANTERN ROTUNDA SQUINCH GROIN LIERNE TIERCERON BOSKET PARTERRE KNOT ORANGERY DOVECOTE LYCHGATE SNICKET WYND GINNEL VENNEL CLOSE PEND CAUL WIMPLE FARTHINGALE CHOPINE POULAINE HENNIN BLIAUT CYCLAS SURCOTE JUPON BRIGANDINE CUIRASS SABATON SOLLERET BEVOR ARMET BARBUTE KETTLE SPANGENHELM NASAL AILETTE FAULD TASSET PLACKART BESAGEW COUTER POLEYN REREBRACE GARDEBRAS CHAMFRAIN TESTIERE CRUPPER CANTLE TRAPPER SHABRACK MARTINGALE CURVET PIAFFE LEVADE CAPRIOLE PASSADE CARACOLE MANEGE VOLTIGE HIPPODROME TILTYARD QUINTAIN PELL HOURD CHEVAUCHEE CHEVAUCHER COURSER PALFREY JENNET HACKNEY ROUNCEY SUMPTER CHARGER GABION PONTIL CLAYMORE PONIARD TARGE MISSAL GRADUAL ANTIPHON RESPONSORY"
 
 canary_start() {
   local session_id="$1" tmp="${TMPDIR:-/tmp}"
@@ -59,9 +59,7 @@ canary_start() {
   idx=$(printf '%s' "$session_id" | cksum | cut -d' ' -f1)
   n=$(( idx % $# + 1 ))
   eval "word=\${$n}"
-  # streak/max_streak, not a blocked flag: nothing blocks any more, and a run
-  # of misses is the only thing that separates drift from a single stray turn.
-  printf '{"word":"%s","turns":0,"hits":0,"misses":0,"streak":0,"max_streak":0}\n' "$word" > "$state" 2>/dev/null || return 0
+  printf '{"word":"%s","turns":0,"hits":0,"misses":0,"blocked":false}\n' "$word" > "$state" 2>/dev/null || return 0
   find "$tmp" -maxdepth 1 -name 'adjudant-canary-*.json' -mtime +1 -delete 2>/dev/null || true
   printf '%s' "$word"
 }
@@ -97,15 +95,9 @@ except Exception:
   # One rare word, stated HERE and nowhere else, printed at the end of every
   # reply and checked by the Stop hook. A model that stops honouring a one-word
   # instruction it was given minutes ago has stopped honouring instructions
-  # generally, and the rest of the session is worth less. This line is the only
-  # thing the whole mechanism ever says: a re-assertion later would keep the
-  # model printing the word and measure nothing.
-  #
-  # Nothing reports the result. The Stop hook writes the tally to
-  # $TMPDIR/adjudant-canary-{session_id}.json and stops there; no hook reads it
-  # back, and no verb prints it. That is the design, not a gap. A reading the
-  # model can see is a reading the model acts on, and it acted: it wound the
-  # session down on its own. The reading is for a person, who reads the file.
+  # generally, and the rest of the session is worth less. The per-turn hook
+  # reports a lapse but never restates the word: a re-assertion would keep the
+  # model printing it and measure nothing.
   #
   # This runs FIRST, on purpose. It used to sit inside the vault section, after
   # the breadcrumb check below, so a project with no vault linked got no word
@@ -116,8 +108,51 @@ except Exception:
   canary_word=$(canary_start "$session_id") || true
   if [ -n "${canary_word:-}" ]; then
     printf -- '## Adjudant\n\n'
-    printf -- '- Session canary: end every message with `%s` on its own line. It is a drift check, so do not explain it or mention it otherwise.\n' "$canary_word"
+    printf -- '- Session canary: end every message with `%s` on its own line. It is a drift check, so do not explain it or mention it otherwise. One exception: when a hook line beginning with `[adjudant] ☾` appears, the user is saying goodbye; sign off under the dream moon, ☾ on its own line, then the word and that meaning in one or two sentences, then end with the word as always.\n' "$canary_word"
     CANARY_HEADER_PRINTED=1
+  fi
+
+  # --- 0b. Statusline pointer ---
+  # The statusline ships in this plugin (statusline/statusline.sh) and the
+  # shim at ~/.claude/statusline-v2.sh execs whatever path this file names.
+  # The plugin's install path is versioned, so the pointer is refreshed here,
+  # once per session start, from this script's own location: after a plugin
+  # update the next session moves the bar to the new version with no other
+  # step. Machine-wide, so it runs before the breadcrumb gate; silent, so it
+  # costs no banner tokens; written only when the content differs, so an
+  # unchanged pointer is one read and no write. Never fails the hook.
+  if [ -d "$HOME/.claude" ]; then
+    local _sl_path _sl_pointer _sl_cur=""
+    _sl_path=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../statusline" 2>/dev/null && pwd || true)
+    if [ -n "$_sl_path" ] && [ -f "$_sl_path/statusline.sh" ]; then
+      _sl_pointer="$HOME/.claude/adjudant-statusline-path"
+      [ -r "$_sl_pointer" ] && IFS= read -r _sl_cur < "$_sl_pointer" || true
+      if [ "$_sl_cur" != "$_sl_path/statusline.sh" ]; then
+        printf '%s\n' "$_sl_path/statusline.sh" > "$_sl_pointer" 2>/dev/null || true
+      fi
+    fi
+  fi
+
+  # --- 0b. A linked worktree has no breadcrumb of its own ---
+  # .claude/adjudant is git-ignored, so `git worktree add` never writes one and
+  # every reader here, in the other hooks and in the statusline went quiet
+  # there. The worktree's .git is a FILE holding
+  # "gitdir: <main>/.git/worktrees/<name>", which names the main checkout, so
+  # the worktree can find its own provenance without help. Link, do not copy:
+  # a later `connect` on main then flows through. One stat and one read
+  # builtin; no git call, and a submodule (gitdir under /modules/) is left be.
+  if [ ! -e "$project_dir/.claude/adjudant" ] && [ -f "$project_dir/.git" ]; then
+    local _wt_key _wt_ptr _wt_main
+    read -r _wt_key _wt_ptr < "$project_dir/.git" 2>/dev/null || true
+    case "$_wt_ptr" in
+      *"/worktrees/"*)
+        _wt_main="${_wt_ptr%/.git/worktrees/*}"
+        if [ -f "$_wt_main/.claude/adjudant" ]; then
+          mkdir -p "$project_dir/.claude" 2>/dev/null \
+            && ln -s "$_wt_main/.claude/adjudant" "$project_dir/.claude/adjudant" 2>/dev/null \
+            || true
+        fi ;;
+    esac
   fi
 
   # --- 1. Read breadcrumb ---
@@ -132,9 +167,11 @@ except Exception:
   # not leak \r into paths/slugs (it used to create phantom `slug\r/` dirs).
   vault_path=$(sed -n 's/^vault_path[:=][[:space:]]*//p' "$breadcrumb" 2>/dev/null | head -n1 | tr -d '\r' || true)
   slug=$(sed -n 's/^slug[:=][[:space:]]*//p' "$breadcrumb" 2>/dev/null | head -n1 | tr -d '\r' || true)
-  local voice_knob advisor_knob
+  local voice_knob advisor_knob tracker_knob orchestrator_knob
   voice_knob=$(sed -n 's/^voice[:=][[:space:]]*//p' "$breadcrumb" 2>/dev/null | head -n1 | tr -d '\r' || true)
   advisor_knob=$(sed -n 's/^advisor[:=][[:space:]]*//p' "$breadcrumb" 2>/dev/null | head -n1 | tr -d '\r' || true)
+  tracker_knob=$(sed -n 's/^tracker[:=][[:space:]]*//p' "$breadcrumb" 2>/dev/null | head -n1 | tr -d '\r' || true)
+  orchestrator_knob=$(sed -n 's/^orchestrator[:=][[:space:]]*//p' "$breadcrumb" 2>/dev/null | head -n1 | tr -d '\r' || true)
 
   [ -z "$slug" ] && return 0
   # The breadcrumb is a REPO-COMMITTED file: a cloned repo can carry any slug.
@@ -215,6 +252,37 @@ print(v or "")' "$CLAUDE_PLUGIN_ROOT/scripts" "$project_dir" 2>/dev/null || true
   case "${advisor_knob:-off}" in
     on|true|1|yes)
       printf -- '- Advisor: on. Load `reference/advisor.md` now and follow it: notice tasks, gaps, gaffes, and stale context while working. Urgent findings surface inline; the rest go to the board or the next status report. Run a context pulse at resume.\n'
+      ;;
+    *) : ;;
+  esac
+
+  # Orchestrator mode. `orchestrator: on` in the breadcrumb. Plan, delegate,
+  # track with beans, write to vault. Direct code only under 10 lines.
+  case "${orchestrator_knob:-off}" in
+    on|true|1|yes)
+      printf -- '- Orchestrator: active. Plan, delegate, track with beans. Direct code only under 10 lines. Load `reference/orchestrate.md` for the full contract. Poll `ListAgents` now and report what sessions exist.\n'
+      ;;
+    *) : ;;
+  esac
+
+  # Beans banner. `tracker: beans` is a fact about the REPO, read straight out
+  # of the breadcrumb: no `_beans` import and no subprocess, because validator
+  # 27 keeps the binary off every hook path and a fact this cheap does not need
+  # one. The banner routes to `beans prime` rather than restating it: that
+  # command is the tracker's own guide AND it is generated from the project's
+  # own .beans.yml, so the types, statuses and priorities it lists are this
+  # repo's. A copy pasted into adjudant would be stale for beans and wrong for
+  # any project configured differently. Same 120-token budget as the others.
+  case "${tracker_knob:-vault}" in
+    beans)
+      printf -- '- Beans: this repo tracks work items in beans, not in the vault and not in a todo list. Run `beans prime` now and follow it. Find or create a bean before starting work, keep its checklist current as you go, and commit the bean file alongside the code.\n'
+      # The branch rule is keyed on bean type, so it rides the beans knob.
+      # Git-gated by a stat, never a `git` call: in a linked worktree .git is
+      # a file, so -e and not -d. One line; the full contract is
+      # reference/repo-standards.md "Git practice" and status reports drift.
+      if [ -e "$project_dir/.git" ]; then
+        printf -- '- Git: pull --ff-only first. Feature beans: worktree on `feature/<bean-id>`, merge by PR. Tasks and bugs: commit on main.\n'
+      fi
       ;;
     *) : ;;
   esac

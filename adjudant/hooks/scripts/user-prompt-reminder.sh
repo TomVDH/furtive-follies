@@ -35,7 +35,38 @@ intent_nag() {
   find "$tmp" -maxdepth 1 \( -name 'adjudant-intent-*' -o -name 'adjudant-turns-*' \
        -o -name 'adjudant-session-*' \) -mtime +1 -delete 2>/dev/null || true
   { : > "$fired"; } 2>/dev/null || true
-  printf -- '[adjudant] Intent line is still the placeholder in `%s`: replace it with one plain sentence now that the session has a purpose, then leave it frozen.\n' "$session_file"
+  printf -- '[adjudant] `%s`: intent line is a placeholder. Write it.\n' "$session_file"
+}
+
+# The canary's reporting half. SessionStart names the codeword once; this reads
+# the tally the Stop hook keeps and speaks only after a miss. It must NEVER
+# print the codeword itself: restating the instruction would keep the model
+# obeying it and the check would measure nothing (test_canary asserts this).
+canary_report() {
+  local session_id="$1" tmp="${TMPDIR:-/tmp}"
+  [ -n "$session_id" ] || return 0
+  case "$session_id" in *[!A-Za-z0-9._-]*) return 0 ;; esac
+  local state="$tmp/adjudant-canary-${session_id}.json"
+  [ -f "$state" ] || return 0
+  local scripts_dir
+  scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  python3 - "$state" "$scripts_dir" <<'CANARY_PY' 2>/dev/null || true
+import json, sys, os
+sys.path.insert(0, sys.argv[2])
+from _canary_swan import SWAN
+try:
+    s = json.load(open(sys.argv[1]))
+except Exception:
+    raise SystemExit(0)
+misses, turns = int(s.get("misses", 0)), int(s.get("turns", 0))
+word = s.get("word", "")
+if misses and turns > 0:
+    if misses / turns > 0.75 and word in SWAN:
+        print(f"[adjudant] Canary: {misses}/{turns} missed. "
+              f"☾ {SWAN[word]}.")
+    else:
+        print(f"[adjudant] Canary: {misses}/{turns} missed. Wrap up.")
+CANARY_PY
 }
 
 main() {
@@ -66,6 +97,39 @@ except Exception:
   fi
   [ -z "$prompt" ] && return 0
 
+  # Every turn, linked project or not: drift is a property of the session, not
+  # of the vault. Silent while healthy, the rule the statusline applies to its
+  # own segments - a signal that never varies carries no information.
+  canary_report "$session_id"
+
+  # Graceful sign-off: on a wrap-up phrase, print the etymology as a farewell.
+  # "wrap the convo" and "wrap this session" said goodbye and got nothing
+  # (2026-09-13): the list knew only "wrap up". A wrap that names the thing
+  # being wrapped counts too, and so does "let's wrap" on its own; "wrap this
+  # in a div" still does not.
+  if printf '%s' "$prompt" | grep -qiE '\b(let.?s|we.?ll|time to)\s+wrap\b|\bwrap(ping)?\s+((it|this|things)\s+)?up\b|\bwrap(ping)?\s+(it|this|the|our|up the)\s+(convo|conversation|session|chat|talk)\b|\bwinding down\b|\bsigning off\b|\bdone for (now|today|tonight)\b|\bthat.s (it|all)\b|\bwe.re done\b'; then
+    local tmp="${TMPDIR:-/tmp}" canary_state=""
+    if [ -n "$session_id" ] && [ "$session_id" != "-" ]; then
+      canary_state="$tmp/adjudant-canary-${session_id}.json"
+      if [ -f "$canary_state" ]; then
+        local sd
+        sd="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        python3 - "$canary_state" "$sd" <<'SWAN_PY' 2>/dev/null || true
+import json, sys
+sys.path.insert(0, sys.argv[2])
+from _canary_swan import SWAN
+try:
+    s = json.load(open(sys.argv[1]))
+except Exception:
+    raise SystemExit(0)
+word = s.get("word", "")
+if word in SWAN:
+    print(f"[adjudant] ☾ {SWAN[word]}.")
+SWAN_PY
+      fi
+    fi
+  fi
+
   # The two nags have inverse audiences: a linked project can never need the
   # connect reminder, and an unlinked one has no session note to have an
   # intent line in.
@@ -90,7 +154,7 @@ except Exception:
     find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'adjudant-reminder-*' -mtime +1 -delete 2>/dev/null || true
     # brace group: silence stderr BEFORE the > open (unwritable TMPDIR)
     if [ -n "$marker" ]; then { : > "$marker"; } 2>/dev/null || true; fi
-    printf '[adjudant] Vault not linked for this project. Run `/adjudant connect` to capture this work in the vault.\n'
+    printf '[adjudant] No vault linked. Run `/adjudant connect`.\n'
   fi
 }
 

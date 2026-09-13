@@ -34,6 +34,7 @@ when absent.
 8. Errors matter-of-fact: cause and fix, no drama.
 9. Cap lists at five; past five, split into now versus later.
 10. No preamble, no recap, no pleasantries.
+11. Direct address. No passive voice, no ceremony, no copy-speak.
 
 ## Shape phrases
 

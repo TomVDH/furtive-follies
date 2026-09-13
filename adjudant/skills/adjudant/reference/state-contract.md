@@ -1,14 +1,24 @@
 # State contract
 
-Files and lines outside adjudant that read adjudant's output. Anything listed
-here is a published interface: moving or reformatting it silently breaks a
-consumer that has no test in this repo.
+Files and lines that read adjudant's output without going through its Python
+layer. Anything listed here is a published interface: moving or reformatting
+it silently breaks a consumer that parses files, not functions.
 
 ## Consumer: the statusline
 
-`~/.claude/statusline-v2.sh`, a symlink into
-`~/Library/Mobile Documents/com~apple~CloudDocs/Projects/IDE/claude/`. It lives
-in iCloud and syncs to both machines, so it is edited once and lands on both.
+`statusline/statusline.sh`, shipped inside this plugin since 4.1.19 and
+covered by `scripts/test_statusline.py`. On a machine it is reached through
+`~/.claude/statusline-v2.sh`, a shim (`statusline/shim.sh`, installed once by
+`statusline/install.sh`) that execs the path in
+`~/.claude/adjudant-statusline-path`, which the SessionStart hook refreshes
+to the installed plugin copy at every session start. The bar therefore
+follows plugin updates with no other step. `ADJUDANT_STATUSLINE=<path>`
+overrides the pointer, which is how a checkout of this repo drives the bar
+with its working copy while the script is being edited.
+
+The script reads files, not Python, on purpose: it repaints several times a
+second and must not pay an interpreter start. That is why this table exists
+even though the consumer now lives in the same tree.
 
 Paths below are relative to the vault project directory unless they say
 otherwise. `{project}` is that directory, `{repo}` is the code root, `{slug}`
@@ -19,6 +29,7 @@ probing, not read from the breadcrumb.
 | It reads | For |
 |---|---|
 | `{repo}/.claude/adjudant`, `vault_path:` and `slug:` | vault location, project name |
+| `{repo}/.git` when it is a file: `gitdir: <main>/.git/worktrees/<name>` | a linked worktree; the breadcrumb is then read from `<main>/.claude/adjudant` when the worktree has none, and the SessionStart hook links it in |
 | `{repo}/.claude/adjudant`, `stale_after_days:` | the threshold for both the lifecycle hint and the dream age (30 when absent or non-numeric) |
 | `{vault}/projects/{active\|paused\|finished\|archive}/{slug}/` (dir exists) | lifecycle folder, rendered as a badge for anything but `active` |
 | `{vault}/projects/{slug}/`, `{vault}/projects/_fridge/{slug}/`, `{vault}/projects/_archive/{slug}/` | pre-v3 shapes, probed after the four; `_fridge` reads as paused, `_archive` as archive |
@@ -34,6 +45,8 @@ probing, not read from the breadcrumb.
 | `tasks/*.md` mtimes against the deck's | board lag |
 | newest `dreams/{YYYY-MM-DD}.md` or `dreams/{YYYY-MM-DD}-dream.md`, the filename only | dream age |
 | `$TMPDIR/adjudant-task-ledger-{session_id}.jsonl`, `.id` and `.status` per line | in-flight task count |
+| `{beans dir}/*.md` frontmatter (`status:`, `type:`, `priority:`, `parent:`), the id from the filename | the beans slot: open, in motion, closeable epics and milestones, bugs, critical; the in-progress feature ids behind the branch-rule glyph; the total behind the delta flash |
+| `~/.claude/statusline-cache/beans-{key}`, one line `open doing total flash_ts flash_text` | the statusline's own memory of the last counts per beans dir, so a change flashes `+N` / `−N` / `✓N` / `↺N` for eight seconds and then settles. Written by the bar, read by the bar; delete it and the next paint records silently |
 
 ## Rules
 
@@ -61,8 +74,10 @@ probing, not read from the breadcrumb.
    `[A-Za-z0-9_.-]` collapsed to a hyphen, ends trimmed, empty becoming
    `project`. Adding a kind is safe; renaming one is not. Two paths are named
    exceptions to it — see below — and they are the only two.
-5. Anything added to this table needs the statusline updated in the same
-   change. Nothing in this repo can catch that break.
+5. Anything added to this table needs `statusline/statusline.sh` and
+   `scripts/test_statusline.py` updated in the same change. The tests drive
+   the script against real files, so a moved path that is covered fails the
+   build; one that is not covered still breaks silently. Cover it.
 6. The lifecycle folder is the project's lifecycle state; `zone_of()` is
    authoritative and nothing compares it against a declared status anymore.
    A v3 brief writes no `status:` field. Where one survives from before v3,

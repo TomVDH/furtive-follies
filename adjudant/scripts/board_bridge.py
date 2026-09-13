@@ -28,9 +28,25 @@ survived the minimal YAML parser and poisoned card ids.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import re
 import sys
+import time
 from datetime import datetime
+from pathlib import Path
+
+
+def _ops_flash(msg: str, project_dir: str) -> None:
+    cache = Path.home() / ".claude" / "statusline-cache"
+    if not cache.is_dir():
+        return
+    key = str(project_dir).replace("/", "_").replace(" ", "-")[-120:]
+    try:
+        (cache / f"ops-{key}").write_text(f"{int(time.time())} {msg}\n")
+    except OSError:
+        pass
+import tempfile
 from typing import Optional
 
 from _render import render
@@ -67,6 +83,115 @@ def render_task_note(title: str, description: str = "") -> str:
     return render("task", {"created": today, "updated": today}, body)
 
 
+def _beans_snapshot(code_root: Path) -> dict[str, str]:
+    """Read current bean states: {bean_id: status}."""
+    beans_dir = code_root / ".beans"
+    if not beans_dir.is_dir():
+        return {}
+    snap: dict[str, str] = {}
+    for f in beans_dir.glob("*.md"):
+        bid = f.stem.split("--")[0]
+        status = ""
+        in_fm = False
+        for line in f.read_text(errors="replace").splitlines():
+            if line.strip() == "---":
+                if in_fm:
+                    break
+                in_fm = True
+                continue
+            if in_fm and line.startswith("status:"):
+                status = line.split(":", 1)[1].strip()
+                break
+        if bid and status:
+            snap[bid] = status
+    return snap
+
+
+def _snapshot_path(session_id: str) -> Path:
+    return Path(tempfile.gettempdir()) / f"adjudant-beans-snap-{session_id}.json"
+
+
+def bean_diff(code_root: Path, session_id: str = "") -> Optional[str]:
+    """Compare current beans to session-start snapshot. Return a summary line
+    like 'Beans: +3, ✓2, moved proj-xyz todo->doing' or None if no change.
+    On first call per session, saves the snapshot and returns None."""
+    if not session_id:
+        return None
+
+    current = _beans_snapshot(code_root)
+    snap_file = _snapshot_path(session_id)
+
+    if not snap_file.exists():
+        try:
+            snap_file.write_text(json.dumps(current))
+        except OSError:
+            pass
+        return None
+
+    try:
+        prev = json.loads(snap_file.read_text())
+    except (OSError, json.JSONDecodeError):
+        prev = {}
+
+    created = [b for b in current if b not in prev]
+    closed = [b for b in current
+              if b in prev and current[b] in ("completed", "scrapped")
+              and prev[b] not in ("completed", "scrapped")]
+    moved = [(b, prev[b], current[b]) for b in current
+             if b in prev and current[b] != prev[b]
+             and current[b] not in ("completed", "scrapped")
+             and prev[b] not in ("completed", "scrapped")]
+
+    if not created and not closed and not moved:
+        return None
+
+    parts = []
+    if created:
+        parts.append(f"+{len(created)}")
+    if closed:
+        parts.append(f"✓{len(closed)}")
+    for bid, old, new in moved[:3]:
+        parts.append(f"moved {bid} {old}->{new}")
+
+    try:
+        snap_file.write_text(json.dumps(current))
+    except OSError:
+        pass
+
+    return "Beans: " + ", ".join(parts)
+
+
+def _append_to_session_note(breadcrumb_dir: Path, line: str) -> None:
+    """Append a line to today's session note in the vault."""
+    bc = breadcrumb_dir / ".claude" / "adjudant"
+    if not bc.is_file():
+        return
+    info: dict[str, str] = {}
+    for raw in bc.read_text().splitlines():
+        raw = raw.strip()
+        if ":" in raw:
+            k, v = raw.split(":", 1)
+            info[k.strip()] = v.strip()
+    vault_path = info.get("vault_path", "")
+    slug = info.get("slug", "")
+    if not vault_path or not slug:
+        return
+    vp = Path(vault_path).expanduser()
+    if not vp.is_dir():
+        return
+    today = datetime.now().strftime("%Y-%m-%d")
+    for zone in ("active", "paused", "finished", "archive", ""):
+        sess_dir = vp / "projects" / (zone + "/" if zone else "") / slug / "sessions"
+        note = sess_dir / f"{today}.md"
+        if note.is_file():
+            try:
+                with note.open("a") as f:
+                    f.write(f"- {datetime.now().strftime('%H:%M')} · {line}\n")
+            except OSError:
+                pass
+            return
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     p = argparse.ArgumentParser(
         prog="board_bridge.py",
@@ -86,12 +211,26 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(f"error: project not found: {project_dir} (run /adjudant connect first)", file=sys.stderr)
         return 1
 
+    # Beans lives beside the code, and --project-dir may name either side of
+    # the link, so the code root is found by the breadcrumb rather than assumed.
+    import _beans
+    code_root = _beans.code_root_from(Path(args.project_dir))
+
     try:
-        verdict = ensure_board(project_dir)
+        verdict = ensure_board(project_dir, code_root=code_root)
     except Exception as e:  # a broken template/deck must not traceback at hook time
         print(f"error: {e}", file=sys.stderr)
         return 1
     print(verdict)
+    if verdict in ("reseeded", "created", "tasks-synced", "html-refreshed"):
+        _ops_flash(f"board: {verdict}", args.project_dir)
+
+    session_id = os.environ.get("CLAUDE_SESSION_ID", "")
+    if session_id and code_root:
+        diff_line = bean_diff(code_root, session_id)
+        if diff_line:
+            _append_to_session_note(Path(args.project_dir), diff_line)
+
     return 0
 
 

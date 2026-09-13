@@ -76,7 +76,9 @@ Results land under `synced.steps`; anything the phase could not do lands in
   `{signal, file?, detail?, …}`
 - `orientation` — momentum: `project`, `purpose`, `freshness` (traffic light and
   age from real activity), `were_doing`, `whats_done`, `board`, `repo` (branch,
-  dirty count, recent commits), `server` (dev servers from `.claude/launch.json`,
+  dirty count, recent commits, and `practice`: the main checkout's branch and
+  dirt, every worktree, every `feature/<bean-id>` branch, and `drift` against
+  the branch rule in `repo-standards.md`), `server` (dev servers from `.claude/launch.json`,
   probed with a 0.6s HEAD; down is an answer, never an error), `capabilities`,
   `next_step`, `open_signals`, `status`
 - `compliance` — `project`, `counts`, `recent`, `handoff`, `drift_signal`,
@@ -166,6 +168,24 @@ learn to route around.
 | `verified-docs-only` | `verified_by: docs` — a vendor's word, never a live probe. | a bare date threw away how it was checked |
 | `project-zone-drift` | A project in `active/` with no session for 30 days. Names the `--move` call that fixes it. | the lifecycle move nothing ever asked about |
 
+### Git practice signals
+
+The branch rule (`repo-standards.md`, "Git practice") is observed, never
+enforced: nothing here blocks a commit. `orientation.repo.practice` judges
+the MAIN checkout even when status runs inside a worktree, and needs the
+bean rows to know which branches a bean expects; without them only the two
+pure git facts fire. Only `feature` beans own a branch. Epics are containers,
+tasks and bugs ride main or their in-progress parent's branch.
+
+| Kind | Band | Fires on |
+|---|---|---|
+| `git-worktree-stale` | going-stale | A worktree on `feature/<id>` whose bean is completed or scrapped. Names the remove and delete. |
+| `git-branch-stale` | going-stale | A `feature/<id>` branch with no worktree whose bean is completed or scrapped. |
+| `git-main-off-main` | worth-a-look | The main checkout is on anything but `main`. Work belongs on a branch in a worktree. |
+| `git-branch-missing` | worth-a-look | An in-progress feature bean with no `feature/<id>` branch. Names the `git worktree add`. |
+| `git-branch-no-worktree` | worth-a-look | A `feature/<id>` branch for an open bean with no worktree behind it. |
+| `git-dirty-main` | worth-a-look | The main checkout is dirty while a feature bean is in progress. Noisy by design in a mixed session; it is a question, not a defect. |
+
 Which kinds exist is not configurable, and the list does not grow on a hunch.
 Two consecutive dream reports dismissed the same naming finding in identical
 words, which is the tool spending the same hour twice. There is no
@@ -185,7 +205,8 @@ applying to that kind, with no Python edit.
 
 {purpose}
 Last session {whats_done.last_session} · {counts summary} · NEXT: {next_step}
-{orientation.repo.branch}, {dirty} dirty{" · " + board.line if board.present}
+{orientation.repo.branch}, {dirty} dirty{" · " + str(len(repo.practice.worktrees) - 1) + " worktrees" if repo.practice.present}{" · " + board.line if board.present}
+{one line per repo.practice.drift entry as "{signal}: {detail}"; skip when empty}
 
 ## Wrong now
 

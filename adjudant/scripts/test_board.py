@@ -199,7 +199,11 @@ class TestDeckFields(unittest.TestCase):
             deck = build_deck(Path(tmp) / "my-proj", from_tasks=False, title="My Proj")
             self.assertEqual(deck["version"], DECK_VERSION)
             self.assertEqual(deck["boardId"], "my-proj")  # defaults to dir name
-            self.assertEqual(deck["subtitle"], "Work-order board")
+            # No default subtitle: it used to be "Work-order board", which is
+            # also what the template's title fell back to, so a board with no
+            # title of its own printed the same sentence twice, one under the
+            # other.
+            self.assertEqual(deck["subtitle"], "")
             self.assertTrue(deck["updated"])  # stamped with a date
             self.assertEqual(deck["title"], "My Proj")
 
@@ -1665,6 +1669,703 @@ class TestTemplateIsOperableWithoutAMouse(unittest.TestCase):
         self.assertIn('el("button","k"', body.replace(", ", ","))
         self.assertIn('setAttribute("aria-pressed"', body.replace(", ", ","))
 
+    def test_each_figure_is_two_drawings_and_the_scheme_picks_one(self):
+        # The dark scheme used to be the light drawing with its ink swapped by a
+        # custom property, which flattened an illustration into a silhouette.
+        # The refined artwork of 4.1.27 ships an inverse drawing per figure,
+        # the head as a pale line on the ground, so each figure carries a
+        # light and a dark drawing and paintMark picks by scheme. No plaque,
+        # no raster, no property: the paths are the page's own.
+        self.assertNotIn(".brand-mark{background:", self.src.replace(" ", ""))
+        self.assertNotIn("imgDark", self.src)
+        self.assertNotIn("var(--mark-ink", self.src)
+        self.assertNotIn("--mark-ink:", self.src)
+        for who in ("him", "her"):
+            self.assertRegex(self.src, who + r":\{label:\"[^\"]+\",band:\[\"#[0-9a-f]+\"[^\]]*\],w:[\d.]+,d:\"[^\"]+\",\s*light:\{vh:[\d.]+,fig:\[", f"{who} has no light drawing")
+            self.assertRegex(self.src, who + r":\{[^\n]*\n\s*light:\{[^\n]*\n\s*dark:\{vh:[\d.]+,fig:\[", f"{who} has no dark drawing")
+        fn = _js_function(self.src, "paintMark").replace(" ", "")
+        self.assertIn("constart=DARK_SCHEME.matches?m.dark:m.light;", fn)
+        # the figure is held, so a scheme flip repaints the same face
+        self.assertIn("if(!markFigure)markFigure=pickMark();", fn)
+        self.assertIn('DARK_SCHEME.addEventListener("change",paintMark)', self.src)
+        # the inverse drawings carry no invisible silhouette and no crown flecks
+        self.assertNotIn('["none",', self.src)
+        self.assertNotIn('["#cd072e",', self.src)
+
+    def test_the_wipe_is_one_timeline_so_it_is_actually_a_reveal(self):
+        # A wipe is one constraint: the width of wordmark showing must EQUAL the
+        # width the band has vacated. The first cut ran the two on different
+        # curves, so the word was 90% drawn a fifth of a second in, sitting
+        # under an opaque bar that had not reached it. Nothing revealed
+        # anything. The pair only holds if they share duration, delay, driver
+        # and keyframe split, so that is what this pins.
+        band = re.search(r"animation:brand-unfurl ([^;}]+)", self.src)
+        word = re.search(r"animation:brand-uncover ([^;}]+)", self.src)
+        self.assertIsNotNone(band, "band animation missing")
+        self.assertIsNotNone(word, "wordmark animation missing")
+        self.assertEqual(band.group(1).strip(),
+                         word.group(1).strip(),
+                         "the band and the wordmark must run on one timeline")
+        # both keyframe sets split at the same instant and share the exit curve
+        for name in ("brand-unfurl", "brand-uncover"):
+            block = re.search(name + r"\{(.*?)\n  \}", self.src, re.S)
+            self.assertIsNotNone(block, name + " keyframes missing")
+            self.assertIn("44%{", block.group(1).replace(" ", ""))
+            self.assertIn("cubic-bezier(.45,.05,.25,1)", block.group(1).replace(" ", ""))
+
+    def test_the_one_entrance_animation_still_yields_to_reduced_motion(self):
+        rm = self.src[self.src.index("prefers-reduced-motion"):]
+        block = rm[:rm.index("\n  }")]
+        # the clip-path that hides the wordmark has to be lifted, not just the
+        # animation stopped, or the mark would never appear at all
+        self.assertIn("animation:none", block.replace(" ", ""))
+        self.assertIn("clip-path:none", block.replace(" ", ""))
+        self.assertIn(".brand-band{display:none}", block.replace(" ", ""))
+
+    def test_the_version_is_stamped_at_scaffold_time_not_read_at_load(self):
+        # The file is static once written. A board scaffolded by 4.1.9 must keep
+        # saying 4.1.9 after the plugin moves on, or the stamp is a guess about
+        # what is installed now rather than a fact about what made this page.
+        self.assertIn("ADJ_VERSION_START", self.src)
+        self.assertIn("ADJ_VERSION_END", self.src)
+        self.assertIn('id="brandVer"', self.src)
+        self.assertIn("ADJUDANT_VERSION", _js_function(self.src, "paintMark"))
+
+    def test_the_version_tag_is_faint_but_not_unreadable(self):
+        # 9.5px is body size for contrast, so the floor is 4.5:1. Stacking
+        # opacity on --text-faint measured 3.74:1 on dark and 2.93:1 on light.
+        m = re.search(r"\.brand-ver\{(.*?)\}", self.src, re.S)
+        self.assertIsNotNone(m, ".brand-ver rule missing")
+        rule = m.group(1)
+        self.assertIn("var(--text-faint)", rule)
+        self.assertNotIn("opacity:", rule.replace(" ", ""))
+
+    def test_a_type_key_carries_a_shape_not_only_a_hue(self):
+        # Colour alone excluded anyone with a colour vision deficiency from
+        # telling one type key from another. ColorSym gives each palette hue a
+        # symbol, so the same fact is carried in shape as well.
+        masks = re.findall(r'\.sym\[data-sym="(\d+)"\]\{', self.src)
+        self.assertEqual(8, len(masks), "one symbol per palette hue")
+        self.assertEqual(sorted(int(m) for m in masks), list(range(1, 9)),
+                         "data-sym 1..8, assigned by catSym beside the hue")
+        # assigned in the same pass as the hue, so a card and its key agree
+        norm = _js_function(self.src, "normalize").replace(" ", "")
+        self.assertIn("catSyms[n]=TYPE_BOOK[n].sym", norm)
+        self.assertIn("catSyms[n]=freeSyms.length?freeSyms[i%freeSyms.length]", norm)
+
+    def test_the_beans_vocabulary_has_fixed_seats_hues_and_marks(self):
+        # A deck lists its types in order of first appearance, so the rail's
+        # order and every type's hue and mark changed from board to board.
+        # Chosen with the user 2026-09-12: task blue with the chevron, feature
+        # green, bug red with the ringed dot, epic purple with the task's old
+        # mark, milestone yellow keeping its own. Ordinary work first,
+        # containers last. Unknown types follow, on the free hues and marks.
+        m = re.search(r"const TYPE_BOOK=\{(.*?)\};", self.src, re.S)
+        self.assertIsNotNone(m, "TYPE_BOOK missing")
+        book = m.group(1)
+        order = re.findall(r"^\s*(\w+):\s*\{", book, re.M)
+        self.assertEqual(["task", "feature", "bug", "epic", "milestone"], order)
+        syms = dict(re.findall(r"(\w+):\s*\{c:\"[^\"]+\",\s*sym:(\d)\}", book))
+        self.assertEqual({"task": "4", "feature": "3", "bug": "5", "epic": "2", "milestone": "1"}, syms)
+        self.assertEqual(5, len(set(syms.values())), "the marks stay a bijection")
+        hues = dict(re.findall(r"(\w+):\s*\{c:\"oklch\([\d.]+% [\d.]+ (\d+)\)\"", book))
+        self.assertEqual({"task": "262", "feature": "125", "bug": "15", "epic": "310", "milestone": "88"}, hues)
+        # every book hue is in the palette, so the 3:1 test covers it
+        pal = re.search(r"const PALETTE=\[(.*?)\];", self.src).group(1)
+        for c in re.findall(r"c:\"(oklch\([^\"]+\))\"", book):
+            self.assertIn(c, pal)
+        norm = _js_function(self.src, "normalize").replace(" ", "")
+        self.assertIn("names=known.concat(other)", norm)
+        # inlined, never fetched: the board is offline-locked
+        self.assertIn("mask-image:url(\"data:image/svg+xml,", self.src.replace("-webkit-", ""))
+        self.assertNotIn("url(http", self.src)
+
+    def test_every_type_symbol_is_distinct(self):
+        # Nearest-hue matching gave blue and cyan the SAME symbol, which makes
+        # two categories identical and defeats the entire point. The assignment
+        # is a bijection, so eight hues get eight different marks.
+        block = self.src
+        paths = re.findall(r"\.sym\[data-sym=\"\d+\"\]\{[^}]*?viewBox='[^']*'%3E%3Cpath d='([^']+)'", block)
+        self.assertEqual(8, len(paths), f"expected 8 symbol paths, found {len(paths)}")
+        self.assertEqual(8, len(set(paths)), "two type keys share a symbol")
+
+    def test_the_type_mark_is_the_same_on_rail_card_and_sheet(self):
+        # The rail taught a vocabulary the card and the sheet did not speak:
+        # they carried an 8px square. Now all three carry the ColorSym mark,
+        # built once as .sym and keyed by data-sym, so a card and its key
+        # always agree. The mark is decoration; the name stays in the label.
+        self.assertIn('el("i","sym")', _js_function(self.src, "render").replace(" ", ""))
+        face = _js_function(self.src, "ticketNode").replace(" ", "")
+        self.assertIn('el("i","symt-sym")', face)
+        self.assertIn("catSym(card.category)", face)
+        self.assertIn('setAttribute("aria-hidden","true")', face)
+        sheet = _js_function(self.src, "renderSheet").replace(" ", "")
+        self.assertIn('el("i","sym")', sheet)
+        self.assertIn("catSym(card.category)", sheet)
+        # and once more in front of the title, the largest it is drawn anywhere
+        self.assertIn('<i class="sym sheet-sym" id="sheetSym" aria-hidden="true" hidden></i>', self.src)
+        self.assertIn('getElementById("sheetSym")', sheet)
+        self.assertIn(".sheet-sym{display:none}", self.src.replace("  ", ""))
+        self.assertNotIn("t-swatch", self.src)
+        # the masks are defined once, on .sym, never per surface
+        self.assertEqual(8, len(re.findall(r'\.sym\[data-sym="\d"\]\{', self.src)))
+        self.assertEqual(12, self.src.count('mask-image:url("data:image/svg+xml,') // 2)  # 8 ColorSym + 4 priority icons
+
+    def test_the_sheet_leaves_the_top_layer_only_under_live_preview(self):
+        # A modal dialog sits in the top layer, above impeccable's picker, so
+        # nothing in the sheet could be put through a round. Under the live
+        # script it opens with show(); a shipped board never carries that tag
+        # and keeps showModal, the focus trap and the inert background.
+        fn = _js_function(self.src, "openSheet").replace(" ", "")
+        self.assertIn("if(livePreview())d.show();elsed.showModal();", fn)
+        sig = _js_function(self.src, "livePreview")
+        self.assertIn('script[src*="/live.js?"]', sig)
+        # asked at open time: the tag is injected at the end of the body
+        self.assertNotIn("const LIVE_PREVIEW", self.src)
+        self.assertIn(".sheet[open]:not(:modal){position:fixed;inset:0 0 0 auto", self.src.replace("  ", ""))
+
+    def test_every_button_is_the_one_key(self):
+        # 4.5.2, the user's call on 2026-09-13: one button vocabulary across the
+        # board, and it is the vintage bevel the type keys wear. The routing
+        # slip (4.1.26) and a ghost variant that shipped for a day both went.
+        # The key's tokens live on :root and switch with the scheme.
+        flat = self.src.replace(" ", "").replace("\n", "")
+        self.assertIn("--key-bg:oklch(78%0.00875)", flat)          # light paper key
+        self.assertIn("--key-bg:oklch(38%0.0268)", flat)           # dark ground key
+        sel = ".pane-btn,.btn-fancy,.metabtn,.docket-menusummary,.railbutton{"
+        self.assertIn(sel, flat)
+        rule = flat[flat.index(sel):]
+        rule = rule[:rule.index("}")]
+        self.assertIn("font:70012px/1var(--sans)", rule)
+        self.assertIn("text-transform:uppercase", rule)
+        self.assertIn("box-shadow:inset2px2px00var(--key-hi),inset-2px-2px00var(--key-lo)", rule)
+        self.assertNotIn("var(--mono)", rule)
+        # the pressed key inverts its insets and takes a stroke of the accent
+        self.assertIn('.railbutton[aria-current="true"]{box-shadow:inset-2px-2px00var(--key-hi),inset2px2px00var(--key-lo),inset5px000var(--accent)}', flat)
+        # nothing older paints a button its own way any more, except the lane
+        # rail, which is a routing slip with SQUARE stations, not a key row:
+        # the one place on the board where a move is made
+        self.assertNotIn("\n  .controls button{", self.src)
+        self.assertIn("#sheetLanesbutton::before{content:\"\";width:9px;height:9px;box-sizing:border-box;border:1.5pxsolidvar(--text-dim)", flat)
+        self.assertNotIn("border-radius:50%", self.src[self.src.index("#sheetLanes{"):self.src.index("#sheetLanes button:focus-visible")])
+        self.assertIn('#sheetLanesbutton[aria-current="true"]::before{background:var(--accent)', flat)
+        # the priority mark's auto margin is for the card face, not the fact row
+        self.assertIn(".sheet-prio.prio-icon{margin-left:0}", flat)
+        self.assertNotIn("\n  .swim-toggle{", self.src)
+        self.assertIn(".sheet-lbl-row.rail{margin-left:auto", flat)
+
+    def test_a_tag_key_takes_no_symbol(self):
+        # A tag has no hue to key, so a mark would be noise.
+        self.assertIn("#tagRow .k i{display:none}", self.src.replace("  ", ""))
+
+    def test_a_type_key_is_a_word_on_a_rule_not_a_pill(self):
+        # The type keys are vintage bevel buttons in the category's hue, with the
+        # ColorSym mark and the type name. btn-fancy vocabulary: zero radius, inset
+        # box-shadow for the bevel, color-mix for the tint.
+        # anchored to the line start: `.rails #tagRow .legend .k{` is not this rule
+        m = re.search(r"\n\s*\.legend \.k\{(.*?)\}", self.src, re.S)
+        self.assertIsNotNone(m, ".legend .k rule missing")
+        rule = m.group(1).replace(" ", "").replace("\n", "")
+        self.assertIn("color-mix(inoklab,var(--c)", rule)   # OKLAB: no hue walk, blue stays blue
+        self.assertIn("border:0", rule)
+        self.assertIn("border-radius:0", rule)
+        self.assertNotIn("border:1pxsolid", rule)
+        self.assertIn("box-shadow:inset", rule)
+        # and the mark is large enough to be read as a shape, not a pip
+        self.assertIn(".legend .k .sym{width:20px;height:20px}", self.src.replace("  ", ""))
+        self.assertNotIn(".legend .k i{width:8px", self.src.replace("  ", ""))
+
+    def test_a_tag_key_is_an_identifier_not_a_second_type_key(self):
+        # With the marks gone a tag key was the type key minus its mark, and the
+        # two rails read as one. A tag is an identifier, so it is set the way
+        # identifiers are set on this page: mono, a leading hash, no rule, no
+        # box. Picked from four studies under live. The filtered tag is stamped
+        # in ink, and the whole state is stated on its own rather than
+        # inherited, because a box-shadow built on the --c a tag never sets is
+        # an invalid declaration and the whole shadow would go.
+        flat = self.src.replace("  ", "")
+        m = re.search(r"\n#tagRow \.k\{([^}]*)\}", flat)
+        self.assertIsNotNone(m, "#tagRow .k rule missing")
+        rule = m.group(1)
+        self.assertIn("font-family:var(--mono)", rule)
+        self.assertIn("box-shadow:none", rule)
+        self.assertIn('#tagRow .k::before{content:"#"', flat)
+        self.assertIn("#tagRow .k.on{background:var(--text);color:var(--bg)", flat)
+        for rule in re.findall(r"#tagRow \.k[^{]*\{([^}]*)\}", self.src):
+            self.assertNotIn("var(--c)", rule)
+        # the hash is decoration: the key's name stays the tag and its count
+        self.assertIn('k.setAttribute("aria-label",tag+", "+count', self.src)
+
+    def test_every_palette_hue_clears_3_to_1_on_every_surface(self):
+        # The hue is now a 2px rule under the key and an 18px mark beside it:
+        # graphics, so SC 1.4.11's 3:1 floor, on every surface a key can sit on
+        # in either scheme. The 70s palette was chosen at 56-59% lightness
+        # because that band is the only one that clears both the paper and
+        # the dark ground; a pastel fails dark, a deep tone fails light.
+        m = re.search(r"const PALETTE=\[(.*?)\];", self.src)
+        self.assertIsNotNone(m, "PALETTE const missing")
+        hues = re.findall(r"oklch\(\s*([\d.]+)%\s+([\d.]+)\s+([\d.]+)\s*\)", m.group(1))
+        self.assertEqual(8, len(hues), "eight palette hues, one per symbol")
+        for lch in hues:
+            rgb = _oklch_to_srgb(float(lch[0]) / 100, float(lch[1]), float(lch[2]))
+            for dark in (False, True):
+                for surface in ("--bg", "--surface", "--surface-2"):
+                    ratio = _contrast(rgb, _token(self.src, surface, dark=dark))
+                    self.assertGreaterEqual(
+                        ratio, 3.0,
+                        f"oklch({lch[0]}% {lch[1]} {lch[2]}) on {surface} "
+                        f"({'dark' if dark else 'light'}) is {ratio:.2f}:1")
+
+    def test_the_persist_control_asks_then_reports(self):
+        # "Connect file" named a mechanism nobody had to care about, so it read
+        # as an unexplained button and went unused. The label now names what you
+        # get, and its punctuation carries the mood.
+        m = re.search(r"const CONN=\{(.*?)\};", self.src, re.S)
+        self.assertIsNotNone(m, "CONN table missing")
+        table = m.group(1)
+        self.assertIn('"Persist board edits?"', table)   # unconnected: asks
+        self.assertIn('"Persisting board edits"', table)  # connected: reports
+        self.assertNotIn('"Connect file"', table)
+        # and it is visible, after a version that hid it
+        self.assertNotIn(".head-ops .conn{display:none}", self.src.replace("  ", ""))
+
+    def test_the_masthead_is_three_bands_with_a_deliberate_rhythm(self):
+        # It was four bands of identical spacing, which gave everything equal
+        # weight, and a right column 125px tall against the brand's 55px, which
+        # left a 38px hole under the mark and set the header to 295px, 37% of a
+        # 1200x800 screen. Three bands now: identity and the ambient glance,
+        # state and actions, filters. Generous BETWEEN, tight WITHIN.
+        self.assertIn('class="head-ops"', self.src)
+        self.assertIn('class="rails"', self.src)
+        self.assertNotIn('class="head-right"', self.src)
+        flat = self.src.replace(" ", "").replace("\n", "")
+        # The two rails became ONE row in 4.1.16: they answer the same question
+        # ("narrow this board"), so they stopped being two labelled rows and
+        # became one scrolling line split by a rule. The band still takes the
+        # generous interval.
+        self.assertIn(".rails{margin-top:var(--s4);display:flex;flex-direction:row;", flat)
+        # `flat` has every space removed, so `flex:0 0 auto` reads `flex:00auto`
+        self.assertIn(".rails.rail-row{margin-top:0;flex:00auto", flat)
+        self.assertIn(".rails.rail-lbl{display:none}", flat)
+        self.assertIn(".head-ops{display:flex;align-items:center;gap:var(--s4)", flat)
+
+    def test_the_masthead_is_a_letterhead_over_a_ledger(self):
+        # 4.5.2. Chosen from four renders of the real board (the design-pass bean).
+        # The activity card sat alone top right and set the brand row's height,
+        # 119px against the brand's 69; Download wrapped; measured at 1440 the
+        # masthead was 300px. Now the docket stands beside the mark, the two
+        # time sheets run the page's width as a ruled ledger, and a chevron tab
+        # on the rail's rule folds the ledger away. 263px open, 175px folded.
+        flat = self.src.replace(" ", "").replace("\n", "")
+        # the HTML is unchanged; the row wrappers dissolve into one grid
+        self.assertIn(".head-row{display:contents}", flat)
+        self.assertIn("header.masthead{display:grid;grid-template-columns:minmax(0,1fr)auto;", flat)
+        self.assertIn(".head-ops{grid-column:2;grid-row:1}", flat)
+        self.assertIn(".spark{grid-column:1/-1;grid-row:2}", flat)
+        self.assertIn(".rails{grid-column:1/-1;grid-row:3}", flat)
+        # the ledger stretches, a week a column, and the month labels share its columns
+        self.assertIn("grid-auto-columns:minmax(12px,1fr)", flat)
+        self.assertIn(".spark.months{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(12px,1fr)", flat)
+        # the filter stays out; persist, grouping and download fold into a
+        # <details> menu that closes after a choice, on Escape and on a click
+        # elsewhere. Same three buttons, same ids, same handlers.
+        self.assertIn(".head-ops.controlsinput#q{box-sizing:border-box;height:32px", flat)
+        self.assertIn('<details class="docket-menu" id="docketMenu">', self.src)
+        panel = self.src[self.src.index('class="docket-menu-panel"'):self.src.index("</details>")]
+        for bid in ("connectBtn", "swimBtn", "downloadBtn"):
+            self.assertIn('id="%s"' % bid, panel)
+        self.assertIn('menu.addEventListener("keydown"', self.src)
+        self.assertIn('document.addEventListener("pointerdown"', self.src)
+        # the letterhead: tool and kind on one line, the board's name under it
+        # as a title behind a drawn chevron, not a mono chip behind a glyph
+        self.assertNotIn('.title::before{content:"›"', self.src)
+        self.assertIn(".title::before{content:\"\";flex:none;width:6px;height:10px;background:var(--text-faint);", flat)
+        title = self.src[self.src.index("  .title{"):self.src.index("  .sub{")]
+        self.assertNotIn("var(--mono)", title)
+        self.assertIn("Mozilla Headline Condensed", title)
+        # the masthead is the same paper as the body, grain included
+        mast = self.src[self.src.index("header.masthead{"):]
+        self.assertIn("radial-gradient(oklch(35% 0.02 60 / 0.025) 1px, transparent 1px)", mast[:700])
+        # the fold: a real button, expanded state in ARIA, kept per browser
+        self.assertIn('id="sparkBtn"', self.src)
+        self.assertIn('aria-controls="spark"', self.src)
+        self.assertIn('const LEDGER_KEY="adjudant-board:ledger"', self.src)
+        # folded until asked for: anything but an explicit "open" folds it
+        self.assertIn('localStorage.getItem(LEDGER_KEY)!=="open"', self.src.replace(" ", ""))
+        self.assertIn("header.masthead.ledger-folded.spark{display:none}", flat)
+        fold = _js_function(self.src, "paintLedgerFold")
+        self.assertIn('setAttribute("aria-expanded"', fold)
+        # the tab shares the rail's cell; without a stacking order the rail took its clicks
+        self.assertIn("position:relative;z-index:1;justify-self:end;align-self:start", flat)
+        # under 900px: no ledger, no corner, one column
+        self.assertIn("@media(max-width:900px){.spark,.spark-toggle{display:none}header.masthead{grid-template-columns:minmax(0,1fr)}", flat)
+
+    def test_the_sheet_wears_a_risograph_cover_and_one_label_voice(self):
+        # 4.5.2. The type bar was a pale drifting mesh under a mono label in the
+        # hue; the label vanished on light hues. Now the hue's dark ink pools
+        # under a paper-printed label, the grain is soft-light not multiply,
+        # and nothing drifts. Labels share the lane heading's face; the vintage
+        # key is light on light paper. Also: exactly ONE sheet dialog. An
+        # impeccable live session had left a second, wrapped in variant markup.
+        self.assertEqual(self.src.count('id="sheet"'), 1)
+        self.assertNotIn("impeccable-variants", self.src)
+        self.assertNotIn("@keyframes type-bar-mesh", self.src)
+        bar = self.src[self.src.index("  .sheet-type-bar{"):self.src.index("  .sheet-title-row{")]
+        self.assertNotIn("animation:", bar)
+        self.assertIn("color:oklch(96% 0.008 75)", bar)
+        self.assertIn("background-blend-mode:soft-light", bar)
+        self.assertIn("oklch(22% 0.03 60)", bar)               # the hue's dark ink, under the label
+        self.assertIn(".sheet-type-bar .sym{width:24px;height:24px;background:oklch(96% 0.008 75)}", bar.replace("  ", ""))
+        lbl = self.src[self.src.index("  .sheet-lbl{"):self.src.index("  .sheet-lbl-row{")]
+        self.assertNotIn("var(--mono)", lbl)
+        self.assertIn("Mozilla Headline Condensed", lbl)
+        # close and copy are the one key; the cross is drawn, not a glyph
+        self.assertIn('<button class="pane-btn sheet-close" id="sheetClose" type="button" aria-label="Close"><svg', self.src)
+        self.assertIn('el("button","pane-btn copy",label)', _js_function(self.src, "copyButton"))
+        self.assertNotIn('class="btn-fancy', self.src)
+
+    def test_the_type_keys_wear_the_light_bevel_on_light_paper(self):
+        # The vintage key shipped as the dark btn-fancy in both schemes and sat
+        # on the light paper as five black slabs. The light scheme takes the
+        # campaign request form's light variant; the dark scheme keeps its own.
+        flat = self.src.replace(" ", "").replace("\n", "")
+        self.assertIn("background:color-mix(inoklab,var(--c)9%,oklch(78%0.00875))", flat)
+        self.assertIn("inset2px2px00color-mix(inoklab,var(--c)6%,oklch(88%0.00578))", flat)
+        dark = self.src[self.src.index("@media (prefers-color-scheme: dark){\n    .legend .k{"):]
+        self.assertIn("oklch(30% 0.01 68)", dark[:900])
+
+    def test_the_activity_card_changes_nothing_that_has_a_width_on_hover(self):
+        # The old chart swapped a date readout into its label on hover, and a
+        # label that changes width moves the whole masthead every time the
+        # pointer crosses a cell. The date now lives in the tooltip and the
+        # accessible name, and nothing in the card is written to on hover.
+        self.assertNotIn("spark-foot", self.src)
+        self.assertNotIn(".lbl.live", self.src)
+        panel = _js_function(self.src, "sparkPanel")
+        self.assertNotIn("lbl.textContent", panel)
+        self.assertNotIn("mouseenter", panel)
+        self.assertIn("c.title=note", panel)
+        self.assertIn('c.setAttribute("aria-label",note)', panel)
+        self.assertNotIn("textContent=", _js_function(self.src, "paintSpark"))
+
+    def test_the_filter_rails_scroll_sideways_on_a_phone(self):
+        # MEASURED on a 375px screen before this rule: the tag rail wrapped to
+        # FOUR rows and the type rail to two, the header took 487px of an 812px
+        # phone, and the first card began at 559px. A filter rail is scanned
+        # along, not read down.
+        m = re.search(r"@media \(max-width: 640px\)\{(.*?)\n  \}", self.src, re.S)
+        self.assertIsNotNone(m, "the 640px block is missing")
+        block = m.group(1).replace(" ", "")
+        self.assertIn(".legend{flex-wrap:nowrap;overflow-x:auto", block)
+        self.assertIn(".legend.k{flex:0 0 auto}".replace(" ", ""), block)
+        # and the controls stay on one line rather than three
+        self.assertIn("input#q{flex:1 1 120px".replace(" ", ""), block)
+
+    def test_a_closed_lane_is_found_by_its_stamp_not_its_id(self):
+        # `completed` and `scrapped` declare stamps on a beans deck, `done` and
+        # `icebox` inherit theirs from STAMP on a vault deck. One rule covers
+        # both, and a lane renamed from `done` to `shipped` keeps working.
+        fn = _js_function(self.src, "isTerminal")
+        self.assertIn("laneStamp(col)", fn)
+        body = _js_function(self.src, "render")
+        self.assertNotIn('"completed"', body)
+        self.assertNotIn('"scrapped"', body)
+
+    def test_hiding_closed_lanes_never_empties_the_board(self):
+        # A deck of nothing but terminal lanes still shows them: hiding the
+        # whole board is not a view.
+        body = _js_function(self.src, "render").replace(" ", "")
+        self.assertIn("terminal.length<state.columns.length", body)
+        # and the cards are dropped from the BOARD, not from the deck
+        self.assertIn("state.columns.filter(c=>!isTerminal(c))", body)
+
+    def test_hidden_lanes_are_counted_out_loud(self):
+        # Nothing may vanish silently; the button says how many lanes and cards
+        # went, and the preference survives a reload.
+        body = _js_function(self.src, "render")
+        self.assertIn("hidCards", body)
+        self.assertIn('setAttribute("aria-pressed"', body)
+        self.assertIn("TERM_KEY", self.src)
+        self.assertIn("localStorage", _js_function(self.src, "readHideTerminal"))
+
+    def test_the_activity_card_is_a_time_sheet_not_a_histogram(self):
+        # Bars binned by a unit that changed with the deck's age answered "how
+        # much" and never "when do we work on this". A calendar does: seven
+        # day-rows, a column per week, whole weeks from a Monday, padded only to
+        # the Sunday that closes the current week. Chosen from three readings
+        # under live.
+        self.assertNotIn("function sparkBins", self.src)
+        self.assertIn("const SPARK_WEEKS=", self.src)
+        rng = _js_function(self.src, "sparkRange").replace(" ", "")
+        self.assertIn("+6)%7", rng)                       # Monday first
+        self.assertIn("last:end+(6-dow)*DAY", rng)        # pad to Sunday, no further
+        self.assertIn("grid-template-rows:repeat(7,8px)", self.src.replace(" ", ""))
+        panel = _js_function(self.src, "sparkPanel")
+        self.assertIn("t<=range.last", panel.replace(" ", ""))
+
+    def test_the_activity_card_marks_a_bulk_write_rather_than_hiding_it(self):
+        # Measured on a real deck: 83 of 92 cards shared one updatedAt day,
+        # which was an import plus a churn bug, not a day somebody moved 83
+        # cards. Drawn as activity it would be a lie, so the cell goes grey
+        # and the tooltip says so.
+        fn = _js_function(self.src, "sparkDays").replace(" ", "")
+        self.assertIn("n>total/2&&total>8", fn)
+        panel = _js_function(self.src, "sparkPanel")
+        self.assertIn('classList.add("bulk")', panel)
+        self.assertIn('" (bulk write)"', panel)
+        self.assertIn(".spark .punch i.bulk{background:var(--text-faint)}", self.src.replace("  ", ""))
+
+    def test_the_activity_card_shows_both_fields_at_once(self):
+        # createdAt is when work was filed, updatedAt is when the file changed.
+        # Different questions, so each panel is captioned with its own, and
+        # both are on the page at once: no switch, no mode to remember.
+        fn = _js_function(self.src, "paintSpark").replace(" ", "")
+        self.assertIn('sparkPanel("Touched","updatedAt"', fn)
+        self.assertIn('sparkPanel("Filed","createdAt"', fn)
+        self.assertNotIn("sparkField", self.src)
+        self.assertNotIn("aria-pressed", fn)
+        # plain elements: no SVG, and still no fetch
+        self.assertNotIn("createElementNS", fn)
+        self.assertNotIn("createElementNS", _js_function(self.src, "sparkPanel"))
+
+    def test_the_histogram_describes_the_board_in_front_of_you(self):
+        # Filtered cards and hidden lanes both count, or the chart describes
+        # cards the reader cannot see.
+        body = _js_function(self.src, "render").replace(" ", "")
+        self.assertIn("shownCols.forEach", body)
+        self.assertIn("cardMatches(e.card)", body)
+        self.assertIn("paintSpark(sparkCards)", body)
+
+    def test_the_favicon_is_the_band_and_follows_the_figure(self):
+        # At 16px the head is a smudge and three stripes are unmistakable, and
+        # the stripes belong to whichever figure the roll produced.
+        fn = _js_function(self.src, "paintFavicon")
+        self.assertIn("data:image/svg+xml,", fn)
+        self.assertIn("encodeURIComponent", fn)
+        self.assertIn("paintFavicon(band)", _js_function(self.src, "paintMark"))
+        # a data URI fetches nothing, which is what validator 24 actually guards
+        self.assertNotIn("url(http", self.src)
+
+    def test_the_id_and_the_body_can_leave_the_page(self):
+        # Both were readable and neither could be taken out, so quoting an id
+        # into a `beans update` meant retyping it off the screen.
+        self.assertIn('id="noteCopy"', self.src)
+        body = _js_function(self.src, "renderSheet").replace(", ", ",")
+        self.assertIn('copyButton("Copy",()=>card.id,"Id")', body)
+        # the RAW body, not this page's rendering of it: what you paste has to
+        # be the source the tracker holds
+        self.assertIn('copyButton("Copy",()=>card.notes,"Note")', body)
+
+    def test_copy_falls_back_because_a_board_is_opened_off_disk_too(self):
+        # Served from board.py it is a secure context and navigator.clipboard
+        # exists. Opened as file:// it is not, and the async API is absent.
+        fn = _js_function(self.src, "copyText")
+        self.assertIn("navigator.clipboard", fn)
+        self.assertIn("legacyCopy", fn)
+        legacy = _js_function(self.src, "legacyCopy")
+        self.assertIn('execCommand("copy")', legacy)
+        # display:none cannot be selected, so the textarea goes off-screen.
+        # Asserted on the style string, not the function text: the comment
+        # above the line says "display:none" and would match a naive check.
+        style = [ln for ln in legacy.splitlines() if "cssText" in ln]
+        self.assertTrue(style, "the textarea sets no style")
+        self.assertIn("position:fixed", style[0])
+        self.assertNotIn("display:none", style[0])
+
+    def test_serve_answers_a_second_tab_while_the_first_holds_its_socket(self):
+        # A plain TCPServer serves one socket at a time and a browser keeps its
+        # socket open between requests, so a second tab waited on the first
+        # forever: "the board simply won't load" while another tab sat on it.
+        src = Path(__file__).with_name("board.py").read_text()
+        cls = src[src.index("class _ReuseServer("):src.index("handler = functools.partial")]
+        self.assertIn("socketserver.ThreadingMixIn", cls)
+        self.assertIn("daemon_threads = True", cls)
+
+    def test_a_copy_that_failed_never_wears_the_face_of_one_that_worked(self):
+        fn = _js_function(self.src, "copyButton")
+        flat = fn.replace(", ", ",")
+        self.assertIn('ok?"Copied":"Failed"', flat)
+        self.assertIn('classList.toggle("bad",!ok)', flat)
+        self.assertIn("announce(", fn)
+        # and the label always returns to saying what the button does
+        self.assertIn("b.textContent=was", flat)
+        self.assertIn("delete b.dataset.busy", fn)
+
+    def test_a_task_list_renders_its_state_not_its_syntax(self):
+        # The sheet printed `<li>[ ] Test both embeds...</li>`: the raw marker,
+        # with nothing separating done from not done. Beans' whole loop is
+        # keeping those markers current, and this board is its front end.
+        self.assertIn("MD_TASK", self.src)
+        body = _js_function(self.src, "mdNodes").replace(", ", ",")
+        self.assertIn("MD_TASK.exec(m[2])", body)
+        self.assertIn('li.className="task"', body)
+        # `[x]` and `[X]` are both done; only a space is open
+        m = re.search(r"const MD_TASK=/([^/]+)/", self.src)
+        self.assertIsNotNone(m, "MD_TASK pattern missing")
+        self.assertIn("xX", m.group(1))
+
+    def test_the_checkbox_is_drawn_and_never_an_input(self):
+        # This board does not write bean bodies. A control that cannot be
+        # operated would be a lie about what the page can do.
+        body = _js_function(self.src, "mdNodes")
+        self.assertNotIn("createElement(\"input\"", body)
+        self.assertNotIn("type=\"checkbox\"", self.src)
+        self.assertIn('el("span","box")', body.replace(", ", ","))
+
+    def test_a_tasks_state_reaches_the_accessibility_tree(self):
+        # The box is aria-hidden decoration; without a text equivalent the
+        # done/open distinction would exist only in pixels.
+        body = _js_function(self.src, "mdNodes").replace(", ", ",")
+        self.assertIn('box.setAttribute("aria-hidden","true")', body)
+        self.assertIn('el("span","sr-only"', body)
+        self.assertIn('"done, "', _js_function(self.src, "mdNodes"))
+        self.assertIn('"to do, "', _js_function(self.src, "mdNodes"))
+
+    def test_the_card_face_strips_the_task_marker_too(self):
+        # mdText strips rather than parses, and it strips the bullet first, so
+        # the marker only reaches the start of the line after that.
+        body = _js_function(self.src, "mdText")
+        self.assertIn(r"^\[[ xX]\]", body)
+        bullet = body.index("[-*+]")
+        marker = body.index(r"^\[[ xX]\]")
+        self.assertLess(bullet, marker,
+                        "the task marker must be stripped after the bullet, not before")
+
+    def test_the_display_face_is_carried_in_the_file(self):
+        # The board is offline-locked, so a face is either embedded or absent,
+        # and absent meant every heading fell through to Iowan Old Style: a
+        # wide soft book serif where the brand is a tight condensed slab.
+        self.assertIn("@font-face{", self.src.replace(" ", "").replace("\n", ""))
+        self.assertIn('font-family:"Mozilla Headline Condensed"', self.src)
+        self.assertIn("src:url(data:font/woff2;base64,", self.src.replace(" ", ""))
+        # and it has to be the first name asked for, or it never gets used
+        serif = [ln for ln in self.src.splitlines() if ln.strip().startswith("--serif:")]
+        self.assertEqual(1, len(serif))
+        self.assertTrue(serif[0].strip().startswith('--serif:"Mozilla Headline Condensed"'),
+                        f"embedded face is not first in the stack: {serif[0].strip()}")
+        # a data URI fetches nothing, which is what validator 24 actually guards
+        self.assertNotIn("url(//", self.src)
+        self.assertNotIn("url(http", self.src)
+
+    def test_the_dark_drawing_is_the_artists_inverse_not_a_recolour(self):
+        # 4.1.5 through 4.1.11 recoloured the light drawing's ink by token and
+        # spent six patches deciding which cool near-black was an ear and which
+        # an eye. The inverse drawings settle it: the dark head is drawn in one
+        # pale line (#d2d7d8, the artwork's own) over the ground, and the light
+        # drawing keeps its inks untouched. No mark token remains.
+        self.assertNotIn("--mark-shade", self.src)
+        self.assertNotIn("--mark-eye", self.src)
+        light_ink = self.src.count('["#26211a",')
+        self.assertGreaterEqual(light_ink, 2, "each light drawing carries the ink")
+        self.assertGreaterEqual(self.src.count('["#d2d7d8",'), 2, "the inverse drawings are the pale line")
+        # one band, both figures, and it is still the wipe and the tab
+        self.assertIn('band:["#7c1b16","#bd281c","#dd4d25"]', self.src)
+        self.assertIn('band:["#5c2d82","#bd281c","#dd4d25"]', self.src)
+        self.assertEqual(2, self.src.count("band:["), "one band per figure")
+
+    def test_the_two_filter_rails_say_which_axis_each_one_is(self):
+        # They were two rows of identically shaped buttons, which read as one
+        # block and left the axis to be inferred from whether a key carried a
+        # swatch or a count.
+        self.assertIn('class="rail-lbl">Type<', self.src)
+        self.assertIn('class="rail-lbl">Tag<', self.src)
+        # the label sits beside the keys, so the ROW hides, not the rail
+        self.assertIn('getElementById("tagRow").hidden', _js_function(self.src, "render"))
+
+    def test_the_figure_is_inline_svg_because_a_data_uri_cannot_see_the_page(self):
+        # An external SVG document is a separate document: it does not inherit
+        # this page's custom properties, so the ink would never reach it.
+        self.assertIn('<svg class="brand-mark" id="brandMark"', self.src)
+        self.assertNotIn('<img class="brand-mark"', self.src)
+        body = _js_function(self.src, "paintMark")
+        self.assertIn('createElementNS(SVGNS,"path")', body.replace(", ", ","))
+        # no raster left anywhere in the mark
+        self.assertNotIn("data:image/png", self.src)
+
+    def test_the_tag_filter_is_a_real_toggle_beside_the_legend(self):
+        # Tags were the one tracker classification the board threw away:
+        # _beans.py carried them into every card and only the sheet read them.
+        body = _js_function(self.src, "render")
+        flat = body.replace(", ", ",")
+        self.assertIn('id="tagRail"', self.src)
+        self.assertIn('getElementById("tagRail")', flat)
+        self.assertIn('setAttribute("aria-pressed"', flat)
+        # a control, not a colour key: it must survive keyboard use
+        self.assertIn('el("button","k"+(filterTag===tag', flat)
+        # and it must actually narrow the deck
+        self.assertIn("filterTag", _js_function(self.src, "cardMatches"))
+
+    def test_the_decks_ordinary_tag_is_not_printed_on_every_card(self):
+        # The same rule that deleted .t-cat: board.py defaults `category` to
+        # `task`, so a vault board painted an identical `task` chip on every
+        # card it had. The threshold is the one the ordinary category already
+        # uses -- carried by more cards than not -- because the two marks answer
+        # the same question. On a real beans deck `adjudant` sat on 71 of 92
+        # cards; the informative cards were the 21 without it.
+        fn = _js_function(self.src, "deckOrdinaryTags")
+        self.assertTrue(fn.strip(), "deckOrdinaryTags missing")
+        self.assertIn("n*2>total", fn.replace(" ", ""))
+        # a deck too small to have an ordinary anything suppresses nothing
+        self.assertIn("total<3", fn.replace(" ", ""))
+        ticket = _js_function(self.src, "ticketNode")
+        self.assertIn("ordinaryTags.has(t)", ticket.replace(", ", ","))
+
+    def test_the_face_caps_its_tags_so_a_card_cannot_grow_unbounded(self):
+        # A tracker puts no ceiling on how many tags a card carries. The note
+        # is clamped to two lines for the same reason.
+        ticket = _js_function(self.src, "ticketNode").replace(", ", ",")
+        self.assertIn("shownTags.slice(0,3)", ticket)
+        self.assertIn("shownTags.length>3", ticket)
+
+    def test_tags_on_the_face_are_also_in_the_accessible_name(self):
+        # aria-label REPLACES a button's contents for a screen reader, so a tag
+        # rendered inside the face and left out of the label is a tag only
+        # sighted people get.
+        # `ticket` is comma-normalised, so the expected text is written that way.
+        # The label expression spans three lines, so the whole body is searched
+        # for the one fragment that can only occur inside it.
+        ticket = _js_function(self.src, "ticketNode").replace(", ", ",")
+        self.assertIn('setAttribute("aria-label"', ticket)
+        self.assertIn('+(shownTags.length?",tagged "+shownTags.join(","):"")', ticket)
+
+    def test_a_deck_swap_cannot_strand_the_tag_filter(self):
+        # refreshFromDisk and the cross-tab storage handler replace state
+        # wholesale. A filter on a tag the new deck retired matches nothing,
+        # which reads as an empty board rather than as a stale filter.
+        body = _js_function(self.src, "render").replace(", ", ",")
+        self.assertIn("if(filterTag && !counts.has(filterTag)) filterTag=null;".replace(", ", ","),
+                      body.replace("&& !", "&& !"))
+
+    def test_escape_clears_every_filter_not_some_of_them(self):
+        # Three filters compose; one Escape has to clear all three or the board
+        # stays narrowed by a control the user believes they just reset.
+        line = [ln for ln in self.src.splitlines()
+                if 'ev.key==="Escape"' in ln and "filterText" in ln]
+        self.assertTrue(line, "Escape filter-clear handler missing")
+        for var in ("filterText", "filterCat", "filterTag"):
+            self.assertIn(var, line[0], f"Escape does not clear {var}")
+
+    def test_the_tag_rails_overflow_note_never_wraps_or_stretches_the_rail(self):
+        # Seen on a real deck at 4.1.27: with more than twelve tags
+        # the "+N more" note sits in the one-line scrolling rail, shrank to
+        # 31px, wrapped into six lines and stood 103px tall; every key in the
+        # rail stretched to match and the filtered tag's ink block became a
+        # black slab across the masthead. The note may not shrink or wrap, and
+        # keys keep their own height.
+        m = re.search(r"\.legend \.rail-more\{([^}]*)\}", self.src)
+        self.assertIsNotNone(m, ".rail-more rule missing")
+        rule = m.group(1).replace(" ", "").replace("\n", "")
+        self.assertIn("flex:00auto", rule)
+        self.assertIn("white-space:nowrap", rule)
+        self.assertIn(".rails #tagRow .legend{align-items:center}", self.src.replace("  ", ""))
+
+    def test_the_tag_rail_says_what_it_left_out(self):
+        # A rail that silently drops the tag you were looking for teaches you
+        # the tag does not exist.
+        body = _js_function(self.src, "render")
+        self.assertIn("RAIL_MAX", body)
+        self.assertIn("rail-more", body)
+
     def test_the_focus_ring_never_uses_the_category_hue(self):
         # The eight palette hues measure 1.65:1 to 2.28:1 on --surface, under
         # the 3:1 that SC 1.4.11 requires of a focus indicator.
@@ -1687,13 +2388,20 @@ class TestTemplateIsOperableWithoutAMouse(unittest.TestCase):
                     f"({'dark' if dark else 'light'}), under WCAG 1.4.3")
 
     def test_a_touch_only_device_has_a_way_to_move_a_card(self):
-        # HTML5 drag events do not fire from touch, and the bracket keys need a
-        # keyboard: without this the board is silently read-only on a phone.
-        body = _js_function(self.src, "tapToMove")
-        self.assertIn("(pointer: coarse)", body)
-        self.assertIn("(hover: hover)", body)
-        self.assertIn("tapToMove()", _js_function(self.src, "render"))
-        self.assertIn("tapToMove()", _js_function(self.src, "ticketNode"))
+        # HTML5 drag events do not fire from touch and the bracket keys need a
+        # keyboard, so without a third way the board is silently read-only on a
+        # phone. That third way used to be a tap-then-tap mode registered only
+        # where matchMedia said (pointer: coarse), which nothing on the page
+        # showed the existence of. It is now the lane row inside an opened card:
+        # present on every device, and visible on all of them.
+        sheet = _js_function(self.src, "renderSheet")
+        self.assertIn("state.columns.forEach", sheet)
+        self.assertIn('el("button"', sheet.replace(", ", ","))
+        self.assertIn("applyMove(sheetKey", sheet)
+        self.assertIn('setAttribute("aria-current"', sheet.replace(", ", ","))
+        # and the card opens by tap, because its face is a real button
+        ticket = _js_function(self.src, "ticketNode")
+        self.assertIn("openSheet(key)", ticket)
 
 
 class TestTemplateRendersOnlyWhatItCanVouchFor(unittest.TestCase):
@@ -1721,8 +2429,7 @@ class TestTemplateRendersOnlyWhatItCanVouchFor(unittest.TestCase):
         self.assertIn("fatal(e)", _js_function(self.src, "boot"))
         self.assertIn("<noscript>", self.src)
         # an unrendered page must not read as an empty one
-        self.assertIn('<b id="orderCount">—</b>', self.src)
-        self.assertIn('<b id="stageCount">—</b>', self.src)
+        self.assertIn('<b id="cardCount">—</b>', self.src)
 
     def test_the_unfiled_lane_never_paints_a_drop_it_will_refuse(self):
         body = _js_function(self.src, "render")
@@ -1749,6 +2456,107 @@ class TestTemplateRendersOnlyWhatItCanVouchFor(unittest.TestCase):
         self.assertIn("Number(ev.dataTransfer.getData", render)
         self.assertIn("Number.isInteger(key)", render)
         self.assertIn("duplicateIds", _js_function(self.src, "normalize"))
+
+
+class TestBeansWriteBackDoesNotChurn(unittest.TestCase):
+    """A run that moved nothing must write nothing."""
+
+    def test_a_lane_that_did_not_move_is_not_written_back(self):
+        # sync_deck_to_beans called `beans update --status` on EVERY beans card
+        # on every run, moved or not. That rewrote every bean file and bumped
+        # every `updated_at`: on a repo of 89 beans, 89 subprocesses and 89
+        # dirty files per session end, for nothing, and `updated_at` stopped
+        # meaning anything. The function's own docstring says "push dragged
+        # lanes back"; it was pushing every lane.
+        import inspect, board
+        body = inspect.getsource(board.sync_deck_to_beans)
+        # it reads the current state once...
+        self.assertIn("list_beans", body)
+        # ...and skips a card already sitting where the deck says it is
+        self.assertIn("current.get(bid) == target", body)
+        # and the skip must come before the write
+        self.assertLess(body.index("current.get(bid) == target"),
+                        body.index("_beans.set_status"))
+
+    def test_a_failed_listing_falls_back_to_writing_rather_than_skipping(self):
+        # A read that fails must not silently swallow a real move. An empty
+        # map skips nothing, so the worst case is the old behaviour.
+        import inspect, board
+        body = inspect.getsource(board.sync_deck_to_beans)
+        self.assertIn("if listing.ok:", body)
+
+
+class TestTemplateOpensACardHonestly(unittest.TestCase):
+    """Structural guards for the card sheet. Behaviour verified in Chromium;
+    see the module comment above."""
+
+    def setUp(self):
+        self.src = _template_text()
+
+    def test_the_sheet_addresses_the_card_by_position_not_by_id(self):
+        # Same reason the drag does: a deck may legitimately carry two cards
+        # with one id, and resolving by id opens, and then moves, the wrong one.
+        for fn in ("openSheet", "renderSheet", "syncSheet"):
+            self.assertNotIn(".find(c=>c.id===",
+                             _js_function(self.src, fn).replace(" ", ""))
+        self.assertIn("state.cards[key]", _js_function(self.src, "openSheet"))
+        self.assertIn("state.cards[sheetKey]", _js_function(self.src, "renderSheet"))
+
+    def test_a_deck_swapped_under_an_open_sheet_closes_it(self):
+        # refreshFromDisk and the cross-tab storage handler both replace `state`
+        # wholesale, so the card at that position may now be a different card.
+        # An open sheet quietly relabelling itself as something else is the
+        # failure mode; it closes and says so instead.
+        body = _js_function(self.src, "syncSheet")
+        self.assertIn("card.id!==sheetId", body.replace(" ", ""))
+        self.assertIn("announce(", body)
+        # and it runs at the end of every render, which is the one path all of
+        # those routes go through
+        self.assertIn("syncSheet()", _js_function(self.src, "render"))
+
+    def test_the_sheet_is_a_real_dialog_not_a_positioned_div(self):
+        # The lane body is overflow-y:auto, so anything positioned inside it is
+        # clipped. The top layer is the whole reason this is a <dialog>, and
+        # showModal is what puts it there, along with the focus trap and Esc.
+        self.assertIn('<dialog class="sheet" id="sheet"', self.src)
+        self.assertIn("showModal()", _js_function(self.src, "openSheet"))
+        self.assertIn(".close()", _js_function(self.src, "closeSheet"))
+
+    def test_the_card_face_is_a_button_not_a_div_with_a_click_handler(self):
+        # The legend key was already fixed away from that pattern once; the card
+        # must not reintroduce it. One node cannot be both a listitem and a
+        # button, so the wrapper keeps the list semantics and the drag.
+        ticket = _js_function(self.src, "ticketNode").replace(", ", ",")
+        self.assertIn('el("button","ticket-face")', ticket)
+        self.assertIn('setAttribute("aria-haspopup","dialog")', ticket)
+        self.assertIn('setAttribute("role","listitem")', ticket)
+
+    def test_the_terminal_marker_is_drawn_once_per_lane_not_once_per_card(self):
+        # BUILT/PARKED used to be stamped on every card in the lane, restating
+        # the heading those cards were already sitting under, in a marker that
+        # aria-hidden told screen readers to skip.
+        self.assertNotIn("laneStamp", _js_function(self.src, "ticketNode"))
+        self.assertIn("laneStamp(col)", _js_function(self.src, "render"))
+
+    def test_priority_reaches_the_card_instead_of_being_dropped(self):
+        # _beans.to_card writes `priority` only when it is not `normal`, so the
+        # key's presence is the signal. The template rendered it nowhere at all:
+        # on a real board, 39 of 72 cards carried a mark the page threw away.
+        self.assertIn("card.priority", _js_function(self.src, "priorityOf"))
+        self.assertIn("priorityMark(card)", _js_function(self.src, "ticketNode"))
+        self.assertIn("PRIO_QUIET", self.src)
+        self.assertIn("PRIO_CRITICAL", self.src)
+        self.assertIn('data-prio="critical"', self.src)
+        self.assertIn('data-prio="low"', self.src)
+
+    def test_the_ordinary_category_is_not_printed_on_every_card(self):
+        # Cards show only the type symbol (no word). The baseCategory is still
+        # computed in normalize() for the legend/sheet, but ticketNode never
+        # prints the category name — only the sym mark.
+        self.assertIn("d.baseCategory", _js_function(self.src, "normalize"))
+        face = _js_function(self.src, "ticketNode").replace(" ", "")
+        self.assertIn('el("i","symt-sym")', face)
+        self.assertNotIn("t-cat", face)
 
 
 class TestDeckToTaskWriteBack(unittest.TestCase):
@@ -1966,6 +2774,133 @@ class TestDeckToTaskWriteBack(unittest.TestCase):
             os.utime(kb, (future, future))
             _ensure(project)
             self.assertEqual(self._status_of(project), "doing")
+
+
+class TestWave2Features(unittest.TestCase):
+    """The four Wave 2 board features are present in the template."""
+
+    def _html(self):
+        return (Path(__file__).resolve().parent.parent
+                / "skills" / "adjudant" / "templates" / "board.html").read_text()
+
+    def test_dependency_arrow_overlay_css_exists(self):
+        html = self._html()
+        self.assertIn(".dep-overlay", html)
+        self.assertIn("drawDependencies", html)
+
+    def test_blocked_card_lock_icon_exists(self):
+        html = self._html()
+        self.assertIn(".t-lock", html)
+        self.assertIn("isBlocked", html)
+
+    def test_blocked_drag_guard_in_applyMove(self):
+        html = self._html()
+        self.assertIn("Blocked: resolve dependencies", html)
+        self.assertIn("showToast", html)
+
+    def test_live_session_indicator_css_exists(self):
+        html = self._html()
+        self.assertIn(".t-live", html)
+        self.assertIn("live-pulse", html)
+        self.assertIn("card.live", html)
+
+    def test_swimlane_toggle_exists(self):
+        html = self._html()
+        self.assertIn("swim-toggle", html)
+        self.assertIn("swimBtn", html)
+        self.assertIn("adjudant-board-swimlane", html)
+        self.assertIn("By parent", html)
+
+    def test_swimlane_groups_by_parent(self):
+        html = self._html()
+        self.assertIn("card.parent", html)
+        self.assertIn("__ungrouped", html)
+        self.assertIn("Ungrouped", html)
+
+    def test_quick_add_form_exists(self):
+        html = self._html()
+        self.assertIn(".lane-add", html)
+        self.assertIn(".add-form", html)
+        self.assertIn("_new", html)
+
+    def test_quick_add_creates_card_with_new_flag(self):
+        html = self._html()
+        self.assertIn("_new:true", html)
+        self.assertIn('"new-"+Date.now()', html)
+
+
+class TestLiveMarkers(unittest.TestCase):
+    """_apply_live_markers sets live=True on matching cards."""
+
+    def test_marks_matching_cards(self):
+        from board import _apply_live_markers
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp)
+            (p / ".adjudant-live").write_text("abc-123\ndef-456\n")
+            deck = {"cards": [
+                {"id": "abc-123", "title": "A"},
+                {"id": "xyz-789", "title": "B"},
+                {"id": "def-456", "title": "C"},
+            ]}
+            _apply_live_markers(deck, p)
+            self.assertTrue(deck["cards"][0].get("live"))
+            self.assertFalse(deck["cards"][1].get("live", False))
+            self.assertTrue(deck["cards"][2].get("live"))
+
+    def test_no_live_file_is_noop(self):
+        from board import _apply_live_markers
+        with tempfile.TemporaryDirectory() as tmp:
+            deck = {"cards": [{"id": "a", "title": "X"}]}
+            _apply_live_markers(deck, Path(tmp))
+            self.assertNotIn("live", deck["cards"][0])
+
+
+class TestDashboardTemplateParses(unittest.TestCase):
+    """dashboard.html is a second offline HTML surface, scaffolded by
+    `board.py dashboard`. Its one script must parse, or the page is blank."""
+
+    def setUp(self):
+        from board import DASHBOARD_TEMPLATE
+        self.src = DASHBOARD_TEMPLATE.read_text()
+
+    def test_the_boot_and_fetch_are_declared_once(self):
+        # 4.5.1 and 4.5.2 shipped the dashboard with a bare copy of the board's
+        # example deck inside the script ('Unexpected token :'), and 4.5.3 to
+        # 4.5.7 with an unclosed paintMark(), two `const ADJUDANT_VERSION`,
+        # two `DARK_SCHEME`, and a second boot()/fetch tail after the IIFE
+        # closed. Each was a fatal parse error; the page rendered blank.
+        self.assertEqual(self.src.count("const ADJUDANT_VERSION="), 1)
+        self.assertEqual(self.src.count("function boot("), 1)
+        self.assertEqual(self.src.count("fetch(DATA_FILE)"), 1)
+        self.assertEqual(self.src.count("})();"), 1)
+        self.assertEqual(len(re.findall(r"\b(?:let|const)\s+DARK_SCHEME\s*=", self.src)), 1)
+        # the no-data path still names the command that fixes it
+        self.assertIn("No dashboard data found. Run: python3 board.py dashboard", self.src)
+
+    def test_every_script_block_parses(self):
+        # `new Function(body)` compiles without running, so a syntax error is
+        # caught here and a DOM reference is not. Skipped without node; the
+        # count assertions above still pin the four shapes that broke.
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not on PATH")
+        blocks = re.findall(r"<script[^>]*>([\s\S]*?)</script>", self.src)
+        self.assertGreaterEqual(len(blocks), 1)
+        for i, body in enumerate(blocks):
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+                f.write(body)
+                path = f.name
+            try:
+                r = subprocess.run(
+                    [node, "-e",
+                     "new Function(require('fs').readFileSync(process.argv[1],'utf8'))",
+                     path],
+                    capture_output=True, text=True, timeout=30)
+            finally:
+                Path(path).unlink(missing_ok=True)
+            self.assertEqual(r.returncode, 0, f"script {i} does not parse:\n{r.stderr}")
 
 
 if __name__ == "__main__":

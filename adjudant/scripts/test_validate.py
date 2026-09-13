@@ -442,10 +442,21 @@ class TestRepoStandardsCoverage(_PatchedTree):
 
     def test_passes_with_all_categories(self):
         self._write_standards(
-            "version coherence\nsymlink integrity\ncontext files\nplan age\nregistration\n")
+            "version coherence\nsymlink integrity\ncontext files\nplan age\n"
+            "registration\ngit practice\n")
         r = Result()
         validate.validate_repo_standards_coverage(r)
         self.assertEqual(r.failures, [])
+
+    def test_fails_when_git_practice_is_missing(self):
+        # The branch rule is a repo standard like the others: the reference
+        # must name it or status has nothing to point at.
+        self._write_standards(
+            "version coherence\nsymlink integrity\ncontext files\nplan age\nregistration\n")
+        r = Result()
+        validate.validate_repo_standards_coverage(r)
+        self.assertEqual(len(r.failures), 1)
+        self.assertIn("git practice", r.failures[0])
 
     def test_fails_when_category_missing(self):
         self._write_standards("version coherence\ncontext files\nplan age\nregistration\n")
@@ -1098,3 +1109,24 @@ class TestStandardsStructureParity(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBeansAdapterParityWithoutBeans(unittest.TestCase):
+    """The GitHub runner has no beans binary. The validator must pass with a
+    note there, not crash before the first validator reports."""
+
+    def test_missing_binary_is_a_pass_with_a_reason(self):
+        from unittest import mock
+        import _beans
+        r = Result()
+        with mock.patch.object(_beans, "available", return_value=False):
+            validate.validate_beans_adapter_parity(r)
+        self.assertEqual(r.failures, [])
+        self.assertEqual(len(r.passes), 1)
+        self.assertIn("beans not installed", r.passes[0])
+
+    def test_add_pass_with_and_without_detail(self):
+        r = Result()
+        r.add_pass("a")
+        r.add_pass("b", "why")
+        self.assertEqual(r.passes, ["a", "b (why)"])
