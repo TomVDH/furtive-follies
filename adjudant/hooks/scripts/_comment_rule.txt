@@ -1,0 +1,1 @@
+Code comments: ASD-STE100, double density. One fact or one instruction per comment. One sentence per line. Active voice, present tense. Twelve words or fewer. No history, no narrative, no we, no hedging. A comment that says why stays, one sentence. A comment that restates the next line is deleted. Two lines say what four said.

@@ -43,6 +43,15 @@ import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
+
+
+def _ops_flash(msg: str, project_dir) -> None:
+    """Flash this verb's outcome through scripts/_ops_flash.py. Never raises."""
+    try:
+        from _ops_flash import ops_flash
+        ops_flash(msg, project_dir)
+    except Exception:
+        pass
 from typing import Any, Optional
 
 from _cost import cost_block, read_threshold, stat_walk
@@ -1189,6 +1198,7 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
         f"{s['documentation_gaps']} doc-gaps, {s['dangling_scopes']} dangling)",
         file=sys.stderr,
     )
+    _ops_flash(f"dream: {report['meta']['project_slug']}, {shown}", args.project_dir)
     return 0
 
 

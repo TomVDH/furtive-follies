@@ -404,6 +404,75 @@ Chosen under impeccable live from four ways of letting a move feel like
 something (a sliding thumb, the slip, a stamp, keycap hints). The note view's
 Pretty/Raw rail keeps its track.
 
+### Dependency lines on demand (4.5.8)
+
+The board used to draw every `blockedBy` relation at once: an SVG overlay
+pinned in the board's scroll space, one straight line per pair, redrawn only on
+a full render. That misrendered as a matter of design, not of a bug. Each lane
+scrolls on its own, so the moment one lane moved, its lines stayed where the
+cards had been: ending in empty paper, or running to the bottom edge of a lane
+whose card had scrolled out of it. The screenshot of 2026-09-13 09:15 was the
+measurement, a Todo lane of 155 cards with lines to nowhere. Even when it was
+right, a diagonal from one lane to another crossed every card in between.
+
+Now nothing is drawn at rest. A card with relations carries a mark in its
+foot, in the slot the lock already uses: the lock for a blocked card, then a
+small mono count in `--text-faint` at the id's size, `2` for the cards
+blocking this one and `→3` for the cards it blocks. The mark joins the card's
+accessible name the way tags do (`blocked by 2, blocking 3`), because an
+aria-label replaces the button's contents and a mark left out of it is a mark
+only sighted people get.
+
+Hover or keyboard focus on such a card lights it. The card and every rendered
+card it is tied to take a 1px `--accent` outline, no fill, no shadow. Its
+connectors are drawn for that one card only, blockers into it and the cards it
+blocks out of it, `--accent` at 55%, 1.5px, with the arrowhead the old overlay
+already had. Each is three orthogonal segments: out of the card's edge to the
+gutter between the lanes, along the gutter, into the far card. Never a diagonal
+across a card.
+
+The overlay is `position:fixed`, sized to the board's box, and redrawn from
+`getBoundingClientRect` on every animation frame while a card is lit. There is
+no scroll arithmetic, so no scroll can leave it stale; at most a handful of
+paths, so a frame costs nothing worth measuring. A far card scrolled outside
+its lane's visible box gets a stub: the connector runs to the lane's edge and
+the arrowhead points the way, up or down, saying "the blocker is above"
+instead of drawing to nowhere. A far card not rendered at all (filtered, or in
+a closed lane) draws nothing. On a phone the lanes stack and the page is what
+scrolls, so the visible box is the lane cut to the viewport and the stubs work
+the same way.
+
+Leaving the card, blurring it, pressing Escape, starting a drag, or opening the
+sheet clears the overlay. Nothing animates; the lines appear and vanish. The
+lines are `aria-hidden`: the relation is already spoken through the card's
+name and the sheet's Blocked by and Blocking rows. The board carries one
+delegated listener each for mouseover, mouseout, focusin and focusout, not four
+per card, because a deck can hold a few hundred tickets and every render
+rebuilds them all.
+
+The sheet's relations section changed in the same release. It used to print
+bare ids in mono, which named a relation and said nothing about it. Now every
+relation is a row: the type mark, the id, the title and the lane, under its
+group (Parent, Children, Blocked by, Blocking, References, with a count in the
+label past one), and a click opens that card in the same sheet. Children and
+Blocking are derived from the deck and merged with whatever the card declares,
+because beans stores each relation on one side only: a child names its parent,
+a blocked bean names its blocker. An id the deck does not hold is said, dimmed,
+and is not a button, because there is nothing to open. The sheet's labels
+grew with it, to the register's field-label role: section labels at 14.5px
+and fact keys at 13px in the condensed face, the key column widened to 112px
+so CATEGORY and PRIORITY sit on one line, and each relation row 34px tall
+with the title at 13px and the lane at 12px.
+
+Two faces are embedded now, both as data URIs, because the file used to carry
+only Mozilla Headline Condensed at 600 and every rule that named the regular
+face first fell through to the condensed one. Only artful labels are condensed,
+like logos: the wordmark's fallback and the cover's type name keep `--serif`.
+Every other label and title, the lane headings and stamps, the ledger captions,
+the board's name, BEAN BOARD, the sheet's title, section labels and fact
+names, is set in the regular Mozilla Headline through `--display`, variable
+200 to 700, 21 KB, the register's own cut.
+
 ### The sheet under live preview (4.1.25)
 
 A modal dialog sits in the top layer, above impeccable's picker, so nothing

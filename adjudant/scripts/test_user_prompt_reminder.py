@@ -15,6 +15,9 @@ import unittest
 from pathlib import Path
 
 HOOK = Path(__file__).resolve().parent.parent / "hooks" / "scripts" / "user-prompt-reminder.sh"
+# The hook prints the code-comments rule on every prompt (test_comment_rule).
+# The helpers strip that one line. These tests read the nags alone.
+RULE_LINE = "[adjudant] " + (HOOK.parent / "_comment_rule.txt").read_text().strip() + "\n"
 
 
 class _ReminderHarness(unittest.TestCase):
@@ -32,7 +35,7 @@ class _ReminderHarness(unittest.TestCase):
             input=json.dumps({"session_id": session_id, "prompt": prompt}),
             capture_output=True, text=True, env=env, timeout=30)
         self.assertEqual(proc.returncode, 0)
-        return proc.stdout
+        return proc.stdout.replace(RULE_LINE, "", 1)
 
 
 class TestKeywordPrecision(_ReminderHarness):
@@ -110,7 +113,7 @@ class TestIntentNag(unittest.TestCase):
             input=json.dumps({"session_id": session_id, "prompt": prompt}),
             capture_output=True, text=True, env=env, timeout=30)
         self.assertEqual(proc.returncode, 0)
-        return proc.stdout
+        return proc.stdout.replace(RULE_LINE, "", 1)
 
     def test_silent_on_the_first_prompt(self):
         # The complaint: it fired before the purpose was settled.

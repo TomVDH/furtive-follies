@@ -23,6 +23,8 @@ from unittest import mock
 
 HOOKS = Path(__file__).resolve().parent.parent / "hooks" / "scripts"
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+# The prompt hook prints this line on every prompt. See test_comment_rule.
+RULE_LINE = "[adjudant] " + (HOOKS / "_comment_rule.txt").read_text().strip() + "\n"
 
 
 def _run(
@@ -143,7 +145,9 @@ class TestSessionStartHook(unittest.TestCase):
             out = _run("session-start.sh", project, home).stdout
             bullets = [l for l in out.splitlines() if l.startswith("- ")]
             self.assertIn("Voice", bullets[0])
-            self.assertIn("Advisor", bullets[1])
+            # The code-comments rule sits right after Voice (test_comment_rule).
+            self.assertIn("Code comments", bullets[1])
+            self.assertIn("Advisor", bullets[2])
 
     def test_advisor_banner_stays_within_its_token_budget(self):
         # Same discipline as the voice directive: it loads every opted-in
@@ -600,7 +604,9 @@ class TestSessionStartHook(unittest.TestCase):
             r = _run("session-start.sh", project, home,
                      stdin=json.dumps({"session_id": "s1", "source": "startup"}))
             self.assertEqual(r.returncode, 0)
-            self.assertEqual(r.stdout.count("ASD-STE100"), 1)
+            # Once for vault writes. The code-comments rule names it a second time.
+            self.assertEqual(r.stdout.count("- Register: ASD-STE100"), 1)
+            self.assertEqual(r.stdout.count("ASD-STE100"), 2)
 
 
 class TestSessionEndHook(unittest.TestCase):
@@ -718,7 +724,7 @@ class TestUserPromptReminder(unittest.TestCase):
             r = _run("user-prompt-reminder.sh", project, home,
                      stdin=self._payload("fix the css on the landing page"))
             self.assertEqual(r.returncode, 0)
-            self.assertEqual(r.stdout, "")
+            self.assertEqual(r.stdout, RULE_LINE)  # the rule only, no nag
 
     def test_silent_when_project_linked(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -728,7 +734,7 @@ class TestUserPromptReminder(unittest.TestCase):
             r = _run("user-prompt-reminder.sh", project, home,
                      stdin=self._payload("record this in the vault"))
             self.assertEqual(r.returncode, 0)
-            self.assertEqual(r.stdout, "")
+            self.assertEqual(r.stdout, RULE_LINE)  # the rule only, no nag
 
     def test_fires_once_per_session(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -738,10 +744,72 @@ class TestUserPromptReminder(unittest.TestCase):
             self.assertIn("No vault linked", r1.stdout)
             r2 = _run("user-prompt-reminder.sh", project, home,
                       stdin=self._payload("vault again", session_id="s-once"))
-            self.assertEqual(r2.stdout, "")  # suppressed for the same session
+            self.assertEqual(r2.stdout, RULE_LINE)  # nag suppressed for the same session
             r3 = _run("user-prompt-reminder.sh", project, home,
                       stdin=self._payload("vault anew", session_id="s-other"))
             self.assertIn("No vault linked", r3.stdout)  # new session fires
+
+
+class TestUltracodeMarker(unittest.TestCase):
+    """user-prompt-reminder.sh writes $TMPDIR/claude-ultracode-<session_id>.
+    The word `ultracode` writes it. `ultracode off` removes it.
+    The statusline paints the context bar purple while it exists."""
+
+    def _payload(self, prompt: str, session_id: str = "sess-u1") -> str:
+        return json.dumps({"session_id": session_id, "prompt": prompt})
+
+    def _say(self, home: Path, project: Path, prompt: str, sid: str = "sess-u1"):
+        r = _run("user-prompt-reminder.sh", project, home,
+                 stdin=self._payload(prompt, sid))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r
+
+    def test_the_word_writes_the_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"; home.mkdir()
+            project = Path(tmp) / "code"; project.mkdir()
+            r = self._say(home, project, "ultracode: fix the parser")
+            self.assertTrue((home / "claude-ultracode-sess-u1").exists())
+            self.assertEqual(r.stdout, RULE_LINE)  # a marker, no line of its own
+
+    def test_off_removes_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"; home.mkdir()
+            project = Path(tmp) / "code"; project.mkdir()
+            self._say(home, project, "Ultracode please")
+            self.assertTrue((home / "claude-ultracode-sess-u1").exists())
+            self._say(home, project, "ok, ultracode off now")
+            self.assertFalse((home / "claude-ultracode-sess-u1").exists())
+
+    def test_an_unrelated_prompt_leaves_it_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"; home.mkdir()
+            project = Path(tmp) / "code"; project.mkdir()
+            self._say(home, project, "fix the css")
+            self.assertFalse((home / "claude-ultracode-sess-u1").exists())
+            self._say(home, project, "ultracode")
+            self._say(home, project, "and now the tests")
+            self.assertTrue((home / "claude-ultracode-sess-u1").exists())
+
+    def test_the_word_must_stand_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"; home.mkdir()
+            project = Path(tmp) / "code"; project.mkdir()
+            self._say(home, project, "the ultracoder is a myth, and so is ultracoded")
+            self.assertFalse((home / "claude-ultracode-sess-u1").exists())
+
+    def test_marker_is_session_keyed_and_the_id_is_filename_safe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"; home.mkdir()
+            project = Path(tmp) / "code"; project.mkdir()
+            self._say(home, project, "ultracode", sid="a")
+            self._say(home, project, "ultracode", sid="b")
+            self.assertTrue((home / "claude-ultracode-a").exists())
+            self.assertTrue((home / "claude-ultracode-b").exists())
+            self._say(home, project, "ultracode", sid="../escape")
+            self.assertEqual(sorted(p.name for p in home.glob("claude-ultracode-*")),
+                             ["claude-ultracode-a", "claude-ultracode-b"])
+            self.assertFalse((Path(tmp) / "claude-ultracode-escape").exists())
 
 
 class TestZoneAwareness(unittest.TestCase):

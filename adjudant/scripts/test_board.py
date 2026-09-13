@@ -1982,7 +1982,9 @@ class TestTemplateIsOperableWithoutAMouse(unittest.TestCase):
         self.assertIn(".title::before{content:\"\";flex:none;width:6px;height:10px;background:var(--text-faint);", flat)
         title = self.src[self.src.index("  .title{"):self.src.index("  .sub{")]
         self.assertNotIn("var(--mono)", title)
-        self.assertIn("Mozilla Headline Condensed", title)
+        # 4.5.8: the regular face, not the condensed one. Only artful labels
+        # are condensed, like logos; the board's name is a title.
+        self.assertIn("font-family:var(--display)", title)
         # the masthead is the same paper as the body, grain included
         mast = self.src[self.src.index("header.masthead{"):]
         self.assertIn("radial-gradient(oklch(35% 0.02 60 / 0.025) 1px, transparent 1px)", mast[:700])
@@ -2018,7 +2020,7 @@ class TestTemplateIsOperableWithoutAMouse(unittest.TestCase):
         self.assertIn(".sheet-type-bar .sym{width:24px;height:24px;background:oklch(96% 0.008 75)}", bar.replace("  ", ""))
         lbl = self.src[self.src.index("  .sheet-lbl{"):self.src.index("  .sheet-lbl-row{")]
         self.assertNotIn("var(--mono)", lbl)
-        self.assertIn("Mozilla Headline Condensed", lbl)
+        self.assertIn("font-family:var(--display)", lbl)   # 4.5.8: regular, not condensed
         # close and copy are the one key; the cross is drawn, not a glyph
         self.assertIn('<button class="pane-btn sheet-close" id="sheetClose" type="button" aria-label="Close"><svg', self.src)
         self.assertIn('el("button","pane-btn copy",label)', _js_function(self.src, "copyButton"))
@@ -2246,6 +2248,28 @@ class TestTemplateIsOperableWithoutAMouse(unittest.TestCase):
         # a data URI fetches nothing, which is what validator 24 actually guards
         self.assertNotIn("url(//", self.src)
         self.assertNotIn("url(http", self.src)
+        # 4.5.8: two faces. Only artful labels are condensed, like logos; the
+        # rest is the regular Mozilla Headline, embedded the same way. Before
+        # this the regular name was only ever a fallback the file never held,
+        # so every label fell back to condensed.
+        flat = self.src.replace(" ", "").replace("\n", "")
+        self.assertEqual(2, flat.count("@font-face{"))
+        self.assertIn('@font-face{font-family:"MozillaHeadline";src:url(data:font/woff2;base64,', flat)
+        self.assertIn('font-weight:200700;font-style:normal;font-display:swap', flat)
+        display = [ln for ln in self.src.splitlines() if ln.strip().startswith("--display:")]
+        self.assertEqual(1, len(display))
+        self.assertTrue(display[0].strip().startswith('--display:"Mozilla Headline",'), display)
+        def rule(start, end):
+            return self.src[self.src.index(start):self.src.index(end, self.src.index(start))]
+        for sel in (".sheet-lbl{", ".sheet-facts dt{", ".sheet-title{", ".spark .cap{", ".title{",
+                    ".brand-feature{", ".lane-head .nm{", ".lane-head .stamp{"):
+            r = rule("  " + sel, "}")
+            self.assertIn("var(--display)", r, sel)
+            self.assertNotIn("Condensed", r, sel)
+        cover = rule("  .sheet-type-bar{", "}")
+        self.assertIn("var(--serif)", cover)            # the cover keeps the condensed face
+        self.assertNotIn("var(--display)", cover)
+        self.assertNotIn('"Mozilla Headline Condensed","Mozilla Headline",Georgia,serif', self.src)
 
     def test_the_dark_drawing_is_the_artists_inverse_not_a_recolour(self):
         # 4.1.5 through 4.1.11 recoloured the light drawing's ink by token and
@@ -2787,6 +2811,89 @@ class TestWave2Features(unittest.TestCase):
         html = self._html()
         self.assertIn(".dep-overlay", html)
         self.assertIn("drawDependencies", html)
+
+    def test_dependency_lines_are_drawn_on_demand(self):
+        """4.5.8: no ambient overlay. Each lane scrolls on its own, and an
+        overlay pinned in the board's scroll space and redrawn only on render
+        left lines ending in empty paper (screenshot, 2026-09-13 09:15). The
+        lines now belong to one hovered or focused card, drawn every frame on a
+        fixed overlay from getBoundingClientRect, and cleared on leave, blur,
+        Escape and the sheet opening."""
+        html = self._html()
+        css = html[html.index(".dep-overlay{"):html.index("}", html.index(".dep-overlay{"))]
+        self.assertIn("position:fixed", css)
+        self.assertNotIn("position:absolute", css)
+        # the overlay is a line, not a fill: accent at .55, no shadow
+        self.assertIn(".dep-overlay path{fill:none;stroke:var(--accent);stroke-width:1.5;stroke-opacity:.55}", html)
+        self.assertIn(".ticket.dep-hot{outline:1px solid var(--accent);outline-offset:1px}", html)
+        # drawDependencies takes the card; render() never calls it bare
+        self.assertIn("function drawDependencies(card)", html)
+        render_src = html[html.index("function render(){"):html.index("async function boot(")]
+        self.assertNotIn("drawDependencies", render_src)
+        self.assertIn("function clearDependencies()", html)
+        # redrawn every frame while active, from the live rects
+        self.assertIn("depRaf=requestAnimationFrame(depFrame)", html)
+        self.assertIn("cancelAnimationFrame(depRaf)", html)
+        self.assertIn("getBoundingClientRect", html[html.index("function depPath("):html.index("function depFrame(")])
+        # one delegated listener each on the board, not one per card
+        for ev in ("mouseover", "mouseout", "focusin", "focusout"):
+            self.assertEqual(html.count('depBoard.addEventListener("%s"' % ev), 1, ev)
+        ticket_src = html[html.index("function ticketNode("):html.index("function columnById(")]
+        for ev in ("mouseover", "mouseenter", "focusin"):
+            self.assertNotIn('addEventListener("%s"' % ev, ticket_src)
+        # cleared on Escape, on drag and when the sheet opens
+        self.assertRegex(html, r'ev\.key==="Escape"&&depCard\) clearDependencies\(\)')
+        open_src = html[html.index("function openSheet(key){"):html.index("function livePreview(")]
+        self.assertIn("clearDependencies();", open_src)
+        self.assertIn('t.addEventListener("dragstart",ev=>{clearDependencies();', html)
+        # the lines are decoration for sighted people; the sheet speaks the relation
+        self.assertIn('svg.setAttribute("aria-hidden","true")', html)
+        # the resting mark: lock plus a count, mono and faint, in the card's foot
+        self.assertIn('el("span","t-dep",depTxt)', html)
+        self.assertIn("+depLabel(card)", html)
+        self.assertRegex(html, r"\.t-dep\{[^}]*font-family:var\(--mono\)[^}]*color:var\(--text-faint\)")
+        # the marker is the one the ambient overlay already had
+        self.assertEqual(html.count('marker.setAttribute("id","arrowhead")'), 1)
+
+    def test_sheet_lists_relations_as_rows_that_open(self):
+        """4.5.8: the sheet's relations were bare ids in mono spans. Now each
+        is a row with the mark, id, title and lane, and a click opens that
+        card in place. Children and Blocking are derived from the deck because
+        beans stores each relation on one side only."""
+        html = self._html()
+        rel_src = html[html.index("function cardRelations("):html.index("function renderSheet(")]
+        self.assertIn('String(c.parent||"").trim()===id', rel_src)       # Children, derived from parent
+        self.assertIn("idList(c.blockedBy).includes(id)", rel_src)       # Blocking, derived from blockedBy
+        self.assertIn("uniq(idList(card.children).concat(derivedChildren))", rel_src)
+        self.assertIn("uniq(idList(card.blocking).concat(derivedBlocking))", rel_src)
+        sheet_src = html[html.index("function renderSheet("):html.index("function ticketNode(")]
+        for label in ("Parent", "Children", "Blocked by", "Blocking", "References"):
+            self.assertIn('relGroup("%s",' % label, sheet_src)
+        self.assertIn('label+(ids.length>1?" "+ids.length:"")', sheet_src)
+        self.assertNotIn("linkRow", sheet_src)
+        # entries are buttons that take the card-face path into the sheet
+        self.assertIn('el("button","sheet-rel")', rel_src)
+        self.assertIn("openSheet(key)", rel_src)
+        for part in ('el("span","rel-id",far.id)', 'el("span","rel-title",', 'el("span","rel-lane",colName(far.column))', 'catSym(far.category)'):
+            self.assertIn(part, rel_src)
+        # a missing id is said, dimmed, and is not a button
+        self.assertIn('el("span","sheet-rel missing")', rel_src)
+        self.assertIn('row.title="not on this board"', rel_src)
+        # rows, not keys: hairline, hover surface, the sheet's focus ring, zero radius
+        self.assertIn("button.sheet-rel:hover{background:var(--surface-2)}", html)
+        self.assertIn("button.sheet-rel:focus-visible{outline:2px solid var(--accent);outline-offset:2px}", html)
+        self.assertRegex(html, r"\.sheet-rel\{[^}]*border-radius:0[^}]*border-bottom:1px solid")
+        self.assertIn(".sheet-rel.missing{color:var(--text-faint)}", html)
+        # the register's field-label role: labels at 14.5px, fact keys at 13px, a
+        # label column wide enough that CATEGORY and PRIORITY do not wrap
+        lbl = html[html.index("  .sheet-lbl{"):html.index("  .sheet-lbl-row{")]
+        self.assertIn("font-size:14.5px;font-weight:600", lbl)
+        self.assertIn("letter-spacing:.03em", lbl)
+        self.assertRegex(html, r"\.sheet-facts dt\{[^}]*font-size:13px;font-weight:600")
+        self.assertIn(".sheet-fact{\n    display:grid;grid-template-columns:112px minmax(0,1fr)", html)
+        self.assertRegex(html, r"\.sheet-rel\{[^}]*min-height:34px")
+        self.assertIn(".sheet-rel .rel-title{font-size:var(--fs-small)", html)
+        self.assertIn(".sheet-rel .rel-lane{font-size:12px;color:var(--text-faint)", html)
 
     def test_blocked_card_lock_icon_exists(self):
         html = self._html()

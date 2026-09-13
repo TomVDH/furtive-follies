@@ -369,6 +369,55 @@ class TestSlugGuard(_HookHarness):
             self.assertIn("[[demo/notes/idea]]", session.read_text())
 
 
+class TestOpsFlash(_HookHarness):
+    """The vault bolt, through scripts/_ops_flash.py, read back under a sandbox HOME.
+    The old private writer failed silently on a missing import."""
+
+    def _with_home(self, home: Path):
+        (home / ".claude").mkdir(parents=True)
+        old = os.environ.get("HOME")
+        os.environ["HOME"] = str(home)
+        return old
+
+    def _restore_home(self, old):
+        if old is None:
+            os.environ.pop("HOME", None)
+        else:
+            os.environ["HOME"] = old
+
+    def test_a_vault_write_flashes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project, proot, session = self._fixture(Path(tmp))
+            home = Path(tmp) / "home"
+            old = self._with_home(home)
+            try:
+                note = self._note(proot, "notes/idea.md")
+                self.assertEqual(self._run(project, self._payload(note)), 0)
+            finally:
+                self._restore_home(old)
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import _ops_flash
+            f = home / ".claude" / "statusline-cache" / f"ops-{_ops_flash.flash_key(project)}"
+            self.assertTrue(f.exists(), "no flash written for the vault write")
+            ts, msg = f.read_text().split(" ", 1)
+            self.assertTrue(ts.isdigit())
+            self.assertTrue(msg.startswith("vault: "), msg)
+
+    def test_an_unlinked_write_does_not_flash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "code"
+            project.mkdir()
+            home = Path(tmp) / "home"
+            old = self._with_home(home)
+            try:
+                target = Path(tmp) / "somewhere.md"
+                target.write_text("x")
+                self._run(project, self._payload(target))
+            finally:
+                self._restore_home(old)
+            self.assertEqual(list((home / ".claude").rglob("ops-*")), [])
+
+
 class TestStampGate(_HookHarness):
     """v0.16.0: stamping is breadcrumb opt-in, default off."""
 

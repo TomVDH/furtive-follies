@@ -352,17 +352,56 @@ if [ "$GRIND_ON" = 1 ]; then
 fi
 
 # ── S0a: ops flash takeover ──────────────────────────────────────────────────
-# Same pattern as the break blurt: when an ops flash is live, paint the whole
-# line and skip everything else. The break nag wins if both are live.
-OPS_FLASH_TTL="${ADJUDANT_OPS_FLASH_TTL:-8}"
-case "$OPS_FLASH_TTL" in (*[!0-9]*|"") OPS_FLASH_TTL=8;; esac
+# Same pattern as the break blurt. A live flash paints the whole line.
+# Everything else is skipped. The break nag wins if both are live.
+#
+# File: `${CACHE_DIR}/ops-<key>`. Line one: `<unix ts> <message>`.
+# Writer: scripts/_ops_flash.py, and nothing else. Hooks and verbs call it.
+# hooks/scripts/_ops_flash.sh wraps it for bash.
+# Key: the session root, absolute, folded to its main checkout, then _ckey.
+# The worktree fold repeats S1's walk. S1 has not run yet. No fork.
+# A worker in .worktrees/<bean> flashes the orchestrator's bar this way.
+#
+# Seen, then ten seconds. The first paint appends `seen <ts>`.
+# The TTL counts from that stamp, never from the write.
+# A newer flash rewrites the file without a seen line. The clock restarts.
+# An unseen flash older than OPS_FLASH_MAX_AGE is dropped, not shown late.
+OPS_FLASH_TTL="${ADJUDANT_OPS_FLASH_TTL:-10}"
+case "$OPS_FLASH_TTL" in (*[!0-9]*|"") OPS_FLASH_TTL=10;; esac
+OPS_FLASH_MAX_AGE="${ADJUDANT_OPS_FLASH_MAX_AGE:-600}"
+case "$OPS_FLASH_MAX_AGE" in (*[!0-9]*|"") OPS_FLASH_MAX_AGE=600;; esac
 if [ -n "${CACHE_DIR:-}" ] && [ -n "${cwd:-}" ]; then
-  _of_file="${CACHE_DIR}/ops-$(_ckey "$cwd")"
+  _of_dir="$cwd"
+  _d="$cwd"
+  while [ -n "$_d" ] && [ "$_d" != "/" ]; do
+    if [ -e "${_d}/.git" ]; then
+      if [ -f "${_d}/.git" ]; then
+        read -r _k _p < "${_d}/.git" 2>/dev/null
+        case "$_p" in *"/.git/worktrees/"*) _of_dir="${_p%/.git/worktrees/*}" ;; esac
+      fi
+      break
+    fi
+    _d="${_d%/*}"
+  done
+  _of_file="${CACHE_DIR}/ops-$(_ckey "$_of_dir")"
   if [ -f "$_of_file" ]; then
-    _of_ts=0; _of_text=""
-    read -r _of_ts _of_text < "$_of_file" 2>/dev/null
+    _of_ts=0; _of_text=""; _of_k=""; _of_seen=""
+    { read -r _of_ts _of_text; read -r _of_k _of_seen; } < "$_of_file" 2>/dev/null
     case "$_of_ts" in (*[!0-9]*|"") _of_ts=0;; esac
-    if [ -n "$_of_text" ] && [ $(( NOW - _of_ts )) -lt "$OPS_FLASH_TTL" ]; then
+    [ "$_of_k" = "seen" ] || _of_seen=""
+    case "$_of_seen" in (*[!0-9]*) _of_seen="";; esac
+    _of_live=""
+    if [ -n "$_of_text" ]; then
+      if [ -z "$_of_seen" ]; then
+        if [ $(( NOW - _of_ts )) -lt "$OPS_FLASH_MAX_AGE" ]; then
+          printf 'seen %s\n' "$NOW" >> "$_of_file" 2>/dev/null
+          _of_live=1
+        fi
+      elif [ $(( NOW - _of_seen )) -lt "$OPS_FLASH_TTL" ]; then
+        _of_live=1
+      fi
+    fi
+    if [ -n "$_of_live" ]; then
       printf '%b⚡ %s%b\n' "\033[38;2;100;140;185m" "$_of_text" "$R"
       exit 0
     fi
@@ -1076,7 +1115,7 @@ for _m in "${TMPDIR:-/tmp}/adjudant-vault-write${sid:+-$sid}" "${TMPDIR:-/tmp}/a
   [ -f "$_m" ] || continue
   _at=$(tr -dc '0-9' < "$_m" 2>/dev/null)
   if [ -n "$_at" ] && [ $(( NOW - _at )) -lt "$VAULTOP_LINGER" ]; then
-    vaultop_col="${VAULTOP}⊙${R} "
+    vaultop_col="${CTX}⊙${R} "
     break
   fi
 done
@@ -1503,14 +1542,22 @@ case "$_m" in
   *" Mythos") model="M${_m% Mythos}" ;;
   *)          model="$_m"            ;;
 esac
+# Effort as a short code: lo md hi xhi max. A dot count reads badly.
+# Ordinary levels take the EFFORT colour.
+# xhi and max take the ULTRA purple plus a filled pip. You chose those.
+e=""; e_col=""; e_pip=""
 case "$effort_raw" in
-  low) e="·";; medium) e="··";; high) e="•";; xhigh) e="••";; max) e="⬥";; *) e="";;
+  low)    e="lo";  e_col="$EFFORT";;
+  medium) e="md";  e_col="$EFFORT";;
+  high)   e="hi";  e_col="$EFFORT";;
+  xhigh)  e="xhi"; e_col="$ULTRA"; e_pip=1;;
+  max)    e="max"; e_col="$ULTRA"; e_pip=1;;
 esac
-# ultracode pip: the statusline JSON reports effort.level=xhigh for ultracode
-# (no distinct value, nothing persisted on disk) — so detect it via a
-# session-scoped marker the agent writes while ultracode is active:
-# /tmp/claude-ultracode-<session_id>. Keyed to the id so it can't bleed sessions.
-ultra=""; [ -n "$sid" ] && [ -f "/tmp/claude-ultracode-${sid}" ] && ultra=1
+# ultracode: the harness reports it as a plain xhigh. A marker carries it.
+# Writer: hooks/scripts/user-prompt-reminder.sh, on the word `ultracode`.
+# `ultracode off` removes it. Path: $TMPDIR/claude-ultracode-<session_id>.
+# Keyed to the session id. Under $TMPDIR so tests can sandbox it.
+ultra=""; [ -n "$sid" ] && [ -f "${TMPDIR:-/tmp}/claude-ultracode-${sid}" ] && ultra=1
 
 # The bar reports REMAINING, not used. Two reasons: what you act on is headroom,
 # and the number you act on should be the one that shrinks toward zero.
@@ -1583,7 +1630,8 @@ s4_col="${MODEL}${model}${R}"
 case "$ctx_size" in
   [1-9][0-9][0-9][0-9][0-9][0-9][0-9]*) s4_col+="${HASH}/1M${R}" ;;
 esac
-[ -n "$e"       ] && s4_col+="${SP}${EFFORT}${e}${R}"
+[ -n "$e"       ] && s4_col+="${SP}${e_col}${e}${R}"
+[ -n "$e_pip"   ] && s4_col+=" ${ULTRA}●${R}"
 [ -n "$ultra"   ] && s4_col+=" ${ULTRA}●${R}"
 [ -n "$ctx_col" ] && s4_col+="${SP}${ctx_col}"
 [ -n "$rl_col"  ] && s4_col+=" ${rl_col}"

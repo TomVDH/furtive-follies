@@ -13,6 +13,15 @@ import sys
 from pathlib import Path
 
 
+def _ops_flash(msg: str, project_dir) -> None:
+    """Flash this verb's outcome through scripts/_ops_flash.py. Never raises."""
+    try:
+        from _ops_flash import ops_flash
+        ops_flash(msg, project_dir)
+    except Exception:
+        pass
+
+
 def _read_breadcrumb(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8")
@@ -81,7 +90,13 @@ def main() -> int:
         result = status(project)
 
     print(json.dumps(result, indent=2))
-    return 1 if "error" in result else 0
+    if "error" in result:
+        return 1
+    if args.activate:
+        _ops_flash("orchestrate: on", project)
+    elif args.deactivate:
+        _ops_flash("orchestrate: off", project)
+    return 0
 
 
 if __name__ == "__main__":

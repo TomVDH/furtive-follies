@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
-"""PostToolUse hook for adjudant: commit-gated session logging.
+"""PostToolUse hook for adjudant: commit-gated session logging and ops flashes.
 
-SELF-GATED on Bash tool calls: exits 0 unless the command is a `git commit`
-(leading `cd ... && ` stripped) whose payload reports success. Any `if`
-filter added in hooks.json is defense in depth, never a dependency. Then:
+SELF-GATED on Bash calls. hooks.json wires it with no `if` filter.
+A `Bash(git commit *)` filter would hide every push. Cheapest checks first.
+A plain Bash call costs one regex and exits 0.
+
+Flashes go through `_ops_flash.ops_flash`. Never on a dry run. Never on a failure.
+
+  - `git commit`   -> `commit <short-hash> <subject>`, after git confirms HEAD.
+  - `git push`     -> `pushed <ref>`, only when a ref line moved.
+                      `Everything up-to-date` moves nothing: no flash.
+  - `gh pr create` -> `PR #N opened`, from the printed URL.
+  - a test runner  -> `tests N OK` or `tests FAILED x`.
+                      unittest: `Ran N tests`, then `OK` or `FAILED (failures=x, errors=y)`.
+                      pytest: `N passed`, `M failed`.
+
+A verified `git commit` (leading `cd ... &&` stripped) then:
 
   1. Append `- HH:MM · commit: {subject}` to today's session log.
   2. On `release(<plugin>): vX.Y.Z` subjects, scaffold
@@ -39,6 +51,18 @@ def _mark_vault_write(session_id: str = "") -> None:
     try:
         from _vault_walk import mark_vault_write
         mark_vault_write(session_id)
+    except Exception:
+        pass
+
+
+def _ops_flash(msg: str) -> None:
+    """Flash through the shared writer, keyed on $CLAUDE_PROJECT_DIR. Never raises.
+
+    The bar keys on the session root, not the `cd X &&` target.
+    """
+    try:
+        from _ops_flash import ops_flash
+        ops_flash(msg)
     except Exception:
         pass
 
@@ -104,6 +128,31 @@ _HEREDOC_MSG_RE = re.compile(
 _QUOTED_MSG_RE = re.compile(r"-m\s+(?:\"([^\"]*)\"|'([^']*)')")
 _EXIT_KEYS = ("exit_code", "exitCode", "returncode", "return_code", "code")
 
+# Push, PR and test-runner flashes. Same -c/-C prefixes as the commit gate.
+_PUSH_RE = re.compile(
+    r"^git\s+(?:-c\s+\S+\s+|-C\s+(?:\"[^\"]+\"|'[^']+'|\S+)\s+)*push\b")
+# `git push -n` is a dry run. The commit flag list covers --dry-run.
+_PUSH_DRY_RE = re.compile(r"(?:^|\s)-n(?:\s|$)")
+# A ref line proves a move: `abc..def  main -> main`, `* [new branch]  x -> x`.
+_PUSH_MOVED_RE = re.compile(
+    r"^\s*(?:[0-9a-f]+\.\.\.?[0-9a-f]+|\+\s+[0-9a-f]+\.\.\.[0-9a-f]+|\*\s+\[new (?:branch|tag)\])"
+    r"\s+\S+\s+->\s+(\S+)", re.M)
+_PUSH_FAIL_RE = re.compile(r"^\s*(?:!\s+\[rejected\]|error:|fatal:)", re.M)
+_PR_CREATE_RE = re.compile(r"^gh\s+pr\s+create\b")
+_PR_URL_RE = re.compile(r"https?://\S+/pull/(\d+)")
+# A runner as a command token: `python3 -m unittest`, `pytest`, `.venv/bin/pytest`.
+# A file named test_unittest.py is not a runner.
+_TEST_RUNNER_RE = re.compile(
+    r"(?:^|[\s;&|/(])(?:python\d*(?:\.\d+)?\s+-m\s+(?:unittest|pytest)|pytest|py\.test|unittest)\b")
+_UNITTEST_RAN_RE = re.compile(r"^Ran (\d+) tests?\b", re.M)
+_UNITTEST_OK_RE = re.compile(r"^OK\b", re.M)
+_UNITTEST_FAILED_RE = re.compile(r"^FAILED \(([^)]*)\)", re.M)
+_UNITTEST_COUNT_RE = re.compile(r"\b(failures|errors)=(\d+)")
+_PYTEST_PASSED_RE = re.compile(r"\b(\d+) passed\b")
+_PYTEST_FAILED_RE = re.compile(r"\b(\d+) failed\b")
+_PYTEST_ERRORS_RE = re.compile(r"\b(\d+) errors?\b")
+_FLASH_SUBJECT_MAX = 72
+
 
 def read_breadcrumb(project_dir: Path) -> dict:
     """Read `.claude/adjudant` breadcrumb (`key: value` per line, YAML-ish).
@@ -153,6 +202,106 @@ def response_indicates_success(resp) -> bool:
             except (TypeError, ValueError):
                 return False
     return True
+
+
+def response_text(resp) -> str:
+    """Join every text field of a tool_response.
+
+    Reads stdout, stderr, `output` and `content`.
+    `content` is a string or a list of text blocks.
+    A bare string is returned as is. unittest and git push report on stderr.
+    """
+    if resp is None:
+        return ""
+    if isinstance(resp, str):
+        return resp
+    if not isinstance(resp, dict):
+        return ""
+    parts = []
+    for key in ("stdout", "stderr", "output"):
+        v = resp.get(key)
+        if isinstance(v, str):
+            parts.append(v)
+    content = resp.get("content")
+    if isinstance(content, str):
+        parts.append(content)
+    elif isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and isinstance(block.get("text"), str):
+                parts.append(block["text"])
+    return "\n".join(parts)
+
+
+def push_flash(cmd: str, resp) -> str:
+    """Return `pushed <ref>` when a push moved a ref, else ''."""
+    if not _PUSH_RE.match(cmd):
+        return ""
+    if _NO_COMMIT_FLAG_RE.search(cmd) or _PUSH_DRY_RE.search(cmd):
+        return ""
+    if not response_indicates_success(resp):
+        return ""
+    text = response_text(resp)
+    if _PUSH_FAIL_RE.search(text):
+        return ""
+    moved = _PUSH_MOVED_RE.findall(text)
+    if not moved:
+        return ""
+    return f"pushed {log_safe(moved[-1])[:_FLASH_SUBJECT_MAX]}"
+
+
+def pr_flash(cmd: str, resp) -> str:
+    """Return `PR #N opened` when `gh pr create` printed the URL, else ''."""
+    if not _PR_CREATE_RE.match(cmd):
+        return ""
+    if _NO_COMMIT_FLAG_RE.search(cmd):
+        return ""
+    if not response_indicates_success(resp):
+        return ""
+    m = _PR_URL_RE.search(response_text(resp))
+    return f"PR #{m.group(1)} opened" if m else ""
+
+
+def test_summary(text: str) -> str:
+    """Return `tests N OK` or `tests FAILED x` from a runner report, else ''.
+
+    unittest first: `Ran N tests` is the more specific signal.
+    """
+    ran = _UNITTEST_RAN_RE.search(text)
+    if ran:
+        tail = text[ran.end():]
+        failed = _UNITTEST_FAILED_RE.search(tail)
+        if failed:
+            bad = sum(int(n) for _k, n in _UNITTEST_COUNT_RE.findall(failed.group(1)))
+            return f"tests FAILED {bad}" if bad else "tests FAILED"
+        if _UNITTEST_OK_RE.search(tail):
+            return f"tests {ran.group(1)} OK"
+        return ""
+    failed = _PYTEST_FAILED_RE.search(text)
+    errors = _PYTEST_ERRORS_RE.search(text)
+    passed = _PYTEST_PASSED_RE.search(text)
+    bad = (int(failed.group(1)) if failed else 0) + (int(errors.group(1)) if errors else 0)
+    if bad:
+        return f"tests FAILED {bad}"
+    if passed:
+        return f"tests {passed.group(1)} OK"
+    return ""
+
+
+def tests_flash(cmd: str, resp) -> str:
+    """Return the test summary when the command ran a test runner.
+
+    A failed suite flashes on a non-zero exit. The report is the point.
+    """
+    if not _TEST_RUNNER_RE.search(cmd):
+        return ""
+    if isinstance(resp, dict) and resp.get("interrupted"):
+        return ""
+    return test_summary(response_text(resp))
+
+
+def flash_for(cmd: str, resp) -> str:
+    """Return the flash a non-commit Bash call earns, or ''."""
+    return push_flash(cmd, resp) or pr_flash(cmd, resp) or tests_flash(cmd, resp)
 
 
 _LOG_SUBJECT_MAX = 200
@@ -209,6 +358,23 @@ def commit_verified(repo_dir: str, subject: str) -> bool:
     if r.returncode != 0:
         return False
     return r.stdout.strip() == subject.strip()
+
+
+def short_hash_of(repo_dir: str) -> str:
+    """Return HEAD's short hash, or '' on failure.
+
+    Called after `commit_verified`: one subprocess per landed commit.
+    """
+    if not repo_dir:
+        return ""
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(repo_dir), "log", "-1", "--format=%h"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, timeout=3, check=False)
+    except Exception:
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
 
 
 def branch_of(repo_dir: str) -> str:
@@ -335,6 +501,9 @@ def main() -> int:
     command = tool_input.get("command") or ""
     cmd = _CD_PREFIX_RE.sub("", command).lstrip()
     if not _COMMIT_RE.match(cmd):
+        flash = flash_for(cmd, payload.get("tool_response"))
+        if flash:
+            _ops_flash(flash)
         return 0
     # --dry-run and friends print what WOULD happen and commit nothing.
     if _NO_COMMIT_FLAG_RE.search(cmd):
@@ -349,6 +518,9 @@ def main() -> int:
     repo_dir = repo_dir_for(command, cmd, os.environ.get("CLAUDE_PROJECT_DIR", ""))
     if not commit_verified(repo_dir, subject):
         return 0
+    # Flash before the vault gate. An unlinked project still commits.
+    _ops_flash(" ".join(x for x in ("commit", short_hash_of(repo_dir),
+                                     log_safe(subject)[:_FLASH_SUBJECT_MAX]) if x))
     on_branch = branch_suffix(branch_of(repo_dir))
 
     # --- Vault resolution, same 5-step chain as the verbs and other hooks ---

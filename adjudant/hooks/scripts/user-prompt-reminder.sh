@@ -69,6 +69,24 @@ if misses and turns > 0:
 CANARY_PY
 }
 
+# Ultracode marker. The statusline paints the context bar purple while it exists.
+# Path: $TMPDIR/claude-ultracode-<session_id>. Nothing wrote it before this.
+# The word `ultracode` in a prompt is the opt-in. `ultracode off` ends it.
+# Keyed to the session id. Same filename check as canary_report.
+# Old markers are swept.
+ultracode_marker() {
+  local session_id="$1" prompt="$2" tmp="${TMPDIR:-/tmp}"
+  if [ -z "$session_id" ] || [ "$session_id" = "-" ]; then return 0; fi
+  case "$session_id" in *[!A-Za-z0-9._-]*) return 0 ;; esac
+  local marker="$tmp/claude-ultracode-${session_id}"
+  if printf '%s' "$prompt" | grep -qiE '\bultracode\s+off\b'; then
+    rm -f "$marker" 2>/dev/null || true
+  elif printf '%s' "$prompt" | grep -qiE '\bultracode\b'; then
+    find "$tmp" -maxdepth 1 -name 'claude-ultracode-*' -mtime +1 -delete 2>/dev/null || true
+    { : > "$marker"; } 2>/dev/null || true
+  fi
+}
+
 main() {
   [ "${ADJUDANT_REMINDER_DISABLE:-0}" = "1" ] && return 0
 
@@ -96,6 +114,16 @@ except Exception:
   pass' 2>/dev/null || true)" || true
   fi
   [ -z "$prompt" ] && return 0
+
+  # Code comments rule, every prompt. No once-per-session marker.
+  # A rule stated once is lost at the next compact.
+  # The text lives in _comment_rule.txt. session-start reads the same file.
+  local _rule
+  _rule=$(head -n1 "$(dirname "${BASH_SOURCE[0]}")/_comment_rule.txt" 2>/dev/null | tr -d '\r' || true)
+  [ -n "$_rule" ] && printf '[adjudant] %s\n' "$_rule"
+
+  # Silent: a marker on disk, never a line of output.
+  ultracode_marker "$session_id" "$prompt"
 
   # Every turn, linked project or not: drift is a property of the session, not
   # of the vault. Silent while healthy, the rule the statusline applies to its

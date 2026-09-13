@@ -106,12 +106,13 @@ def _bootstrap() -> None:
 
 
 def _ops_flash_py(msg: str, project_dir: str) -> None:
+    """Flash to the statusline through scripts/_ops_flash.py. Never raises.
+
+    The old private copy failed silently on a missing import.
+    """
     try:
-        cache = Path.home() / ".claude" / "statusline-cache"
-        if not cache.is_dir():
-            return
-        key = project_dir.replace("/", "_").replace(" ", "-")[-120:]
-        (cache / f"ops-{key}").write_text(f"{int(time.time())} {msg}\n")
+        from _ops_flash import ops_flash
+        ops_flash(msg, project_dir)
     except Exception:
         pass
 

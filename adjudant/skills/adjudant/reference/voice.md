@@ -1,15 +1,13 @@
 # Voice
 
-Tone contract for every adjudant surface: rendered output, vault writes,
-templates, reference docs. Loaded with every verb reference: small.
+Tone contract for every adjudant surface. Loaded with every verb: small.
 
 ## Banned lexicon
 
 The machine-checkable list lives in `scripts/_voice.py` as `BANNED_LEXICON`,
-enforced by validators 23, 28, 29 and the vault write gate. It is not
-repeated here: a rule the build fails on does not need to be re-read every
-session. The principle it encodes: no filler superlatives, no throat-clearing,
-no self-congratulation. Write the sentence a competent colleague would write.
+enforced by validators 23, 28, 29 and the vault write gate. Not repeated here.
+The principle: no filler superlatives, no throat-clearing, no self-congratulation.
+Write the sentence a competent colleague would write.
 
 ## Glazing phrases
 
@@ -20,9 +18,8 @@ no self-congratulation. Write the sentence a competent colleague would write.
 
 ## Shape
 
-Rendered output and hook context blocks, per the i-have-adhd plugin's ten
-rules: it governs the whole chat when installed, adjudant its own surfaces
-when absent.
+Rendered output and hook context blocks. The i-have-adhd plugin's rules;
+adjudant applies them on its own surfaces when that plugin is absent.
 
 1. Lead with the next action the reader can take.
 2. Number multi-step work: one bounded action per step.
@@ -69,13 +66,22 @@ a request token overrides.
 
 ## Simplified Technical English (ASD-STE100)
 
-Preferred register for procedures and reference: ASD-STE100, Simplified Technical
-English. One instruction per sentence, active voice, present tense, and approved
-words used consistently: one word per meaning, no synonym drift. Keep procedure
-sentences under 20 words. Weighted above prose habit: when a sentence could read
-like prose or break an STE rule, choose STE. The ELI modes set reading level
-within STE; they do not permit long sentences or loose vocabulary. Reference: the
-ASD-STE100 specification.
+Register for procedures and reference. One instruction per sentence, active
+voice, present tense, one word per meaning. Procedure sentences under 20 words.
+When prose habit and an STE rule conflict, STE wins. The ELI modes set reading
+level within STE, nothing more.
+
+## Code comments
+
+ASD-STE100 at double density. One fact or one instruction per comment. One
+sentence per line. Active voice, present tense. Twelve words or fewer. No
+history, no narrative, no we, no hedging. A comment that says why stays, one
+sentence. A comment that restates the next line is deleted. Two lines say what
+four said.
+
+Re-injected, not gated: `session-start.sh` prints it on every start, resume
+and compact; `user-prompt-reminder.sh` on every prompt. One source:
+`hooks/scripts/_comment_rule.txt`.
 
 ## Typography
 

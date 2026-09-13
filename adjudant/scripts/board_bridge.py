@@ -32,26 +32,28 @@ import json
 import os
 import re
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 
 
-def _ops_flash(msg: str, project_dir: str) -> None:
-    cache = Path.home() / ".claude" / "statusline-cache"
-    if not cache.is_dir():
-        return
-    key = str(project_dir).replace("/", "_").replace(" ", "-")[-120:]
-    try:
-        (cache / f"ops-{key}").write_text(f"{int(time.time())} {msg}\n")
-    except OSError:
-        pass
 import tempfile
 from typing import Optional
 
 from _render import render
 from _vault_walk import VaultUnresolvableError, smart_project_dir
 from board import ensure_board
+
+
+def _ops_flash(msg: str, project_dir: str) -> None:
+    """Flash to the statusline through scripts/_ops_flash.py. Never raises.
+
+    The writer resolves the key. A relative --project-dir once keyed `.`.
+    """
+    try:
+        from _ops_flash import ops_flash
+        ops_flash(msg, project_dir)
+    except Exception:
+        pass
 
 # Vault task filenames are strict ascii kebab ({kebab-title}.md per
 # vault-standards §naming); 80 chars keeps sync-hostile paths off the table.

@@ -60,6 +60,15 @@ import tempfile
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+def _ops_flash(msg: str, project_dir) -> None:
+    """Flash this verb's outcome through scripts/_ops_flash.py. Never raises."""
+    try:
+        from _ops_flash import ops_flash
+        ops_flash(msg, project_dir)
+    except Exception:
+        pass
 from typing import Any, Optional
 
 from _cost import cost_block, read_threshold, stat_walk
@@ -1285,6 +1294,7 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
                   f"structural finding(s), reported only", file=sys.stderr)
         # Stdout: compact JSON of the summary block for Claude
         print(json.dumps({**summary, "scope": scope, "cost": cost}))
+        _ops_flash(f"clean: {summary['total_changes']} changes previewed", args.project_dir)
         return 0
 
     if args.phase == "apply":
@@ -1304,6 +1314,8 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
                       file=sys.stderr)
             print("[clean] re-run preview to fold the current state in", file=sys.stderr)
         print(json.dumps({"backup_dir": str(backup_dir), "skipped_stale": skipped}))
+        _ops_flash("clean: applied" + (f", {len(skipped)} left alone" if skipped else ""),
+                   args.project_dir)
         return 0
 
     return 2  # unreachable

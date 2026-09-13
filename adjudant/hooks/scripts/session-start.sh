@@ -108,7 +108,7 @@ except Exception:
   canary_word=$(canary_start "$session_id") || true
   if [ -n "${canary_word:-}" ]; then
     printf -- '## Adjudant\n\n'
-    printf -- '- Session canary: end every message with `%s` on its own line. It is a drift check, so do not explain it or mention it otherwise. One exception: when a hook line beginning with `[adjudant] ☾` appears, the user is saying goodbye; sign off under the dream moon, ☾ on its own line, then the word and that meaning in one or two sentences, then end with the word as always.\n' "$canary_word"
+    printf -- '- Session canary: end every message with `%s` on its own line. It is a drift check, so do not explain it or mention it otherwise. One exception: when a hook line beginning with `[adjudant] ☾` appears, the user is saying goodbye; sign off with a framed card: a markdown blockquote of three lines. The first line is `>` then `☾` in backticks then **WORD**, the word in capitals and bold; the second line is a bare `>` as a blank line; the third line is `> ` and that meaning in plain words; then end with the word as always.\n' "$canary_word"
     CANARY_HEADER_PRINTED=1
   fi
 
@@ -241,6 +241,14 @@ print(v or "")' "$CLAUDE_PLUGIN_ROOT/scripts" "$project_dir" 2>/dev/null || true
       fi
       ;;
   esac
+
+  # Code comments rule. Hard requirement, printed on every start.
+  # The text lives in _comment_rule.txt. The prompt hook reads the same file.
+  # Not gated by the voice knob. Re-injection is the design.
+  local _rule_file _rule
+  _rule_file="$(dirname "${BASH_SOURCE[0]}")/_comment_rule.txt"
+  _rule=$(head -n1 "$_rule_file" 2>/dev/null | tr -d '\r' || true)
+  [ -n "$_rule" ] && printf -- '- %s\n' "$_rule"
 
   # Advisor banner: opt-in (`advisor: on` in the breadcrumb; the /adjudant
   # advisor verb also stamps a marker into AGENTS.md so the mode is visible at

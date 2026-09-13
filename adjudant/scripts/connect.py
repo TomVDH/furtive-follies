@@ -37,6 +37,15 @@ import os
 import re
 import sys
 from datetime import datetime
+
+
+def _ops_flash(msg: str, project_dir) -> None:
+    """Flash this verb's outcome through scripts/_ops_flash.py. Never raises."""
+    try:
+        from _ops_flash import ops_flash
+        ops_flash(msg, project_dir)
+    except Exception:
+        pass
 from pathlib import Path
 from typing import Any, Optional
 
@@ -888,7 +897,8 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
         chosen_tracker=args.tracker,
     )
 
-    print(f"[connect] state: {detect_state(project_root, vault_path, slug)}", file=sys.stderr)
+    state = detect_state(project_root, vault_path, slug)
+    print(f"[connect] state: {state}", file=sys.stderr)
     print(f"[connect] vault: {vault_name} at {vault_path}", file=sys.stderr)
     print(f"[connect] project: {slug} ({project_type}) - {project_name}", file=sys.stderr)
     print(f"[connect] breadcrumb: {summary['steps']['breadcrumb']}", file=sys.stderr)
@@ -899,6 +909,7 @@ def cli_main(argv: Optional[list[str]] = None) -> int:
     print(f"[connect] gitignore: {summary['steps']['gitignore']}", file=sys.stderr)
 
     print(json.dumps(summary, indent=2, default=str))
+    _ops_flash(f"connect: {slug} {state}", project_root)
     return 0
 
 

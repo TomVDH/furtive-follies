@@ -570,3 +570,169 @@ class TestBranchInTheLogLine(_CommitLogCase):
         self.assertEqual(commit_log.branch_of(""), "")
         self.assertEqual(commit_log.branch_of("/nonexistent/path/xyz"), "")
         self.assertEqual(commit_log.branch_of(str(self.project)), "main")
+
+
+class TestOpsFlash(_CommitLogCase):
+    """The bolt the hook writes for git and test-runner calls.
+    HOME is a sandbox with a `.claude` dir. The real bar is never touched."""
+
+    def setUp(self):
+        super().setUp()
+        self.fake_home = Path(self._tmp.name) / "home"
+        (self.fake_home / ".claude").mkdir(parents=True)
+        self._home = os.environ.get("HOME")
+        os.environ["HOME"] = str(self.fake_home)
+
+    def tearDown(self):
+        if self._home is None:
+            os.environ.pop("HOME", None)
+        else:
+            os.environ["HOME"] = self._home
+        super().tearDown()
+
+    def _flash(self):
+        """The message of the flash written for this project, or None."""
+        import _ops_flash
+        f = self.fake_home / ".claude" / "statusline-cache" / f"ops-{_ops_flash.flash_key(self.project)}"
+        if not f.exists():
+            return None
+        return f.read_text().split(" ", 1)[1].rstrip("\n")
+
+    @staticmethod
+    def _resp(stdout="", stderr=""):
+        return {"stdout": stdout, "stderr": stderr, "interrupted": False}
+
+    # -- commit --
+    def test_commit_flashes_hash_and_subject_after_git_confirms(self):
+        self._land("feat(x): y")
+        self._run(self._payload('git commit -m "feat(x): y"'))
+        head = self._git("log", "-1", "--format=%h").stdout.strip()
+        self.assertTrue(head)
+        self.assertEqual(self._flash(), f"commit {head} feat(x): y")
+
+    def test_commit_flashes_in_an_unlinked_project(self):
+        (self.project / ".claude" / "adjudant").unlink()
+        self._land("feat(x): y")
+        self._run(self._payload('git commit -m "feat(x): y"'))
+        self.assertRegex(self._flash(), r"^commit [0-9a-f]{7,} feat\(x\): y$")
+
+    def test_unverified_commit_does_not_flash(self):
+        self._run(self._payload('git commit -m "feat(x): y"'))
+        self.assertIsNone(self._flash())
+
+    def test_dry_run_commit_does_not_flash(self):
+        self._land("feat(x): y")
+        self._run(self._payload('git commit --dry-run -m "feat(x): y"'))
+        self.assertIsNone(self._flash())
+
+    # -- push --
+    def test_push_flashes_the_ref_that_moved(self):
+        self._run(self._payload("git push -u origin main", tool_response=self._resp(
+            stderr="To github.com:x/y.git\n   abc1234..def5678  main -> main\n")))
+        self.assertEqual(self._flash(), "pushed main")
+
+    def test_push_new_branch_flashes(self):
+        self._run(self._payload("cd /x && git push origin feature/k0bd", tool_response=self._resp(
+            stderr="To github.com:x/y.git\n * [new branch]      feature/k0bd -> feature/k0bd\n")))
+        self.assertEqual(self._flash(), "pushed feature/k0bd")
+
+    def test_push_up_to_date_does_not_flash(self):
+        self._run(self._payload("git push", tool_response=self._resp(
+            stderr="Everything up-to-date\n")))
+        self.assertIsNone(self._flash())
+
+    def test_rejected_push_does_not_flash(self):
+        self._run(self._payload("git push", tool_response=self._resp(
+            stderr="To github.com:x/y.git\n ! [rejected]        main -> main (fetch first)\n"
+                   "error: failed to push some refs to 'github.com:x/y.git'\n")))
+        self.assertIsNone(self._flash())
+
+    def test_push_dry_run_does_not_flash(self):
+        moved = self._resp(stderr="   abc1234..def5678  main -> main\n")
+        self._run(self._payload("git push --dry-run", tool_response=moved))
+        self._run(self._payload("git push -n origin main", tool_response=moved))
+        self.assertIsNone(self._flash())
+
+    def test_push_error_payload_does_not_flash(self):
+        self._run(self._payload("git push", tool_response={
+            "stderr": "   abc1234..def5678  main -> main\n", "is_error": True}))
+        self.assertIsNone(self._flash())
+
+    # -- PR --
+    def test_pr_create_flashes_the_number(self):
+        self._run(self._payload('gh pr create --title "x" --body "y"', tool_response=self._resp(
+            stdout="https://github.com/org/repo/pull/42\n")))
+        self.assertEqual(self._flash(), "PR #42 opened")
+
+    def test_pr_create_without_a_url_does_not_flash(self):
+        self._run(self._payload("gh pr create --title x", tool_response=self._resp(
+            stderr="pull request create failed: GraphQL: ...\n")))
+        self.assertIsNone(self._flash())
+
+    def test_pr_view_does_not_flash(self):
+        self._run(self._payload("gh pr view 42", tool_response=self._resp(
+            stdout="https://github.com/org/repo/pull/42\n")))
+        self.assertIsNone(self._flash())
+
+    # -- tests --
+    def test_unittest_ok_flashes_the_count(self):
+        self._run(self._payload(
+            "python3 -m unittest discover -s adjudant/scripts -p 'test_*.py'",
+            tool_response=self._resp(stderr="....\n" + "-" * 70 + "\nRan 1735 tests in 118.2s\n\nOK\n")))
+        self.assertEqual(self._flash(), "tests 1735 OK")
+
+    def test_unittest_failed_counts_failures_and_errors(self):
+        self._run(self._payload("python3 -m unittest test_x", tool_response=self._resp(
+            stderr="Ran 10 tests in 0.1s\n\nFAILED (failures=2, errors=1)\n")))
+        self.assertEqual(self._flash(), "tests FAILED 3")
+
+    def test_unittest_skips_still_ok(self):
+        self._run(self._payload("python -m unittest", tool_response=self._resp(
+            stderr="Ran 5 tests in 0.1s\n\nOK (skipped=2)\n")))
+        self.assertEqual(self._flash(), "tests 5 OK")
+
+    def test_pytest_passed_flashes_the_count(self):
+        self._run(self._payload("pytest -q tests/", tool_response=self._resp(
+            stdout=".....\n5 passed in 0.31s\n")))
+        self.assertEqual(self._flash(), "tests 5 OK")
+
+    def test_pytest_failed_flashes_the_failed_count(self):
+        self._run(self._payload("cd /x && .venv/bin/pytest", tool_response=self._resp(
+            stdout="3 passed, 2 failed, 1 error in 1.0s\n")))
+        self.assertEqual(self._flash(), "tests FAILED 3")
+
+    def test_a_runner_with_no_report_does_not_flash(self):
+        self._run(self._payload("python3 -m unittest", tool_response=self._resp(stderr="")))
+        self.assertIsNone(self._flash())
+
+    def test_a_file_named_after_a_runner_is_not_a_runner(self):
+        self._run(self._payload("cat test_unittest.py", tool_response=self._resp(
+            stdout="Ran 3 tests in 0.0s\n\nOK\n")))
+        self.assertIsNone(self._flash())
+
+    def test_an_interrupted_run_does_not_flash(self):
+        self._run(self._payload("pytest", tool_response={
+            "stdout": "5 passed in 0.3s\n", "interrupted": True}))
+        self.assertIsNone(self._flash())
+
+    def test_an_ordinary_command_does_not_flash(self):
+        self._run(self._payload("ls -la", tool_response=self._resp(stdout="a\nb\n")))
+        self.assertIsNone(self._flash())
+
+    def test_summary_parser(self):
+        ts = commit_log.test_summary
+        self.assertEqual(ts("Ran 1 test in 0.0s\n\nOK\n"), "tests 1 OK")
+        self.assertEqual(ts("Ran 4 tests in 0.0s\n\nFAILED (errors=4)\n"), "tests FAILED 4")
+        self.assertEqual(ts("12 passed, 1 warning in 2s"), "tests 12 OK")
+        self.assertEqual(ts("1 failed in 2s"), "tests FAILED 1")
+        self.assertEqual(ts("no tests ran"), "")
+        self.assertEqual(ts(""), "")
+
+    def test_response_text_gathers_every_shape(self):
+        rt = commit_log.response_text
+        self.assertEqual(rt("plain"), "plain")
+        self.assertEqual(rt({"stdout": "a", "stderr": "b"}), "a\nb")
+        self.assertEqual(rt({"content": [{"type": "text", "text": "c"}]}), "c")
+        self.assertEqual(rt({"output": "d"}), "d")
+        self.assertEqual(rt(None), "")
+        self.assertEqual(rt(42), "")

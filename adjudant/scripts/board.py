@@ -49,6 +49,15 @@ import shutil
 import sys
 from datetime import date, datetime
 from pathlib import Path
+
+
+def _ops_flash(msg: str, project_dir) -> None:
+    """Flash this verb's outcome through scripts/_ops_flash.py. Never raises."""
+    try:
+        from _ops_flash import ops_flash
+        ops_flash(msg, project_dir)
+    except Exception:
+        pass
 from typing import Any, Optional
 
 from _vault_walk import (
@@ -1438,6 +1447,8 @@ def cmd_ensure(argv: list[str]) -> int:
         print(f"error: {e}", file=sys.stderr)
         return 1
     print(verdict)
+    if verdict in ("reseeded", "created", "tasks-synced", "html-refreshed"):
+        _ops_flash(f"board: {verdict}", args.project_dir)
     return 0
 
 

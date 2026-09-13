@@ -141,8 +141,17 @@ class TestTheWordIsStatedOnce(unittest.TestCase):
         rule = src[src.index("Session canary:"):src.index("CANARY_HEADER_PRINTED=1")]
         self.assertIn("do not explain it or mention it otherwise", rule)
         self.assertIn("[adjudant] ☾", rule)
-        self.assertIn("sign off under the dream moon, ☾ on its own line", rule)
-        self.assertIn("then the word and that meaning", rule)
+        # The farewell is a three-line blockquote card.
+        # Line one: the moon in backticks, the word in bold capitals.
+        # Line two: a bare `>`. Line three: the meaning.
+        # Not a box. The moon is ambiguous-width; a drawn edge misaligns.
+        self.assertIn("framed card", rule)
+        self.assertIn("blockquote", rule)
+        self.assertIn("`☾`", rule)
+        self.assertIn("**WORD**", rule)
+        self.assertIn("bare `>`", rule)
+        self.assertNotIn("box-drawing", rule)
+        self.assertIn("then end with the word as always", rule)
 
     def test_the_farewell_hears_a_wrap_that_names_the_thing_wrapped(self):
         # "wrap the convo" said goodbye on 2026-09-13 and got no farewell: the

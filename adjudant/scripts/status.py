@@ -42,6 +42,15 @@ import sys
 import urllib.request
 from datetime import date, datetime
 from pathlib import Path
+
+
+def _ops_flash(msg: str, project_dir) -> None:
+    """Flash this verb's outcome through scripts/_ops_flash.py. Never raises."""
+    try:
+        from _ops_flash import ops_flash
+        ops_flash(msg, project_dir)
+    except Exception:
+        pass
 from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -1573,6 +1582,10 @@ def cli_main(argv: Optional[list] = None) -> int:
               f"brief={steps.get('brief_refresh')}, "
               f"handoff={steps.get('handoff_mirror')}",
               file=sys.stderr)
+        _ops_flash(f"status: {report['slug']}, brief {steps.get('brief_refresh')}, "
+                   f"handoff {steps.get('handoff_mirror')}", code_root)
+    else:
+        _ops_flash(f"status: {report['slug']}", code_root)
 
     payload = json.dumps(report, indent=2, default=str)
     if args.out:

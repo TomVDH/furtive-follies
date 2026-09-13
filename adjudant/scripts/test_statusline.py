@@ -36,13 +36,14 @@ def _plain(text: str) -> str:
 
 def _render(cwd: Path, home: Path, *, script: Path = STATUSLINE,
             extra_env: dict | None = None, sid: str = "test-sid",
-            raw: bool = False, ctx_size: int | None = None) -> str:
+            raw: bool = False, ctx_size: int | None = None,
+            effort: str | None = "medium") -> str:
     payload = {
         "cwd": str(cwd),
         "workspace": {"current_dir": str(cwd), "project_dir": str(cwd)},
         "session_id": sid,
         "model": {"display_name": "Test", "id": "test"},
-        "effort": {"level": "medium"},
+        "effort": {"level": effort},
         "context_window": {"used_percentage": 12},
     }
     if ctx_size is not None:
@@ -561,6 +562,213 @@ class TestWorktreeCount(_Repo):
         self._worktree("demo-ab12")
         out = self._bar()
         self.assertIn("⑂1", out)
+
+
+class TestOpsFlash(_Repo):
+    """The bolt. scripts/_ops_flash.py writes `<ts> <message>` per project.
+    S0a takes the line over with ⚡ on the next repaint.
+    It stamps `seen <ts>` and keeps the flash ten seconds from that.
+    The writer runs for real here, CLI and bash helper, under a shared HOME.
+    A key the two sides spell differently fails here, not on the user's bar."""
+
+    WRITER = PLUGIN_ROOT / "scripts" / "_ops_flash.py"
+    HELPER = PLUGIN_ROOT / "hooks" / "scripts" / "_ops_flash.sh"
+    BOLT = "\x1b[38;2;100;140;185m⚡ "
+
+    def setUp(self):
+        super().setUp()
+        # Claude Code hands the bar the physical path. macOS temp dirs are symlinks.
+        # Paint with the physical path.
+        self.root = self.repo.resolve()
+
+    def _env(self):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        env["HOME"] = str(self.home)
+        env["TMPDIR"] = str(self.home)
+        env.pop("CLAUDE_PROJECT_DIR", None)
+        return env
+
+    def _flash(self, msg, project_dir=None, cwd=None):
+        r = subprocess.run(["python3", str(self.WRITER), "--project-dir",
+                            str(project_dir or self.root), msg],
+                           env=self._env(), cwd=cwd, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def _files(self):
+        return sorted((self.home / ".claude" / "statusline-cache").glob("ops-*"))
+
+    def _paint(self, cwd=None, ttl="10", **kw):
+        kw.setdefault("raw", True)
+        return self._bar(cwd or self.root,
+                         extra_env={"ADJUDANT_OPS_FLASH_TTL": ttl}, **kw)
+
+    def test_a_flash_takes_the_whole_line(self):
+        self._flash("commit feat(x): y")
+        out = self._paint()
+        self.assertTrue(out.startswith(self.BOLT + "commit feat(x): y"), out)
+        self.assertEqual(out.count("\n"), 1)
+        self.assertNotIn("│", _plain(out))
+
+    def test_first_paint_stamps_seen(self):
+        self._flash("pushed main")
+        (f,) = self._files()
+        self.assertEqual(len(f.read_text().splitlines()), 1)
+        self._paint()
+        lines = f.read_text().splitlines()
+        self.assertEqual(len(lines), 2)
+        self.assertRegex(lines[1], r"^seen \d+$")
+
+    def test_shows_again_on_the_next_repaint(self):
+        self._flash("tests 195 OK")
+        self.assertIn("⚡ tests 195 OK", self._paint())
+        (f,) = self._files()
+        seen = f.read_text().splitlines()[1]
+        self.assertIn("⚡ tests 195 OK", self._paint())
+        # the seen stamp is written once, not moved on every repaint
+        self.assertEqual(f.read_text().splitlines()[1], seen)
+
+    def test_ttl_counts_from_first_sight_not_from_the_write(self):
+        # Written 30s ago, never painted: it still shows.
+        # The old rule expired it before anyone looked.
+        self._flash("board: reseeded")
+        (f,) = self._files()
+        ts, rest = f.read_text().split(" ", 1)
+        f.write_text(f"{int(ts) - 30} {rest}")
+        self.assertIn("⚡ board: reseeded", self._paint(ttl="8"))
+
+    def test_gone_after_the_ttl_from_seen(self):
+        import time
+        self._flash("commit x")
+        self.assertIn("⚡ commit x", self._paint(ttl="1"))
+        time.sleep(1.2)
+        out = self._paint(ttl="1")
+        self.assertNotIn("⚡", out)
+        self.assertIn("⎇", _plain(out))  # the ordinary bar is back
+
+    def test_a_newer_flash_replaces_and_restarts(self):
+        # The clock is integer seconds. The gaps leave no ambiguity.
+        # At the last paint: first sight 3-4s old, second sight 1-2s old.
+        import time
+        self._flash("first")
+        self.assertIn("⚡ first", self._paint(ttl="3"))
+        time.sleep(2.2)
+        self._flash("second")
+        self.assertIn("⚡ second", self._paint(ttl="3"))
+        time.sleep(1.5)
+        self.assertIn("⚡ second", self._paint(ttl="3"))
+
+    def test_an_unseen_flash_past_max_age_is_dropped(self):
+        self._flash("stale")
+        (f,) = self._files()
+        ts, rest = f.read_text().split(" ", 1)
+        f.write_text(f"{int(ts) - 700} {rest}")
+        out = self._paint()
+        self.assertNotIn("⚡", out)
+        self.assertEqual(len(f.read_text().splitlines()), 1)  # not stamped
+
+    def test_key_agrees_for_a_path_with_spaces(self):
+        d = Path(self._tmp.name).resolve() / "my repo"
+        d.mkdir()
+        self._flash("spaced", d)
+        (f,) = self._files()
+        self.assertNotIn(" ", f.name)
+        self.assertIn("⚡ spaced", self._paint(cwd=d))
+
+    def test_key_agrees_for_a_relative_path(self):
+        self._flash("relative", ".", cwd=self.root)
+        (f,) = self._files()
+        self.assertNotEqual(f.name, "ops-.")
+        self.assertIn("⚡ relative", self._paint())
+
+    def test_key_agrees_for_a_worktree(self):
+        # A worker in .worktrees/<bean> flashes. Both bars show it.
+        self._breadcrumb()
+        self._beans(("demo-ab12", "feature", "in-progress"))
+        wt = self._worktree("demo-ab12")
+        self._flash("from the worker", wt)
+        self.assertEqual(len(self._files()), 1)
+        self.assertIn("⚡ from the worker", self._paint(cwd=wt.resolve()))
+        self.assertIn("⚡ from the worker", self._paint())
+
+    def test_bash_helper_and_bar_agree(self):
+        r = subprocess.run(
+            ["bash", "-c", f'source "{self.HELPER}"; ops_flash "via bash" "$1"',
+             "_", str(self.root)],
+            env=self._env(), capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("⚡ via bash", self._paint())
+
+    def test_no_flash_no_bolt(self):
+        out = self._paint()
+        self.assertNotIn("⚡", out)
+        self.assertEqual(self._files(), [])
+
+
+class TestEffortCodes(_Repo):
+    """Effort renders as a short code: lo md hi xhi max.
+    EFFORT colour for lo, md, hi. ULTRA purple plus a pip for xhi and max."""
+
+    EFFORT = "\x1b[38;2;165;130;195m"
+    ULTRA = "\x1b[38;2;170;105;240m"
+    CODES = ("lo", "md", "hi", "xhi", "max")
+
+    def _s4(self, out):
+        # The model segment. Its index varies without a vault.
+        return next(seg for seg in _plain(out).split("│") if "Test" in seg)
+
+    def test_ordinary_levels_are_codes_in_the_effort_colour(self):
+        for level, code in (("low", "lo"), ("medium", "md"), ("high", "hi")):
+            out = self._bar(raw=True, effort=level)
+            self.assertIn(f"{self.EFFORT}{code}\x1b[0m", out, level)
+            self.assertNotIn("●", _plain(out), level)
+
+    def test_xhigh_and_max_are_purple_with_a_pip(self):
+        for level, code in (("xhigh", "xhi"), ("max", "max")):
+            out = self._bar(raw=True, effort=level)
+            self.assertIn(f"{self.ULTRA}{code}\x1b[0m {self.ULTRA}●\x1b[0m", out, level)
+            self.assertIn(f"{code} ●", self._s4(out))
+
+    def test_no_glyphs_remain(self):
+        for level in ("low", "medium", "high", "xhigh", "max"):
+            s4 = self._s4(self._bar(raw=True, effort=level))
+            for glyph in ("·", "••", "⬥"):
+                self.assertNotIn(glyph, s4, level)
+
+    def test_unknown_or_absent_effort_renders_nothing(self):
+        for level in ("", "turbo", None):
+            s4 = self._s4(self._bar(raw=True, effort=level))
+            self.assertNotRegex(s4, r"\b(lo|md|hi|xhi|max)\b")
+
+
+class TestUltracode(_Repo):
+    """The marker $TMPDIR/claude-ultracode-<session_id> paints the context bar purple.
+    user-prompt-reminder.sh writes it. Only the reader is driven here."""
+
+    ULTRA = "\x1b[38;2;170;105;240m"
+
+    def _marker(self, sid="test-sid"):
+        return self.home / f"claude-ultracode-{sid}"
+
+    def test_marker_paints_the_context_bar_purple(self):
+        self._marker().touch()
+        out = self._bar(raw=True)
+        self.assertIn(f"{self.ULTRA}▓", out)
+        self.assertIn(f" {self.ULTRA}●\x1b[0m", out)
+
+    def test_no_marker_no_purple(self):
+        out = self._bar(raw=True)
+        self.assertNotIn(f"{self.ULTRA}▓", out)
+        self.assertNotIn("●", _plain(out))
+
+    def test_marker_is_session_keyed(self):
+        self._marker("someone-else").touch()
+        self.assertNotIn(f"{self.ULTRA}▓", self._bar(raw=True))
+
+    def test_removing_the_marker_ends_it(self):
+        self._marker().touch()
+        self.assertIn(f"{self.ULTRA}▓", self._bar(raw=True))
+        self._marker().unlink()
+        self.assertNotIn(f"{self.ULTRA}▓", self._bar(raw=True))
 
 
 class TestSessionCost(_Repo):
